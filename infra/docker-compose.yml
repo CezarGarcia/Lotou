@@ -74,15 +74,20 @@ services:
       <<: [*otel-env, *auth-env]
       OTEL_SERVICE_NAME: event-service
       PORT: "3000"
-      MONGODB_URI: mongodb://mongodb:27017/event_service
+      # Replica set: o show e o outbox são gravados na mesma transação.
+      MONGODB_URI: mongodb://mongodb:27017/event_service?replicaSet=rs0
       # Cache da página e da busca (pode perder dados) e rate limit das leituras.
       REDIS_CACHE_URL: redis://redis-cache:6379
       REDIS_CORE_URL: redis://redis-core:6379
       SHOW_CACHE_ENABLED: ${SHOW_CACHE_ENABLED:-true}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      # Publica shows.catalog (pelo outbox) e consome inventory.events.
+      KAFKA_BROKERS: kafka:9092
     depends_on:
       mongodb:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       redis-cache:
         condition: service_healthy
       redis-core:

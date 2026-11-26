@@ -1,11 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import type { Model, QueryFilter } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import type { ClientSession, Connection, Model, QueryFilter } from 'mongoose';
 import { newId } from '../common/ids/id.js';
 import { type Page, toPage } from '../common/pagination/cursor.js';
 import { ProblemException, Problems } from '../common/problem/problem.js';
 import { normalizeText } from '../common/text/normalize.js';
+import { Outbox } from '../outbox/outbox.js';
 import { ShowPageCache } from '../shows/cache/show-page.cache.js';
+import { catalogMessage } from '../shows/catalog-message.js';
 import { Show } from '../shows/show.schema.js';
 import { Venue } from './venue.schema.js';
 import { toVenueResponse, type VenueResponse } from './venue.response.js';
@@ -22,7 +24,9 @@ export class VenuesService {
     // Os shows guardam uma cópia de nome e cidade do local (para a busca), e
     // o local não pode mudar de setores enquanto um show depende deles.
     @InjectModel(Show.name) private readonly shows: Model<Show>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly showPageCache: ShowPageCache,
+    private readonly outbox: Outbox,
   ) {}
 
   async create(producerId: string, dto: CreateVenueDto): Promise<Venue> {
@@ -110,36 +114,63 @@ export class VenuesService {
     }
 
     // Uma única operação condicional: só altera se o local ainda estiver na
-    // versão que o cliente leu.
-    const updated = await this.venues
-      .findOneAndUpdate(
-        { _id: id, version },
-        { $set: set, $inc: { version: 1 } },
-        { returnDocument: 'after' },
-      )
-      .lean();
-    if (!updated) {
-      throw Problems.versionConflict('O local');
-    }
+    // versão que o cliente leu. Os shows do local mudam na mesma transação.
+    const { venue, showIds } = await this.connection.transaction(
+      async (session) => {
+        const venue = await this.venues
+          .findOneAndUpdate(
+            { _id: id, version },
+            { $set: set, $inc: { version: 1 } },
+            { returnDocument: 'after', session },
+          )
+          .lean();
+        if (!venue) {
+          throw Problems.versionConflict('O local');
+        }
+        const showIds =
+          set.name !== undefined || set.address !== undefined
+            ? await this.copyToShows(venue, session)
+            : [];
+        return { venue, showIds };
+      },
+    );
+    // Todo show que recebeu o nome novo sai do cache. Um show que entrar no
+    // local depois disso já lê o local atual.
+    await this.showPageCache.evict(showIds);
+    return venue;
+  }
 
-    if (set.name !== undefined || set.address !== undefined) {
-      await this.shows.updateMany(
-        { 'venue.id': id },
-        {
-          $set: {
-            'venue.name': updated.name,
-            'venue.city': updated.address.city,
-            'venue.state': updated.address.state,
-            'venue.citySearch': normalizeText(updated.address.city),
-          },
+  /**
+   * Copia nome e endereço do local para os shows dele. Cada show muda de
+   * versão, e os que já saíram do rascunho vão para o catálogo como
+   * `ShowUpdated`. Devolve os IDs dos shows alterados.
+   */
+  private async copyToShows(
+    venue: Venue,
+    session: ClientSession,
+  ): Promise<string[]> {
+    const filter = { 'venue.id': venue._id };
+    await this.shows.updateMany(
+      filter,
+      {
+        $set: {
+          'venue.name': venue.name,
+          'venue.city': venue.address.city,
+          'venue.state': venue.address.state,
+          'venue.citySearch': normalizeText(venue.address.city),
         },
-      );
-      // Lidos depois do update: todo show que recebeu o nome novo sai do
-      // cache. Um show que entrar no local depois disso já lê o local atual.
-      const showIds = await this.shows.distinct('_id', { 'venue.id': id });
-      await this.showPageCache.evict(showIds);
-    }
-    return updated;
+        $inc: { version: 1 },
+      },
+      { session },
+    );
+    const changed = await this.shows.find(filter).session(session).lean();
+    await this.outbox.append(
+      changed
+        .filter((show) => show.status !== 'DRAFT')
+        .map((show) => catalogMessage('ShowUpdated', show)),
+      session,
+    );
+    return changed.map((show) => show._id);
   }
 }
 

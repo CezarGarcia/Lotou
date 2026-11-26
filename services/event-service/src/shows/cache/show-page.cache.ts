@@ -141,6 +141,22 @@ export class ShowPageCache implements OnApplicationShutdown {
     this.pendingDeletes.add(timer);
   }
 
+  /**
+   * Tira o show do cache por um evento de outro serviço (virada de lote,
+   * Fluxo C). Diferente de `evict`, falha se o Redis falhar, para quem chama
+   * tentar de novo. Não repete a deleção: o evento não muda nada no MongoDB,
+   * então não há leitura velha a corrigir.
+   *
+   * Só o L1 desta instância é apagado; o das outras expira sozinho em até
+   * 2 s.
+   */
+  async invalidate(id: string): Promise<void> {
+    this.local.delete(id);
+    if (this.enabled) {
+      await this.redis.del(keyOf(id));
+    }
+  }
+
   onApplicationShutdown(): void {
     this.pendingDeletes.forEach(clearTimeout);
   }

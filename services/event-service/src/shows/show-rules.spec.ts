@@ -237,7 +237,7 @@ describe('publishViolations', () => {
     expect(publishViolations(ready, now)).toEqual([]);
   });
 
-  it('exige local, ao menos um setor e ao menos um lote', () => {
+  it('exige local, ao menos um setor e ao menos um lote em cada setor', () => {
     expect(
       publishViolations({ ...ready, venue: null, sectors: [] }, now).map(
         (v) => v.field,
@@ -249,7 +249,20 @@ describe('publishViolations', () => {
       venue,
     ).sectors;
     expect(publishViolations({ ...ready, sectors: withoutLots }, now)).toEqual([
-      { field: 'sectors', message: 'Configure ao menos um lote' },
+      { field: 'sectors.0.lots', message: 'Configure ao menos um lote' },
+    ]);
+
+    // Um setor com lote não cobre outro sem.
+    expect(
+      publishViolations(
+        { ...ready, sectors: [...ready.sectors, ...withoutLots] },
+        now,
+      ),
+    ).toEqual([
+      {
+        field: `sectors.${ready.sectors.length}.lots`,
+        message: 'Configure ao menos um lote',
+      },
     ]);
   });
 

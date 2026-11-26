@@ -183,7 +183,7 @@ export function scheduleViolations({
 
 /**
  * O que falta para o show poder ser publicado: local, ao menos um setor e ao
- * menos um lote, numa data que ainda não passou.
+ * menos um lote em cada setor, numa data que ainda não passou.
  */
 export function publishViolations(
   show: Pick<Show, 'venue' | 'sectors' | 'startsAt'>,
@@ -198,12 +198,17 @@ export function publishViolations(
       field: 'sectors',
       message: 'Configure ao menos um setor',
     });
-  } else if (show.sectors.every((sector) => sector.lots.length === 0)) {
-    violations.push({
-      field: 'sectors',
-      message: 'Configure ao menos um lote',
-    });
   }
+  // Todo setor precisa de um lote: um setor sem lote não tem o que vender, e o
+  // catálogo publicado (contracts/shows.catalog) exige ao menos um por setor.
+  show.sectors.forEach((sector, i) => {
+    if (sector.lots.length === 0) {
+      violations.push({
+        field: `sectors.${i}.lots`,
+        message: 'Configure ao menos um lote',
+      });
+    }
+  });
   if (show.startsAt <= now) {
     violations.push({
       field: 'startsAt',

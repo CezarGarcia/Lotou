@@ -1,12 +1,16 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import type { Model, QueryFilter } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { SpanStatusCode } from '@opentelemetry/api';
+import type { Connection, Model, QueryFilter } from 'mongoose';
 import { type Page, toPage } from '../common/pagination/cursor.js';
 import { ProblemException, Problems } from '../common/problem/problem.js';
 import { escapeRegExp, normalizeText } from '../common/text/normalize.js';
+import { Outbox } from '../outbox/outbox.js';
+import { tracer } from '../telemetry/trace-context.js';
 import type { Venue } from '../venues/venue.schema.js';
 import { VenuesService } from '../venues/venues.service.js';
 import { ShowPageCache } from './cache/show-page.cache.js';
+import { catalogMessage } from './catalog-message.js';
 import {
   buildSectors,
   localDate,
@@ -67,8 +71,10 @@ export class ShowsService {
 
   constructor(
     @InjectModel(Show.name) private readonly shows: Model<Show>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly venues: VenuesService,
     private readonly pageCache: ShowPageCache,
+    private readonly outbox: Outbox,
   ) {}
 
   /** Cria o show como rascunho. Ele só aparece na loja depois de publicado. */
@@ -224,17 +230,27 @@ export class ShowsService {
     }
 
     // Uma única operação condicional: só altera se o show ainda estiver na
-    // versão e no estado que o cliente leu.
-    const updated = await this.shows
-      .findOneAndUpdate(
-        { _id: id, version, status: current.status },
-        { $set: next, $inc: { version: 1 } },
-        { returnDocument: 'after' },
-      )
-      .lean();
-    if (!updated) {
-      versionConflict();
-    }
+    // versão e no estado que o cliente leu. Fora do rascunho, a mudança vai
+    // para o catálogo na mesma transação.
+    const updated = await this.connection.transaction(async (session) => {
+      const show = await this.shows
+        .findOneAndUpdate(
+          { _id: id, version, status: current.status },
+          { $set: next, $inc: { version: 1 } },
+          { returnDocument: 'after', session },
+        )
+        .lean();
+      if (!show) {
+        versionConflict();
+      }
+      if (show.status !== 'DRAFT') {
+        await this.outbox.append(
+          [catalogMessage('ShowUpdated', show)],
+          session,
+        );
+      }
+      return show;
+    });
     await this.pageCache.evict([id]);
     return updated;
   }
@@ -255,24 +271,32 @@ export class ShowsService {
       });
     }
 
+    // O show e a mensagem `ShowPublished` entram juntos, ou nenhum entra.
     const publishedAt = new Date();
-    const published = await this.shows
-      .findOneAndUpdate(
-        { _id: id, version: current.version, status: current.status },
-        {
-          $set: {
-            status: 'PUBLISHED',
-            publishedAt,
-            ...salesWindow(current, publishedAt),
+    const published = await this.connection.transaction(async (session) => {
+      const show = await this.shows
+        .findOneAndUpdate(
+          { _id: id, version: current.version, status: current.status },
+          {
+            $set: {
+              status: 'PUBLISHED',
+              publishedAt,
+              ...salesWindow(current, publishedAt),
+            },
+            $inc: { version: 1 },
           },
-          $inc: { version: 1 },
-        },
-        { returnDocument: 'after' },
-      )
-      .lean();
-    if (!published) {
-      versionConflict();
-    }
+          { returnDocument: 'after', session },
+        )
+        .lean();
+      if (!show) {
+        versionConflict();
+      }
+      await this.outbox.append(
+        [catalogMessage('ShowPublished', show)],
+        session,
+      );
+      return show;
+    });
     await this.pageCache.evict([id]);
     return published;
   }
@@ -281,10 +305,13 @@ export class ShowsService {
    * Avança os shows cujo horário chegou: PUBLISHED -> ON_SALE na abertura das
    * vendas e ON_SALE -> SALES_CLOSED no encerramento.
    *
-   * Cada passo lê os candidatos e faz um único update condicional sobre eles,
-   * então pode rodar em várias instâncias ao mesmo tempo sem lock: só uma
-   * delas altera cada show. Os candidatos saem do cache da página; a
-   * instância que perdeu a corrida também os tira, o que não faz mal.
+   * Cada show avança na sua própria transação, com um update condicional e a
+   * mensagem `ShowUpdated` no outbox. Pode rodar em várias instâncias ao
+   * mesmo tempo sem lock: a condição se repete no update, então só uma delas
+   * altera cada show (a outra recebe um conflito de escrita, repete a
+   * transação e não encontra mais o show no estado de origem). Os candidatos
+   * saem do cache da página; a instância que perdeu a corrida também os tira,
+   * o que não faz mal.
    */
   async advanceLifecycle(now: Date = new Date()): Promise<number> {
     const steps = [
@@ -302,24 +329,64 @@ export class ShowsService {
       if (ids.length === 0) {
         continue;
       }
-      // A condição se repete no update: um candidato que outra instância já
-      // avançou não muda de novo.
-      const result = await this.shows.updateMany(
-        { ...due, _id: { $in: ids } },
-        { $set: { status: to }, $inc: { version: 1 } },
-      );
+      const count = await this.advance(ids, due, to);
       await this.pageCache.evict(ids);
-      if (result.modifiedCount > 0) {
-        this.logger.log({
-          msg: 'Shows avançaram de estado',
-          from,
-          to,
-          count: result.modifiedCount,
-        });
+      if (count > 0) {
+        this.logger.log({ msg: 'Shows avançaram de estado', from, to, count });
       }
-      advanced += result.modifiedCount;
+      advanced += count;
     }
     return advanced;
+  }
+
+  /**
+   * Avança os candidatos de um passo. Roda num span próprio, só quando há
+   * candidatos (o job roda a cada segundo), para as mensagens no catálogo
+   * terem um trace de origem.
+   */
+  private advance(
+    ids: string[],
+    due: QueryFilter<Show>,
+    to: ShowStatus,
+  ): Promise<number> {
+    return tracer.startActiveSpan(
+      `show-lifecycle ${to}`,
+      { attributes: { 'lotou.shows.candidates': ids.length } },
+      async (span) => {
+        try {
+          let count = 0;
+          for (const id of ids) {
+            const show = await this.connection.transaction(async (session) => {
+              const changed = await this.shows
+                .findOneAndUpdate(
+                  { ...due, _id: id },
+                  { $set: { status: to }, $inc: { version: 1 } },
+                  { returnDocument: 'after', session },
+                )
+                .lean();
+              if (changed) {
+                await this.outbox.append(
+                  [catalogMessage('ShowUpdated', changed)],
+                  session,
+                );
+              }
+              return changed;
+            });
+            if (show) {
+              count += 1;
+            }
+          }
+          span.setAttribute('lotou.shows.advanced', count);
+          return count;
+        } catch (error) {
+          span.recordException(error as Error);
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          throw error;
+        } finally {
+          span.end();
+        }
+      },
+    );
   }
 
   /**
