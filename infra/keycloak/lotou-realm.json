@@ -227,7 +227,7 @@
     {
       "clientId": "order-service",
       "name": "Lotou order-service",
-      "description": "Conta de serviço do order-service: confirma e libera reservas no inventory-service",
+      "description": "Conta de serviço do order-service: lê as reservas no inventory-service",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
