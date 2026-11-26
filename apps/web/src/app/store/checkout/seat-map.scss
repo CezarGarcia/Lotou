@@ -1,0 +1,154 @@
+:host {
+  display: grid;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--mat-sys-body-small);
+  color: var(--mat-sys-on-surface-variant);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.viewport {
+  position: relative;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-low);
+  overscroll-behavior: contain;
+}
+
+svg[role='grid'] {
+  display: block;
+  margin-inline: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.stage {
+  fill: var(--mat-sys-surface-container-highest);
+}
+
+text {
+  font-family: inherit;
+  text-anchor: middle;
+  dominant-baseline: central;
+  user-select: none;
+  pointer-events: none;
+}
+
+.stage-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  fill: var(--mat-sys-on-surface-variant);
+}
+
+.row-label {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--mat-sys-on-surface-variant);
+}
+
+// Cadeiras: livre, escolhida, ocupada e carregando (sem classe). As mesmas
+// classes pintam a legenda.
+circle {
+  transition:
+    fill 200ms ease,
+    stroke 200ms ease;
+  fill: var(--mat-sys-surface-container-high);
+  stroke: transparent;
+  stroke-width: 1.5;
+}
+
+.free > circle,
+circle.free {
+  fill: var(--mat-sys-primary-container);
+  stroke: var(--mat-sys-primary);
+}
+
+.selected > circle,
+circle.selected {
+  fill: var(--mat-sys-primary);
+  stroke: var(--mat-sys-primary);
+}
+
+.taken > circle,
+circle.taken {
+  fill: var(--mat-sys-surface-container-highest);
+  stroke: var(--mat-sys-outline);
+}
+
+line {
+  stroke: var(--mat-sys-outline);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.seat {
+  cursor: not-allowed;
+  outline: none;
+
+  text {
+    font-size: 9px;
+    font-weight: 600;
+    fill: var(--mat-sys-on-primary-container);
+  }
+
+  &.free,
+  &.selected {
+    cursor: pointer;
+  }
+
+  &.selected text {
+    fill: var(--mat-sys-on-primary);
+  }
+
+  &.free:not(.selected):hover > circle {
+    fill: color-mix(in srgb, var(--mat-sys-primary) 35%, var(--mat-sys-primary-container));
+  }
+
+  &:focus-visible > circle {
+    stroke: var(--mat-sys-tertiary);
+    stroke-width: 3;
+  }
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-low) 70%, transparent);
+  font: var(--mat-sys-label-large);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  circle {
+    transition: none;
+  }
+}
