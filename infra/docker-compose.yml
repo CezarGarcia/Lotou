@@ -141,6 +141,23 @@ services:
       keycloak:
         condition: service_healthy
 
+  # Verificação do ambiente: faz uma compra de ponta a ponta e confere os
+  # traces no Tempo. Roda com `make smoke`.
+  smoke:
+    image: node:24-alpine
+    profiles: [smoke]
+    working_dir: /scripts
+    command: ["node", "smoke.mjs"]
+    volumes:
+      - ../scripts:/scripts:ro
+    environment:
+      WEB_URL: http://web
+      KEYCLOAK_URL: http://keycloak:8080
+      GRAFANA_URL: http://lgtm:3000
+    depends_on:
+      web:
+        condition: service_healthy
+
   # ---------------------------------------------------------------- dados
   postgres:
     image: postgres:18-alpine

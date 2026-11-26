@@ -20,10 +20,25 @@ const pista = (capacity, name = 'Pista') => ({
   kind: 'GENERAL_ADMISSION',
   capacity,
 });
-const cadeira = (capacity, name) => ({
+
+/** Rótulo da fileira: A, B... Z, AA, AB... (como colunas de planilha). */
+const rowLabel = (index) => {
+  let label = '';
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    label = String.fromCharCode(65 + ((n - 1) % 26)) + label;
+  }
+  return label;
+};
+
+/** Setor de cadeira numerada: `rows` fileiras de `seatsPerRow` cadeiras. */
+const cadeira = (name, rows, seatsPerRow) => ({
   name,
   kind: 'RESERVED_SEATING',
-  capacity,
+  capacity: rows * seatsPerRow,
+  rows: Array.from({ length: rows }, (_, index) => ({
+    label: rowLabel(index),
+    seatCount: seatsPerRow,
+  })),
 });
 
 export const venues = [
@@ -34,15 +49,15 @@ export const venues = [
     sectors: [
       pista(12_000),
       pista(3_000, 'Pista Premium'),
-      cadeira(4_000, 'Cadeira Inferior'),
-      cadeira(6_000, 'Cadeira Superior'),
+      cadeira('Cadeira Inferior', 80, 50),
+      cadeira('Cadeira Superior', 120, 50),
     ],
   },
   {
     name: 'Teatro Guanabara',
     address: { street: 'Rua do Passeio, 98', city: 'Rio de Janeiro', state: 'RJ' },
     timezone: 'America/Sao_Paulo',
-    sectors: [cadeira(820, 'Plateia'), cadeira(380, 'Balcão Nobre')],
+    sectors: [cadeira('Plateia', 20, 41), cadeira('Balcão Nobre', 10, 38)],
   },
   {
     name: 'Estádio do Capibaribe',
@@ -51,7 +66,7 @@ export const venues = [
     sectors: [
       pista(18_000),
       pista(14_000, 'Arquibancada'),
-      cadeira(5_000, 'Cadeira Coberta'),
+      cadeira('Cadeira Coberta', 100, 50),
     ],
   },
   {
@@ -64,7 +79,7 @@ export const venues = [
     name: 'Pedreira do Sul',
     address: { street: 'Rua das Araucárias, 77', city: 'Curitiba', state: 'PR' },
     timezone: 'America/Sao_Paulo',
-    sectors: [pista(8_000), cadeira(1_200, 'Mezanino')],
+    sectors: [pista(8_000), cadeira('Mezanino', 30, 40)],
   },
 ];
 

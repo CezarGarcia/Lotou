@@ -4,7 +4,8 @@ COMPOSE ?= docker compose
 INFRA   := postgres mongodb redis-cache redis-core keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
-.PHONY: help up infra down clean seed smoke logs ps test test-event-service test-api-gateway test-web
+.PHONY: help up infra down clean seed smoke logs ps test \
+	test-event-service test-api-gateway test-inventory-service test-order-service test-web
 
 help: ## Lista os comandos
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -31,8 +32,8 @@ clean: ## Derruba o ambiente e apaga os dados (volumes)
 seed: ## Carrega locais e shows fictícios (pode rodar mais de uma vez)
 	$(COMPOSE) run --rm seed
 
-smoke: ## Confere o ambiente no ar: loja, API e trace até o MongoDB no Tempo
-	./scripts/smoke.sh
+smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
+	$(COMPOSE) run --rm smoke
 
 logs: ## Acompanha os logs de todos os serviços
 	$(COMPOSE) logs -f --tail=100
@@ -40,13 +41,21 @@ logs: ## Acompanha os logs de todos os serviços
 ps: ## Mostra o estado dos containers
 	$(COMPOSE) ps
 
-test: test-event-service test-api-gateway test-web ## Roda os testes de todos os serviços
+test: test-event-service test-api-gateway test-inventory-service test-order-service test-web ## Roda os testes de todos os serviços
 
 test-event-service: ## Testes do event-service (unitários e integração com Testcontainers)
 	cd services/event-service && ([ -d node_modules ] || npm ci) && npm test && npm run test:e2e
 
 test-api-gateway: ## Testes do api-gateway (inclui Keycloak real via Testcontainers)
 	cd services/api-gateway && ./mvnw -B -q test
+
+test-inventory-service: ## Testes do inventory-service (regras de lote e concorrência num Postgres real)
+	cd services/inventory-service && ./mvnw -B -q test
+
+# O checkout de ponta a ponta roda o inventory-service de verdade, a partir da imagem Docker dele.
+test-order-service: ## Testes do order-service (checkout de ponta a ponta com o inventory real)
+	$(COMPOSE) build inventory-service
+	cd services/order-service && ./mvnw -B -q test
 
 test-web: ## Testes unitários do Angular
 	cd apps/web && ([ -d node_modules ] || npm ci) && npm test -- --watch=false
