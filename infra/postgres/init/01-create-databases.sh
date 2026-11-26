@@ -12,3 +12,5 @@ SQL
 }
 
 create_database keycloak "$KEYCLOAK_DB_PASSWORD"
+create_database inventory "$INVENTORY_DB_PASSWORD"
+create_database orders "$ORDERS_DB_PASSWORD"

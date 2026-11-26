@@ -8,7 +8,9 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "internationalizationEnabled": true,
-  "supportedLocales": ["pt-BR"],
+  "supportedLocales": [
+    "pt-BR"
+  ],
   "defaultLocale": "pt-BR",
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
@@ -25,6 +27,10 @@
       {
         "name": "gate-staff",
         "description": "Portaria: lê o QR code dos ingressos na entrada do show"
+      },
+      {
+        "name": "service",
+        "description": "Conta de serviço: chamada entre serviços do Lotou, sem usuário"
       }
     ]
   },
@@ -33,7 +39,9 @@
     "description": "Papéis de quem se cadastra pela loja",
     "composite": true,
     "composites": {
-      "realm": ["buyer"]
+      "realm": [
+        "buyer"
+      ]
     }
   },
   "clientScopes": [
@@ -86,14 +94,23 @@
       "serviceAccountsEnabled": false,
       "rootUrl": "http://localhost:4200",
       "baseUrl": "/",
-      "redirectUris": ["http://localhost:4200/*"],
-      "webOrigins": ["http://localhost:4200"],
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:4200/*"
       },
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["basic", "profile", "email", "lotou-api"],
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "lotou-api"
+      ],
       "optionalClientScopes": []
     },
     {
@@ -109,14 +126,79 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["basic", "lotou-api"],
+      "defaultClientScopes": [
+        "basic",
+        "lotou-api"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "inventory-service",
+      "name": "Lotou inventory-service",
+      "description": "Conta de serviço do inventory-service: lê o catálogo no event-service",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "inventory-service-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "basic",
+        "lotou-api"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "order-service",
+      "name": "Lotou order-service",
+      "description": "Conta de serviço do order-service: confirma e libera reservas no inventory-service",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "order-service-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "basic",
+        "lotou-api"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "lotou-smoke",
+      "name": "Lotou smoke",
+      "description": "Verificação do ambiente: faz uma compra de ponta a ponta como comprador",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "lotou-smoke-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "basic",
+        "lotou-api"
+      ],
       "optionalClientScopes": []
     }
   ],
   "scopeMappings": [
     {
       "clientScope": "lotou-api",
-      "roles": ["buyer", "producer", "gate-staff"]
+      "roles": [
+        "buyer",
+        "producer",
+        "gate-staff",
+        "service"
+      ]
     }
   ],
   "users": [
@@ -124,7 +206,33 @@
       "username": "service-account-lotou-seed",
       "enabled": true,
       "serviceAccountClientId": "lotou-seed",
-      "realmRoles": ["producer"]
+      "realmRoles": [
+        "producer"
+      ]
+    },
+    {
+      "username": "service-account-inventory-service",
+      "enabled": true,
+      "serviceAccountClientId": "inventory-service",
+      "realmRoles": [
+        "service"
+      ]
+    },
+    {
+      "username": "service-account-order-service",
+      "enabled": true,
+      "serviceAccountClientId": "order-service",
+      "realmRoles": [
+        "service"
+      ]
+    },
+    {
+      "username": "service-account-lotou-smoke",
+      "enabled": true,
+      "serviceAccountClientId": "lotou-smoke",
+      "realmRoles": [
+        "buyer"
+      ]
     },
     {
       "username": "comprador",
@@ -133,8 +241,16 @@
       "firstName": "Bia",
       "lastName": "Compradora",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
-      "realmRoles": ["buyer"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lotou123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "buyer"
+      ]
     },
     {
       "username": "produtor",
@@ -143,8 +259,16 @@
       "firstName": "Caio",
       "lastName": "Produtor",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
-      "realmRoles": ["producer"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lotou123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "producer"
+      ]
     },
     {
       "username": "portaria",
@@ -153,8 +277,16 @@
       "firstName": "Duda",
       "lastName": "Portaria",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
-      "realmRoles": ["gate-staff"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "lotou123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "gate-staff"
+      ]
     }
   ]
 }
