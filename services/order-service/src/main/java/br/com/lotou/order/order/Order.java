@@ -96,10 +96,10 @@ public class Order {
     }
 
     /** PENDING -> CONFIRMED: o pagamento foi aprovado. Emite um ingresso por item. */
-    public void confirm(Instant now) {
+    public void confirm(Instant now, TicketCodes codes) {
         transitionTo(OrderStatus.CONFIRMED, now);
         this.confirmedAt = now;
-        this.items.forEach(item -> this.tickets.add(new Ticket(this, item, now)));
+        this.items.forEach(item -> this.tickets.add(new Ticket(this, item, now, codes)));
     }
 
     /** PENDING -> CANCELLED: pagamento recusado ou reserva expirada. */

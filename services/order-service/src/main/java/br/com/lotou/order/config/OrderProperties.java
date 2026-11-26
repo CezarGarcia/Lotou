@@ -17,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 public record OrderProperties(
         @NotNull @Valid Inventory inventory,
         @NotNull @Valid Saga saga,
+        @NotNull @Valid Tickets tickets,
         @NotNull @Valid Jobs jobs) {
 
     /** @param baseUrl endereço do inventory-service */
@@ -29,6 +30,13 @@ public record OrderProperties(
      * @param maxAttempts a partir de quantas tentativas sem resposta o log vira erro (alerta)
      */
     public record Saga(@NotNull @DefaultValue("15s") Duration stepTimeout, @Min(1) @DefaultValue("5") int maxAttempts) {
+    }
+
+    /**
+     * @param qrKey chave do HMAC que assina o QR code dos ingressos; a mesma da portaria. A de
+     *     desenvolvimento não serve para um ambiente real
+     */
+    public record Tickets(@NotBlank String qrKey) {
     }
 
     /** @param enabled liga os jobs agendados; os testes desligam e chamam os jobs direto */

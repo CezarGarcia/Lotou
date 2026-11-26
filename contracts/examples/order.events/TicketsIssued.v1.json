@@ -12,13 +12,15 @@
         "ticketId": "01a21a00-0000-7000-8000-000000000013",
         "sectorId": "01a21a00-0000-7000-8000-000000000004",
         "sectorName": "Plateia",
-        "seat": "A-5"
+        "seat": "A-5",
+        "code": "LOTOU1.01a21a00-0000-7000-8000-000000000013.Q2hhdmUtZGUtZXhlbXBsby1uYW8tdmFsZS1uYWRhLWF"
       },
       {
         "ticketId": "01a21a00-0000-7000-8000-000000000014",
         "sectorId": "01a21a00-0000-7000-8000-000000000004",
         "sectorName": "Plateia",
-        "seat": "A-6"
+        "seat": "A-6",
+        "code": "LOTOU1.01a21a00-0000-7000-8000-000000000014.Q2hhdmUtZGUtZXhlbXBsby1uYW8tdmFsZS1uYWRhLWF"
       }
     ],
     "issuedAt": "2026-11-26T18:00:02Z"

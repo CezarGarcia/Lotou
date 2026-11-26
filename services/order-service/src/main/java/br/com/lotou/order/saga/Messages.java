@@ -27,7 +27,8 @@ final class Messages {
             String reason, Instant cancelledAt) {
     }
 
-    record IssuedTicket(UUID ticketId, UUID sectorId, String sectorName, String seat) {
+    /** @param code conteúdo do QR code, assinado com HMAC */
+    record IssuedTicket(UUID ticketId, UUID sectorId, String sectorName, String seat, String code) {
     }
 
     record TicketsIssued(UUID orderId, String buyerId, UUID showId, List<IssuedTicket> tickets, Instant issuedAt) {

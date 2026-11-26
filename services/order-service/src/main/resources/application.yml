@@ -76,6 +76,9 @@ lotou:
   order:
     inventory:
       base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+    tickets:
+      # Chave do HMAC do QR code dos ingressos (ADR 15). A de desenvolvimento não serve para um ambiente real.
+      qr-key: ${TICKET_QR_KEY:lotou-dev-ticket-qr-key}
     saga:
       # Quanto a saga espera a resposta de um passo antes de repetir o comando.
       step-timeout: ${SAGA_STEP_TIMEOUT:15s}

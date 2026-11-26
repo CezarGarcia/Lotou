@@ -20,6 +20,7 @@ import br.com.lotou.order.order.OrderItem;
 import br.com.lotou.order.order.OrderRepository;
 import br.com.lotou.order.order.OrderStatus;
 import br.com.lotou.order.order.PaymentStatus;
+import br.com.lotou.order.order.TicketCodes;
 import br.com.lotou.order.order.TicketRepository;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
@@ -58,6 +59,7 @@ public class PurchaseSaga {
     private final SagaStateRepository sagas;
     private final OrderRepository orders;
     private final TicketRepository tickets;
+    private final TicketCodes ticketCodes;
     private final Outbox outbox;
     private final Inbox inbox;
     private final JsonMapper json;
@@ -66,11 +68,13 @@ public class PurchaseSaga {
     private final LongCounter ordersTotal;
     private final DoubleHistogram sagaDuration;
 
-    public PurchaseSaga(SagaStateRepository sagas, OrderRepository orders, TicketRepository tickets, Outbox outbox,
-            Inbox inbox, JsonMapper json, Clock clock, OrderProperties properties) {
+    public PurchaseSaga(SagaStateRepository sagas, OrderRepository orders, TicketRepository tickets,
+            TicketCodes ticketCodes, Outbox outbox, Inbox inbox, JsonMapper json, Clock clock,
+            OrderProperties properties) {
         this.sagas = sagas;
         this.orders = orders;
         this.tickets = tickets;
+        this.ticketCodes = ticketCodes;
         this.outbox = outbox;
         this.inbox = inbox;
         this.json = json;
@@ -209,7 +213,7 @@ public class PurchaseSaga {
             return true;
         }
         Instant now = now();
-        order.confirm(now);
+        order.confirm(now, this.ticketCodes);
         // Grava agora: se a constraint de ingressos disparar numa corrida, a transação inteira volta
         // e a mensagem é processada de novo, quando a checagem acima já enxerga o outro ingresso.
         this.orders.flush();
@@ -222,7 +226,7 @@ public class PurchaseSaga {
                 new Messages.TicketsIssued(order.getId(), order.getBuyerId(), order.getShowId(),
                         order.getTickets().stream()
                                 .map(ticket -> new Messages.IssuedTicket(ticket.getId(), ticket.getSectorId(),
-                                        ticket.getSectorName(), ticket.getSeatLabel()))
+                                        ticket.getSectorName(), ticket.getSeatLabel(), ticket.getCode()))
                                 .toList(),
                         now));
         finished(saga, OrderStatus.CONFIRMED, "completed");

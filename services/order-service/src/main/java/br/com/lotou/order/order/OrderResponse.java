@@ -21,7 +21,9 @@ public record OrderResponse(
     public record Item(String sectorName, String lotName, String seat, long unitPriceCents) {
     }
 
-    public record TicketResponse(UUID id, TicketStatus status, String sectorName, String seat, Instant issuedAt) {
+    /** @param code conteúdo do QR code do ingresso, para a loja desenhar o QR */
+    public record TicketResponse(UUID id, TicketStatus status, String sectorName, String seat, Instant issuedAt,
+            String code) {
     }
 
     /** O que a listagem "meus pedidos" mostra. */
@@ -46,7 +48,7 @@ public record OrderResponse(
                         .toList(),
                 order.getTickets().stream()
                         .map(ticket -> new TicketResponse(ticket.getId(), ticket.getStatus(), ticket.getSectorName(),
-                                ticket.getSeatLabel(), ticket.getIssuedAt()))
+                                ticket.getSeatLabel(), ticket.getIssuedAt(), ticket.getCode()))
                         .toList());
     }
 }

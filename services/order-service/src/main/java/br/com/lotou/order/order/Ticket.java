@@ -16,7 +16,7 @@ import jakarta.persistence.Table;
 /**
  * Ingresso emitido quando o pedido é confirmado. Cada ingresso libera uma única entrada.
  *
- * <p>O QR code assinado entra na fase 4, junto com a geração do PDF.
+ * <p>O {@code code} é o conteúdo do QR code, assinado com HMAC ({@link TicketCodes}).
  */
 @Entity
 @Table(name = "tickets")
@@ -44,11 +44,14 @@ public class Ticket {
 
     private Instant issuedAt;
 
+    private String code;
+
     protected Ticket() {
     }
 
-    Ticket(Order order, OrderItem item, Instant issuedAt) {
+    Ticket(Order order, OrderItem item, Instant issuedAt, TicketCodes codes) {
         this.id = UuidV7.generate();
+        this.code = codes.codeFor(this.id);
         this.order = order;
         this.position = item.getPosition();
         this.showId = order.getShowId();
@@ -73,6 +76,10 @@ public class Ticket {
 
     public String getSeatLabel() {
         return this.seatLabel;
+    }
+
+    public String getCode() {
+        return this.code;
     }
 
     public TicketStatus getStatus() {

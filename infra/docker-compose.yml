@@ -140,6 +140,8 @@ services:
       DATABASE_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       KAFKA_BROKERS: kafka:9092
+      # Chave do HMAC do QR code dos ingressos; a portaria (fase 6) usa a mesma.
+      TICKET_QR_KEY: ${TICKET_QR_KEY:-lotou-dev-ticket-qr-key}
     depends_on:
       postgres:
         condition: service_healthy
