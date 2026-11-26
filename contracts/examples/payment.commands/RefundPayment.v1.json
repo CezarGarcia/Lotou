@@ -1,0 +1,11 @@
+{
+  "eventId": "01a21a00-0000-7000-8000-000000000028",
+  "type": "RefundPayment",
+  "version": 1,
+  "occurredAt": "2026-11-26T18:00:00Z",
+  "payload": {
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "amountCents": 32000,
+    "reason": "RESERVATION_EXPIRED"
+  }
+}

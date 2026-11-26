@@ -1,7 +1,7 @@
 # Lotou: comandos do monorepo. `make` ou `make help` lista tudo.
 
 COMPOSE ?= docker compose
-INFRA   := postgres mongodb redis-cache redis-core keycloak otel-collector lgtm
+INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
 .PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \

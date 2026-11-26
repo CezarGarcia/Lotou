@@ -1,0 +1,27 @@
+name: contracts
+
+# Confere os JSON Schemas dos eventos e os exemplos usados nos testes.
+on:
+  push:
+    paths:
+      - contracts/**
+      - .github/workflows/contracts.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install "jsonschema[format]==4.25.1"
+      - run: python contracts/check.py

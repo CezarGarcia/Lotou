@@ -1,0 +1,16 @@
+{
+  "eventId": "01a21a00-0000-7000-8000-000000000030",
+  "type": "ReservationReleased",
+  "version": 1,
+  "occurredAt": "2026-11-26T18:00:00Z",
+  "payload": {
+    "reservationId": "01a21a00-0000-7000-8000-000000000011",
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "sectorId": "01a21a00-0000-7000-8000-000000000002",
+    "lotId": "01a21a00-0000-7000-8000-000000000003",
+    "quantity": 2,
+    "seats": [],
+    "reason": "EXPIRED",
+    "releasedAt": "2026-11-26T18:10:00Z"
+  }
+}

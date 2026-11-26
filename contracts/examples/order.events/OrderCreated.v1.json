@@ -1,0 +1,32 @@
+{
+  "eventId": "01a21a00-0000-7000-8000-000000000023",
+  "type": "OrderCreated",
+  "version": 1,
+  "occurredAt": "2026-11-26T18:00:00Z",
+  "payload": {
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "buyerId": "8f1c2b9e-3a4d-4c5e-9f60-7a8b9c0d1e2f",
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "reservationId": "01a21a00-0000-7000-8000-000000000011",
+    "totalCents": 32000,
+    "items": [
+      {
+        "sectorId": "01a21a00-0000-7000-8000-000000000004",
+        "sectorName": "Plateia",
+        "lotId": "01a21a00-0000-7000-8000-000000000007",
+        "lotName": "Lote único",
+        "seat": "A-5",
+        "unitPriceCents": 16000
+      },
+      {
+        "sectorId": "01a21a00-0000-7000-8000-000000000004",
+        "sectorName": "Plateia",
+        "lotId": "01a21a00-0000-7000-8000-000000000007",
+        "lotName": "Lote único",
+        "seat": "A-6",
+        "unitPriceCents": 16000
+      }
+    ],
+    "createdAt": "2026-11-26T18:00:00Z"
+  }
+}

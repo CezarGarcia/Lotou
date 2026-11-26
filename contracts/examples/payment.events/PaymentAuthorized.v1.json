@@ -1,0 +1,12 @@
+{
+  "eventId": "01a21a00-0000-7000-8000-000000000029",
+  "type": "PaymentAuthorized",
+  "version": 1,
+  "occurredAt": "2026-11-26T18:00:00Z",
+  "payload": {
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "paymentId": "01a21a00-0000-7000-8000-000000000012",
+    "amountCents": 32000,
+    "authorizedAt": "2026-11-26T18:00:01Z"
+  }
+}

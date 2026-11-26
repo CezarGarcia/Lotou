@@ -6,6 +6,7 @@
 #   5432  Postgres                   27017 MongoDB
 #   6379  redis-cache                6380  redis-core
 #   4317/4318  OTel Collector (OTLP gRPC e HTTP)
+#   9094  Kafka (do host)            8090  Kafka UI
 #
 # As credenciais abaixo são de desenvolvimento. Para trocá-las, crie um arquivo
 # .env na raiz (veja .env.example).
@@ -213,17 +214,86 @@ services:
       timeout: 3s
       retries: 20
 
+  # Replica set de um nó só: é o que libera transações no MongoDB, que o
+  # event-service usa para gravar o show e o outbox juntos. O healthcheck inicia
+  # o replica set na primeira subida. Fora do Compose, conecte com
+  # directConnection=true (o membro se anuncia como mongodb:27017).
   mongodb:
     image: mongo:8.0
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - mongodb-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongodb:27017' }] }).ok }"
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+
+  # Kafka em modo KRaft (sem ZooKeeper), um broker só. Os serviços falam com
+  # kafka:9092; do host, use localhost:9094.
+  kafka:
+    image: apache/kafka:4.2.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Os tópicos são criados pelo kafka-init, com partições e retenção
+      # definidas; um nome digitado errado não cria um tópico novo.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "9094:9094"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  # Cria os tópicos (contracts/README.md) e termina. Pode rodar de novo.
+  kafka-init:
+    image: apache/kafka:4.2.0
+    entrypoint: ["/bin/bash", "/create-topics.sh"]
+    environment:
+      BOOTSTRAP_SERVER: kafka:9092
+    volumes:
+      - ./kafka/create-topics.sh:/create-topics.sh:ro
+    # A imagem traz um healthcheck de broker, que não vale para um job.
+    healthcheck:
+      disable: true
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # Painel do Kafka: tópicos, mensagens e lag dos consumer groups.
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.3.0
+    environment:
+      KAFKA_CLUSTERS_0_NAME: lotou
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8090:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   # Cache: pode perder dados. Descarta por LRU e não persiste nada.
   redis-cache:
@@ -332,5 +402,6 @@ services:
 volumes:
   postgres-data:
   mongodb-data:
+  kafka-data:
   redis-core-data:
   lgtm-data:

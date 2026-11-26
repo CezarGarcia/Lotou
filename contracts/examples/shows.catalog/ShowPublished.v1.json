@@ -1,0 +1,77 @@
+{
+  "eventId": "01a21a00-0000-7000-8000-000000000021",
+  "type": "ShowPublished",
+  "version": 1,
+  "occurredAt": "2026-11-26T18:00:00Z",
+  "payload": {
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "version": 1,
+    "producerId": "5b6c7d8e-9f01-4a2b-8c3d-4e5f60718293",
+    "status": "PUBLISHED",
+    "title": "Vinte Anos de Estrada",
+    "artist": "Os Tropicais do Asfalto",
+    "startsAt": "2026-12-16T23:30:00Z",
+    "doorsOpenAt": "2026-12-16T22:00:00Z",
+    "salesStartAt": "2026-11-26T15:00:00Z",
+    "salesEndAt": "2026-12-16T21:00:00Z",
+    "highDemand": false,
+    "venue": {
+      "id": "01a21a00-0000-7000-8000-000000000006",
+      "name": "Teatro Guanabara",
+      "city": "Rio de Janeiro",
+      "state": "RJ",
+      "timezone": "America/Sao_Paulo"
+    },
+    "sectors": [
+      {
+        "id": "01a21a00-0000-7000-8000-000000000002",
+        "name": "Pista",
+        "kind": "GENERAL_ADMISSION",
+        "capacity": 2000,
+        "rows": [],
+        "lots": [
+          {
+            "id": "01a21a00-0000-7000-8000-000000000003",
+            "name": "1º lote",
+            "priceCents": 12000,
+            "quantity": 1000,
+            "opensAt": null
+          },
+          {
+            "id": "01a21a00-0000-7000-8000-000000000005",
+            "name": "2º lote",
+            "priceCents": 15000,
+            "quantity": 1000,
+            "opensAt": "2026-12-01T15:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "01a21a00-0000-7000-8000-000000000004",
+        "name": "Plateia",
+        "kind": "RESERVED_SEATING",
+        "capacity": 80,
+        "rows": [
+          {
+            "label": "A",
+            "seatCount": 40
+          },
+          {
+            "label": "B",
+            "seatCount": 40
+          }
+        ],
+        "lots": [
+          {
+            "id": "01a21a00-0000-7000-8000-000000000007",
+            "name": "Lote único",
+            "priceCents": 16000,
+            "quantity": 80,
+            "opensAt": null
+          }
+        ]
+      }
+    ],
+    "updatedAt": "2026-11-26T15:00:00.123Z"
+  }
+}
