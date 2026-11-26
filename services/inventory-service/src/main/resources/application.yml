@@ -1,0 +1,82 @@
+server:
+  port: ${PORT:8082}
+  # Ao receber SIGTERM, termina as requisições em andamento antes de sair.
+  shutdown: graceful
+
+spring:
+  application:
+    name: inventory-service
+
+  # Uma thread virtual por requisição: esperar o lock do banco não prende uma thread do sistema.
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/inventory}
+    username: ${DATABASE_USERNAME:inventory}
+    password: ${DATABASE_PASSWORD:inventory}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:20}
+      # Agrupa os INSERTs em lote num comando só (carga das cadeiras).
+      data-source-properties:
+        reWriteBatchedInserts: true
+
+  jpa:
+    # O esquema é do Flyway; o Hibernate só confere se as entidades batem com ele.
+    hibernate:
+      ddl-auto: validate
+    # Sem transação aberta fora do serviço: a conexão volta ao pool assim que a transação termina.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Emissor esperado no token: a URL pública do realm no Keycloak.
+          issuer-uri: ${AUTH_ISSUER:http://localhost:8180/realms/lotou}
+          # De onde baixar as chaves públicas (pode ser um endereço interno).
+          jwk-set-uri: ${AUTH_JWKS_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/certs}
+          audiences: ${AUTH_AUDIENCE:lotou-api}
+      client:
+        registration:
+          # Conta de serviço deste serviço, para chamar os outros (client credentials).
+          lotou:
+            provider: keycloak
+            client-id: ${SERVICE_CLIENT_ID:inventory-service}
+            client-secret: ${SERVICE_CLIENT_SECRET:inventory-service-dev-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${AUTH_TOKEN_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/token}
+
+lotou:
+  inventory:
+    reservation:
+      # A reserva dura 10 minutos e não é renovável.
+      ttl: ${RESERVATION_TTL:10m}
+      max-tickets-per-cpf: 4
+      # Chave do HMAC do CPF. A de desenvolvimento não serve para um ambiente real.
+      cpf-hash-key: ${CPF_HASH_KEY:lotou-dev-cpf-hash-key}
+    catalog:
+      base-url: ${EVENT_SERVICE_URL:http://localhost:3001}
+      poll-interval: ${CATALOG_POLL_INTERVAL:2s}
+      overlap: 5s
+    jobs:
+      enabled: ${JOBS_ENABLED:true}
+      lifecycle-interval: ${LIFECYCLE_INTERVAL:1s}
+      expiry-interval: ${RESERVATION_EXPIRY_INTERVAL:5s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
