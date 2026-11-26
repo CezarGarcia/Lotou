@@ -39,15 +39,75 @@ main {
     height: 64px;
   }
 
-  nav a {
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  nav a,
+  .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 12px;
-    border-radius: 8px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
     color: var(--mat-sys-on-surface);
     font: var(--mat-sys-label-large);
     text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover,
+    &.active {
+      background: var(--mat-sys-surface-container);
+    }
+
+    &:focus-visible {
+      outline: 3px solid var(--mat-sys-primary);
+      outline-offset: 2px;
+    }
+  }
+
+  .action.primary {
+    padding-inline: 16px;
+    background: var(--mat-sys-secondary-container);
+    color: var(--mat-sys-on-secondary-container);
 
     &:hover {
-      background: var(--mat-sys-surface-container);
+      background: color-mix(
+        in srgb,
+        var(--mat-sys-secondary-container) 85%,
+        var(--mat-sys-on-surface)
+      );
+    }
+  }
+
+  .material-symbols-outlined {
+    font-size: 20px;
+  }
+
+  .user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-inline: 8px;
+    font: var(--mat-sys-label-large);
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  // No celular, a marca já leva à busca e o nome cede espaço aos botões.
+  @media (max-width: 600px) {
+    .user {
+      display: none;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .shows {
+      display: none;
     }
   }
 }
