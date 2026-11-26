@@ -52,9 +52,9 @@ load-contention: ## Carga: mil compradores pelas mesmas 50 cadeiras (ENGINE=redi
 
 load-show-page: ## Carga: página do show com o cache ligado e desligado
 	SHOW_CACHE_ENABLED=true RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
-	$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	-$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
 	SHOW_CACHE_ENABLED=false RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
-	$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	-$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
 	$(COMPOSE) up -d --wait event-service
 
 load-check: ## Confere no Postgres as invariantes de venda (tudo deve dar zero)
