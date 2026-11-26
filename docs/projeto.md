@@ -91,7 +91,7 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 ### Show e capacidade
 
 - A capacidade pertence ao **setor**. O lote só define preço e quantidade à venda dentro do setor, e a soma dos lotes nunca passa da capacidade do setor.
-- Um show só pode ser publicado com local, ao menos um setor e ao menos um lote configurados.
+- Um show só pode ser publicado com local, ao menos um setor e ao menos um lote em cada setor: um setor sem lote não teria o que vender.
 - Depois que as vendas abrem, o produtor não pode reduzir a capacidade de um setor abaixo do que já foi vendido.
 - O produtor define o horário de abertura dos portões; o check-in só é aceito a partir dele.
 - Num setor de cadeira numerada, o local define as fileiras e as cadeiras, e o show vende o setor inteiro: a capacidade do setor no show é a do local.
@@ -232,7 +232,7 @@ Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não 
 
 | Entidade | De | Para | Gatilho | Quem dispara |
 | --- | --- | --- | --- | --- |
-| Show | DRAFT | PUBLISHED | produtor publica (exige local, setor e lote) | produtor |
+| Show | DRAFT | PUBLISHED | produtor publica (exige local, setor e um lote em cada setor) | produtor |
 | Show | PUBLISHED | ON\_SALE | chega o horário de abertura das vendas | job de abertura |
 | Show | ON\_SALE | SALES\_CLOSED | chega o horário de encerramento das vendas | job |
 | Show | SALES\_CLOSED | FINISHED | fim do show; o relatório financeiro fica final | job |
@@ -747,6 +747,8 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 25 | Devolução de ingresso reabre o último lote esgotado; uma reserva sai de um lote só | `SOLD_OUT` final; dividir a reserva entre dois lotes | sem isso, ingressos de reservas expiradas no último lote sairiam de venda para sempre; um lote por reserva mantém um preço só |
 | 26 | Redis como fonte da verdade durante a venda; Postgres alimentado por stream escrito no mesmo script, com estado final e posição em cada entrada; nada do estado da venda expira por TTL | gravar no Redis e no Postgres na mesma requisição; Redis só como cache | duas escritas sem transação divergem e devolvem o gargalo ao banco; o stream atômico com o script não perde nada e pode ser reaplicado; a reconciliação recarrega do Postgres |
 | 27 | Login na loja com `angular-auth-oidc-client`; SSE lido com `fetch` e o token no cabeçalho | `keycloak-js`; `EventSource` com o token na URL | biblioteca certificada e independente do provedor; token na URL vaza em logs, histórico e traces |
+| 28 | Contratos dos eventos em JSON Schema autocontido, com um exemplo por mensagem conferido no CI | Avro com Schema Registry | mensagens legíveis no Kafka UI e nos logs, sem serviço a mais nem geração de código em três linguagens; o Schema Registry é o passo seguinte |
+| 29 | Outbox do event-service no MongoDB, na mesma transação do show (replica set), publicado em transações Kafka com um `transactional.id` só | gravar e publicar separadamente; change streams | sem escrita dupla; o broker corta um relay que perdeu a vez, então uma versão antiga do show nunca sai depois de uma nova |
 
 ## Testes, carga e caos
 
