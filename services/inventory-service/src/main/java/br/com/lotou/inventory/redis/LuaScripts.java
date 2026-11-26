@@ -8,6 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -38,6 +45,8 @@ public class LuaScripts {
         }
     }
 
+    private static final Tracer TRACER = GlobalOpenTelemetry.getTracer("lotou.inventory.redis");
+
     private final StringRedisTemplate redis;
     private final Map<String, RedisScript<List>> scripts = new ConcurrentHashMap<>();
     private final String library;
@@ -47,12 +56,38 @@ public class LuaScripts {
         this.library = read("lib");
     }
 
-    /** Roda um script e devolve o resultado. Os argumentos viram texto. */
+    /**
+     * Roda um script e devolve o resultado. Os argumentos viram texto.
+     *
+     * <p>O Java agent do OpenTelemetry ainda não instrumenta o Lettuce 7, então o span da chamada ao
+     * Redis é criado aqui, com as convenções semânticas de banco de dados: o trace da reserva chega
+     * até o Redis como chegaria até o Postgres.
+     */
     public Result run(String name, List<String> keys, Object... args) {
         RedisScript<List> script = this.scripts.computeIfAbsent(name,
                 key -> new DefaultRedisScript<>(this.library + "\n" + read(key), List.class));
-        List<?> raw = this.redis.execute(script, keys, Arrays.stream(args).map(String::valueOf).toArray());
-        return new Result(raw == null ? List.of() : raw.stream().map(String::valueOf).toList());
+        Span span = TRACER.spanBuilder("EVALSHA " + name)
+                .setSpanKind(SpanKind.CLIENT)
+                .setAttribute("db.system.name", "redis")
+                .setAttribute("db.operation.name", "EVALSHA")
+                .setAttribute("db.query.summary", "EVALSHA " + name + ".lua")
+                .startSpan();
+        try (Scope ignored = span.makeCurrent()) {
+            List<?> raw = this.redis.execute(script, keys, Arrays.stream(args).map(String::valueOf).toArray());
+            Result result = new Result(raw == null ? List.of() : raw.stream().map(String::valueOf).toList());
+            if (!result.values().isEmpty()) {
+                span.setAttribute("lotou.redis.result", result.code());
+            }
+            return result;
+        }
+        catch (RuntimeException ex) {
+            span.setStatus(StatusCode.ERROR);
+            span.recordException(ex);
+            throw ex;
+        }
+        finally {
+            span.end();
+        }
     }
 
     public Result run(String name, Object... args) {
