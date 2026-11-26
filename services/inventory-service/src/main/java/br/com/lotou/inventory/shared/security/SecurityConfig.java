@@ -41,7 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**").permitAll()
                         // Disponibilidade e mapa de assentos: a loja mostra sem login.
                         .requestMatchers(HttpMethod.GET, "/v1/availability/**").permitAll()
-                        .requestMatchers("/v1/reservations/**").hasRole(Roles.BUYER)
+                        .requestMatchers("/v1/reservations/**", "/v1/queue/**").hasRole(Roles.BUYER)
                         .requestMatchers("/v1/lots/**").hasRole(Roles.PRODUCER)
                         // Chamadas de outros serviços do Lotou; não passam pelo gateway.
                         .requestMatchers("/internal/**").hasRole(Roles.SERVICE)
