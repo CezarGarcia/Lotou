@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { interval, map } from 'rxjs';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
-import { countdownParts } from './countdown';
+import { countdownParts, injectNow } from '../shared/countdown';
 
-/** Contagem regressiva para a abertura das vendas, atualizada a cada segundo. */
+/**
+ * Contagem regressiva para a abertura das vendas (ou da sala de espera da
+ * fila), atualizada a cada segundo.
+ */
 @Component({
   selector: 'app-sales-countdown',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -12,10 +13,10 @@ import { countdownParts } from './countdown';
   template: `
     @let parts = remaining();
     @if (parts.done) {
-      <p class="open">Vendas abertas</p>
+      <p class="open">{{ doneLabel() }}</p>
     } @else {
       <p class="label">
-        As vendas abrem em {{ opensAt() | showDate: timezone() : 'full' }}, às
+        {{ label() }} em {{ opensAt() | showDate: timezone() : 'full' }}, às
         {{ opensAt() | showDate: timezone() : 'time' }}
       </p>
       <div class="timer" role="timer" [attr.aria-label]="ariaLabel()">
@@ -79,10 +80,11 @@ export class SalesCountdown {
   /** Instante da abertura das vendas, em ISO 8601. */
   readonly opensAt = input.required<string>();
   readonly timezone = input<string>();
+  /** O que acontece no instante: "As vendas abrem", "A sala de espera abre". */
+  readonly label = input('As vendas abrem');
+  readonly doneLabel = input('Vendas abertas');
 
-  private readonly now = toSignal(interval(1000).pipe(map(() => Date.now())), {
-    initialValue: Date.now(),
-  });
+  private readonly now = injectNow();
 
   protected readonly remaining = computed(() =>
     countdownParts(new Date(this.opensAt()).getTime(), this.now()),
@@ -90,7 +92,7 @@ export class SalesCountdown {
 
   protected readonly ariaLabel = computed(() => {
     const { days, hours, minutes } = this.remaining();
-    return `Faltam ${days} dias, ${hours} horas e ${minutes} minutos para a abertura das vendas`;
+    return `${this.label()} em ${days} dias, ${hours} horas e ${minutes} minutos`;
   });
 
   protected pad(value: number): string {

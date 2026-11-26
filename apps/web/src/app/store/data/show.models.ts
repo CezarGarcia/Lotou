@@ -38,12 +38,20 @@ export interface Lot {
   opensAt: string | null;
 }
 
+/** Uma fileira de cadeiras. As cadeiras se chamam `{fileira}-{n}`, de 1 a `seatCount`. */
+export interface SeatRow {
+  label: string;
+  seatCount: number;
+}
+
 export interface Sector {
   id: string;
   name: string;
   kind: SectorKind;
   capacity: number;
   lots: Lot[];
+  /** Fileiras na ordem do mapa; vazio sem lugar marcado. */
+  rows: SeatRow[];
 }
 
 export interface Show extends ShowSummary {

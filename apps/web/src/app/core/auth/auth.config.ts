@@ -31,6 +31,8 @@ export const OIDC_CONFIG: OpenIdConfiguration = {
   silentRenew: true,
   useRefreshToken: true,
   renewTimeBeforeTokenExpiresInSeconds: 30,
+  // O Keycloak entrega refresh token no fluxo padrão, sem pedir `offline_access`.
+  disableRefreshTokenOfflineAccessScopeWarning: true,
   // Nome e e-mail vêm do ID token; não precisa chamar o userinfo.
   autoUserInfo: false,
   // A volta do login é tratada pelo AuthService, que leva o comprador à página que ele queria.

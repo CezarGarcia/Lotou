@@ -1,0 +1,70 @@
+@let s = show();
+<div class="buy">
+  @if (fromCents(); as from) {
+    <p class="from">
+      <small>Ingressos a partir de</small>
+      <strong>{{ from | brl }}</strong>
+    </p>
+  }
+
+  @if (s.salesStartAt && s.status !== 'CANCELLED') {
+    <app-sales-countdown [opensAt]="s.salesStartAt" [timezone]="tz()" />
+  }
+
+  @if (s.highDemand && s.status !== 'CANCELLED') {
+    <div class="note">
+      <mat-icon aria-hidden="true">groups</mat-icon>
+      <div>
+        <strong>Alta demanda: a compra passa por uma fila virtual.</strong>
+        <p>
+          A sala de espera abre 30 minutos antes das vendas. Na abertura, quem está na sala recebe
+          uma posição sorteada: chegar mais cedo não dá vantagem. Quando chegar a sua vez, você tem
+          5 minutos para reservar.
+        </p>
+        @if (waitingRoomOpensAt(); as opens) {
+          <p>Sala de espera: {{ opens | showDate: tz() : 'short' }} (horário local).</p>
+        }
+      </div>
+    </div>
+  }
+
+  @if (options().length > 0 && s.status !== 'CANCELLED') {
+    <fieldset class="picker">
+      <legend>Escolha o setor</legend>
+      @for (option of options(); track option.id) {
+        <label class="option" [class.disabled]="!option.selectable">
+          <input
+            type="radio"
+            name="sector"
+            [value]="option.id"
+            [checked]="selected() === option.id"
+            [disabled]="!option.selectable"
+            (change)="selected.set(option.id)"
+          />
+          <span class="name">
+            {{ option.name }}
+            <small>{{ kindLabels[option.kind] }}</small>
+          </span>
+          @if (option.live; as live) {
+            @if (live.sale === 'ON_SALE' && live.lot) {
+              <strong class="price">{{ live.lot.priceCents | brl }}</strong>
+            } @else {
+              <app-sale-chip [sale]="live.sale" />
+            }
+          }
+        </label>
+      }
+    </fieldset>
+  }
+
+  <button
+    matButton="filled"
+    type="button"
+    class="cta"
+    [disabled]="!canContinue()"
+    (click)="continue()"
+  >
+    {{ s.highDemand ? 'Entrar na fila' : 'Comprar ingressos' }}
+  </button>
+  <p class="hint" aria-live="polite">{{ hint() }}</p>
+</div>

@@ -7,17 +7,17 @@ import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../../core/format/money.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
 import { toApiError } from '../../core/http/problem';
-import { SectorKind, Show } from '../data/show.models';
+import { Show } from '../data/show.models';
 import { SHOWS_URL } from '../data/shows.api';
+import { injectLiveAvailability } from '../shared/live-availability';
+import { SaleChip } from '../shared/sale-chip';
 import { ShowCover } from '../shared/show-cover';
-import { SalesCountdown } from './sales-countdown';
+import { BuyPanel, KIND_LABELS } from './buy-panel';
 
-const KIND_LABELS: Record<SectorKind, string> = {
-  GENERAL_ADMISSION: 'Sem lugar marcado',
-  RESERVED_SEATING: 'Lugar marcado',
-};
-
-/** Página do show: data, local, setores, lotes e preços. */
+/**
+ * Página do show: data, local, setores e preços. O lote em venda, o preço e
+ * quantos ingressos restam vêm da disponibilidade, consultada a cada 5 s.
+ */
 @Component({
   selector: 'app-show-detail-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,7 +28,8 @@ const KIND_LABELS: Record<SectorKind, string> = {
     MoneyPipe,
     ShowDatePipe,
     ShowCover,
-    SalesCountdown,
+    SaleChip,
+    BuyPanel,
   ],
   templateUrl: './show-detail.page.html',
   styleUrl: './show-detail.page.scss',
@@ -41,6 +42,7 @@ export class ShowDetailPage {
 
   // Recarrega sozinho quando o id muda.
   protected readonly show = httpResource<Show>(() => `${SHOWS_URL}/${this.id()}`);
+  protected readonly availability = injectLiveAvailability(() => this.id());
 
   protected readonly notFound = computed(() => {
     const error = this.show.error();
@@ -51,18 +53,15 @@ export class ShowDetailPage {
     return error ? toApiError(error) : undefined;
   });
 
-  /** As vendas ainda vão abrir (e o show não foi cancelado). */
-  protected readonly salesPending = computed(() => {
-    if (!this.show.hasValue()) {
-      return false;
-    }
-    const { salesStartAt, status } = this.show.value();
-    return (
-      status !== 'CANCELLED' &&
-      salesStartAt !== null &&
-      new Date(salesStartAt).getTime() > Date.now()
-    );
-  });
+  /** Cada setor do show com a situação de venda dele agora. */
+  protected readonly sectors = computed(() =>
+    this.show.hasValue()
+      ? this.show.value().sectors.map((sector) => ({
+          sector,
+          live: this.availability.sector(sector.id),
+        }))
+      : [],
+  );
 
   protected readonly kindLabels = KIND_LABELS;
 
@@ -73,5 +72,9 @@ export class ShowDetailPage {
         this.title.setTitle(`${artist}: ${title} | Lotou.`);
       }
     });
+  }
+
+  protected availableLabel(count: number): string {
+    return count === 1 ? '1 disponível' : `${count} disponíveis`;
   }
 }

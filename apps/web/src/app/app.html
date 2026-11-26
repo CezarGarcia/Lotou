@@ -9,10 +9,12 @@
         <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
           Meus ingressos
         </a>
-        <span class="user">
-          <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
-          {{ auth.firstName() }}
-        </span>
+        @if (auth.firstName(); as name) {
+          <span class="user">
+            <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
+            {{ name }}
+          </span>
+        }
         <button type="button" class="action" (click)="auth.logout()">Sair</button>
       } @else {
         <button type="button" class="action primary" (click)="auth.login()">
