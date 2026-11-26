@@ -180,6 +180,32 @@ services:
       retries: 6
       start_period: 20s
 
+  # Read models do painel do produtor (vendas, relatório e pedidos), montados a
+  # partir do Kafka. Sem porta publicada: só o api-gateway fala com ele.
+  # Replay dos read models: `make replay-analytics`.
+  analytics-service:
+    build:
+      context: ../services/analytics-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: analytics-service
+      PORT: "8084"
+      KAFKA_BROKERS: kafka:9092
+      MONGODB_URI: mongodb://mongodb:27017/analytics?replicaSet=rs0
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8084/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
   # Carga de dados fictícios. Não sobe com o ambiente: roda com `make seed`.
   seed:
     image: node:24-alpine
