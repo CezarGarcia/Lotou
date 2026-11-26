@@ -14,7 +14,51 @@ spring:
           httpclient:
             connect-timeout: 2000 # ms
             response-timeout: 10s
+          # Só repassa X-Forwarded-For de proxies da rede privada (o nginx da loja). Os serviços
+          # usam o IP original no rate limit de quem não está autenticado.
+          trusted-proxies: "10\\..*|172\\.(1[6-9]|2[0-9]|3[01])\\..*|192\\.168\\..*|127\\..*"
           routes:
+            # Operações de compra, com rate limit por usuário (token bucket no redis-core). Vêm antes
+            # das rotas gerais do mesmo serviço.
+            - id: reserve
+              uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+              order: -1
+              predicates:
+                - Path=/api/v1/reservations
+                - Method=POST
+              filters:
+                - StripPrefix=1
+                - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+                - PurchaseRateLimit=reserve, ${RATE_LIMIT_RESERVE_PER_SECOND:5}, ${RATE_LIMIT_RESERVE_BURST:10}
+            - id: join-queue
+              uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+              order: -1
+              predicates:
+                - Path=/api/v1/queue/*
+                - Method=POST
+              filters:
+                - StripPrefix=1
+                - PurchaseRateLimit=queue, ${RATE_LIMIT_QUEUE_PER_SECOND:2}, ${RATE_LIMIT_QUEUE_BURST:5}
+            - id: place-order
+              uri: ${ORDER_SERVICE_URL:http://localhost:8083}
+              order: -1
+              predicates:
+                - Path=/api/v1/orders
+                - Method=POST
+              filters:
+                - StripPrefix=1
+                - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+                - PurchaseRateLimit=order, ${RATE_LIMIT_ORDER_PER_SECOND:2}, ${RATE_LIMIT_ORDER_BURST:5}
+            # Fluxos SSE (posição na fila e mapa de assentos): conexões longas, sem timeout de resposta.
+            - id: inventory-events
+              uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+              order: -1
+              predicates:
+                - Path=/api/v1/queue/*/events,/api/v1/availability/*/sectors/*/seats/events
+              metadata:
+                response-timeout: -1
+              filters:
+                - StripPrefix=1
             # Catálogo: shows e locais. /api/v1/shows -> event-service /v1/shows
             - id: event-service
               uri: ${EVENT_SERVICE_URL:http://localhost:3001}
@@ -24,11 +68,11 @@ spring:
                 - StripPrefix=1
                 # O serviço devolve Location sem o prefixo do gateway.
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
-            # Disponibilidade, reservas e lotes.
+            # Disponibilidade, fila virtual, reservas e lotes.
             - id: inventory-service
               uri: ${INVENTORY_SERVICE_URL:http://localhost:8082}
               predicates:
-                - Path=/api/v1/availability/**,/api/v1/reservations/**,/api/v1/lots/**
+                - Path=/api/v1/availability/**,/api/v1/queue/**,/api/v1/reservations/**,/api/v1/lots/**
               filters:
                 - StripPrefix=1
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
@@ -40,6 +84,12 @@ spring:
               filters:
                 - StripPrefix=1
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+
+  data:
+    redis:
+      # redis-core: o mesmo dos serviços, com noeviction (o balde do rate limit não pode sumir).
+      url: ${REDIS_URL:redis://localhost:6380}
+      timeout: 500ms
 
   security:
     oauth2:

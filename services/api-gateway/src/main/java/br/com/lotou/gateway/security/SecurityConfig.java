@@ -61,7 +61,8 @@ public class SecurityConfig {
                         // O que está à venda agora (lote, preço e cadeiras livres) também é público.
                         .pathMatchers(HttpMethod.GET, "/api/v1/availability/**").permitAll()
                         // Reservar e comprar é do comprador.
-                        .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**").hasRole(Roles.BUYER)
+                        .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**", "/api/v1/queue/**")
+                        .hasRole(Roles.BUYER)
                         // Pausar e retomar lote é do produtor.
                         .pathMatchers("/api/v1/lots/**").hasRole(Roles.PRODUCER)
                         .anyExchange().authenticated())

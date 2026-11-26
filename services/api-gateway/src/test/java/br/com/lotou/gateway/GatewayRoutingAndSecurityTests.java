@@ -224,6 +224,31 @@ class GatewayRoutingAndSecurityTests {
     }
 
     @Test
+    void filaVirtualExigeCompradorEVaiParaOInventory() {
+        this.client.post().uri("/api/v1/queue/s1").exchange().expectStatus().isUnauthorized();
+        this.client.mutateWith(userWithRole("producer")).get().uri("/api/v1/queue/s1").exchange()
+                .expectStatus().isForbidden();
+
+        this.client.mutateWith(userWithRole("buyer")).post().uri("/api/v1/queue/s1").exchange()
+                .expectStatus().isOk();
+        this.client.mutateWith(userWithRole("buyer")).get().uri("/api/v1/queue/s1").exchange()
+                .expectStatus().isOk();
+
+        assertThat(inventoryService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/queue/s1", "/v1/queue/s1");
+    }
+
+    @Test
+    void fluxosSseVaoParaOInventory() {
+        this.client.get().uri("/api/v1/availability/s1/sectors/a/seats/events").exchange().expectStatus().isOk();
+        this.client.mutateWith(userWithRole("buyer")).get().uri("/api/v1/queue/s1/events").exchange()
+                .expectStatus().isOk();
+
+        assertThat(inventoryService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/availability/s1/sectors/a/seats/events", "/v1/queue/s1/events");
+    }
+
+    @Test
     void erroDoServicoPassaSemAlteracao() {
         String problem = "{\"type\":\"urn:lotou:problem:not-found\",\"title\":\"Recurso não encontrado\",\"status\":404}";
         eventService.respondWith(404, Map.of("Content-Type", "application/problem+json"), problem);
