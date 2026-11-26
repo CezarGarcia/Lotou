@@ -48,7 +48,8 @@
         "reason": {
           "enum": [
             "RESERVATION_EXPIRED",
-            "ORDER_CANCELLED"
+            "ORDER_CANCELLED",
+            "TICKET_CONFLICT"
           ]
         }
       }

@@ -36,6 +36,21 @@ spring:
         jdbc:
           time_zone: UTC
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9094}
+    producer:
+      # Só conta como publicada a mensagem que todas as réplicas gravaram; sem duplicar em retry.
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: order-service
+      # Um consumer group novo lê o tópico desde o começo: nada publicado antes da subida se perde.
+      auto-offset-reset: earliest
+    listener:
+      # Confirma o offset de cada mensagem logo depois de processada (e gravada no banco).
+      ack-mode: record
+
   security:
     oauth2:
       resourceserver:
@@ -61,15 +76,14 @@ lotou:
   order:
     inventory:
       base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
-    checkout:
-      # Por quanto tempo um pedido pendente fica com quem o processa antes de o job assumir.
-      processing-lease: ${ORDER_PROCESSING_LEASE:30s}
-    payment:
-      # Porcentagem de pagamentos recusados pelo simulador (0 a 100).
-      decline-rate: ${PAYMENT_DECLINE_RATE:0}
+    saga:
+      # Quanto a saga espera a resposta de um passo antes de repetir o comando.
+      step-timeout: ${SAGA_STEP_TIMEOUT:15s}
+      max-attempts: 5
     jobs:
       enabled: ${JOBS_ENABLED:true}
-      recovery-interval: ${ORDER_RECOVERY_INTERVAL:10s}
+      outbox-interval: ${OUTBOX_INTERVAL:100ms}
+      saga-deadline-interval: ${SAGA_DEADLINE_INTERVAL:2s}
 
 management:
   endpoints:

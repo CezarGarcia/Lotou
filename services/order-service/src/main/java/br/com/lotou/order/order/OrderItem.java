@@ -64,6 +64,10 @@ public class OrderItem {
         return this.sectorName;
     }
 
+    public UUID getLotId() {
+        return this.lotId;
+    }
+
     public String getLotName() {
         return this.lotName;
     }

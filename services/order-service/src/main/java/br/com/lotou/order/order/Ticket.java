@@ -63,6 +63,10 @@ public class Ticket {
         return this.id;
     }
 
+    public UUID getSectorId() {
+        return this.sectorId;
+    }
+
     public String getSectorName() {
         return this.sectorName;
     }

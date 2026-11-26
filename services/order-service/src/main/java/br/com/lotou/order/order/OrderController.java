@@ -50,8 +50,9 @@ class OrderController {
     }
 
     /**
-     * Fecha a compra de uma reserva. A resposta traz o pedido no estado em que ficou; o cliente lê
-     * o {@code status} (na fase 3 o pagamento passa a ser assíncrono e a resposta vem PENDING).
+     * Fecha a compra de uma reserva. A resposta traz o pedido PENDING: o pagamento e a emissão dos
+     * ingressos seguem pela saga, e o cliente acompanha o {@code status} pelo {@code GET}. Uma
+     * repetição devolve o pedido no estado em que estiver.
      */
     @PostMapping
     ResponseEntity<OrderResponse> create(@AuthenticationPrincipal Jwt jwt,

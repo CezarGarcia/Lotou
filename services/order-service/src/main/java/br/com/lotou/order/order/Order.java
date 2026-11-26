@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.UUID;
 
 import br.com.lotou.order.inventory.ReservationSnapshot;
-import br.com.lotou.order.payment.PaymentGateway;
 import br.com.lotou.order.shared.UuidV7;
 import br.com.lotou.order.shared.problem.Problems;
 import jakarta.persistence.CascadeType;
@@ -22,7 +21,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Pedido: os ingressos de uma reserva, de um único show, com o preço congelado no momento da
- * reserva. Nasce PENDING e vira CONFIRMED (com os ingressos emitidos) ou CANCELLED.
+ * reserva. Nasce PENDING e vira CONFIRMED (com os ingressos emitidos) ou CANCELLED. Quem o leva de
+ * um estado ao outro é a saga de compra ({@code saga/PurchaseSaga}).
  */
 @Entity
 @Table(name = "orders")
@@ -45,14 +45,12 @@ public class Order {
     private long totalCents;
 
     @Enumerated(EnumType.STRING)
-    private PaymentGateway.Result paymentStatus;
+    private PaymentStatus paymentStatus;
 
     @Enumerated(EnumType.STRING)
     private CancelReason cancelReason;
 
     private String idempotencyKey;
-
-    private Instant processingUntil;
 
     private Instant createdAt;
 
@@ -73,7 +71,7 @@ public class Order {
 
     /** Um pedido novo a partir da reserva: itens e preços são os dela e não mudam mais. */
     static Order pending(String buyerId, String idempotencyKey, ReservationSnapshot.Reservation reservation,
-            Instant now, Instant processingUntil) {
+            Instant now) {
         var order = new Order();
         order.id = UuidV7.generate();
         order.buyerId = buyerId;
@@ -82,7 +80,6 @@ public class Order {
         order.status = OrderStatus.PENDING;
         order.totalCents = reservation.totalCents();
         order.idempotencyKey = idempotencyKey;
-        order.processingUntil = processingUntil;
         order.createdAt = now;
         order.updatedAt = now;
         int position = 0;
@@ -93,20 +90,20 @@ public class Order {
         return order;
     }
 
-    void recordPayment(PaymentGateway.Result result, Instant now) {
+    public void recordPayment(PaymentStatus result, Instant now) {
         this.paymentStatus = result;
         this.updatedAt = now;
     }
 
     /** PENDING -> CONFIRMED: o pagamento foi aprovado. Emite um ingresso por item. */
-    void confirm(Instant now) {
+    public void confirm(Instant now) {
         transitionTo(OrderStatus.CONFIRMED, now);
         this.confirmedAt = now;
         this.items.forEach(item -> this.tickets.add(new Ticket(this, item, now)));
     }
 
     /** PENDING -> CANCELLED: pagamento recusado ou reserva expirada. */
-    void cancel(CancelReason reason, Instant now) {
+    public void cancel(CancelReason reason, Instant now) {
         transitionTo(OrderStatus.CANCELLED, now);
         this.cancelReason = reason;
     }
@@ -149,7 +146,7 @@ public class Order {
         return this.totalCents;
     }
 
-    public PaymentGateway.Result getPaymentStatus() {
+    public PaymentStatus getPaymentStatus() {
         return this.paymentStatus;
     }
 

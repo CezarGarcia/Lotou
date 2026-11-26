@@ -64,8 +64,10 @@
         "reason": {
           "enum": [
             "PAYMENT_DECLINED",
-            "RESERVATION_EXPIRED"
-          ]
+            "RESERVATION_EXPIRED",
+            "TICKET_CONFLICT"
+          ],
+          "description": "PAYMENT_DECLINED: pagamento recusado; RESERVATION_EXPIRED: a reserva expirou antes de ser confirmada (o pagamento é estornado); TICKET_CONFLICT: a última defesa contra venda dupla barrou a emissão (o pagamento é estornado)"
         },
         "cancelledAt": {
           "type": "string",

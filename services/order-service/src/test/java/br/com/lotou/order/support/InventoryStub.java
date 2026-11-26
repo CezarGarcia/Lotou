@@ -87,6 +87,11 @@ public final class InventoryStub implements AutoCloseable {
         this.statuses.put(reservationId, "EXPIRED");
     }
 
+    /** A reserva foi confirmada no inventory (o fato pode não ter chegado ao order-service). */
+    public void confirm(UUID reservationId) {
+        this.statuses.put(reservationId, "CONFIRMED");
+    }
+
     public String statusOf(UUID reservationId) {
         return this.statuses.get(reservationId);
     }
