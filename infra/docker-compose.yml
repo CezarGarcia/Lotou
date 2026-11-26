@@ -203,6 +203,7 @@ services:
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
       INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
       ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
+      PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:-payments}
     ports:
       - "5432:5432"
     volumes:
