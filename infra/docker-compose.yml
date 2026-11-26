@@ -56,6 +56,24 @@ services:
       otel-collector:
         condition: service_started
 
+  # Carga de dados fictícios. Não sobe com o ambiente: roda com `make seed`.
+  seed:
+    image: node:24-alpine
+    profiles: [seed]
+    working_dir: /seed
+    command: ["node", "seed.mjs"]
+    volumes:
+      - ../seed:/seed:ro
+    environment:
+      GATEWAY_URL: http://api-gateway:8080
+      KEYCLOAK_URL: http://keycloak:8080
+      SEED_CLIENT_SECRET: ${SEED_CLIENT_SECRET:-lotou-seed-dev-secret}
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
   # ---------------------------------------------------------------- dados
   postgres:
     image: postgres:18-alpine
