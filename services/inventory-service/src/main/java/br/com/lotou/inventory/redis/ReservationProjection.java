@@ -60,6 +60,8 @@ public class ReservationProjection implements SmartLifecycle {
     private static final Duration IDLE_POLL = Duration.ofMillis(20);
     /** Entrada pendente há mais que isso é de uma instância que caiu: outra assume. */
     private static final Duration ABANDONED_AFTER = Duration.ofSeconds(30);
+    /** Quanto o stop espera o lote em andamento terminar. */
+    private static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
 
     /** O que o script Lua grava no stream ({@code redis/lib.lua}). */
     record Entry(String type, ReservationPayload reservation, List<LotState> lots, String seats, String seatStatus,
@@ -103,11 +105,25 @@ public class ReservationProjection implements SmartLifecycle {
         this.worker = Thread.ofVirtual().name("reservation-projection").start(this::consume);
     }
 
+    /**
+     * Para depois do lote em andamento: interromper a thread no meio dele desfaria a transação e
+     * deixaria as entradas pendentes no grupo. Só interrompe se o lote não terminar no prazo.
+     */
     @Override
     public void stop() {
         this.running.set(false);
-        if (this.worker != null) {
-            this.worker.interrupt();
+        Thread current = this.worker;
+        if (current == null) {
+            return;
+        }
+        try {
+            if (!current.join(STOP_TIMEOUT)) {
+                current.interrupt();
+            }
+        }
+        catch (InterruptedException ex) {
+            current.interrupt();
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -118,6 +134,9 @@ public class ReservationProjection implements SmartLifecycle {
 
     private void consume() {
         ensureGroup();
+        // Primeiro as entradas que este consumidor já leu e não confirmou (ele parou no meio de um
+        // lote); depois, só as novas.
+        boolean replaying = true;
         while (this.running.get()) {
             try {
                 // Sem BLOCK de propósito: um XREADGROUP bloqueante ocuparia a conexão do Lettuce, que é
@@ -125,9 +144,13 @@ public class ReservationProjection implements SmartLifecycle {
                 List<MapRecord<String, Object, Object>> records = this.streams.read(
                         Consumer.from(GROUP, this.consumerName),
                         StreamReadOptions.empty().count(BATCH),
-                        StreamOffset.create(RedisKeys.RESERVATION_STREAM, ReadOffset.lastConsumed()));
+                        StreamOffset.create(RedisKeys.RESERVATION_STREAM,
+                                replaying ? ReadOffset.from("0") : ReadOffset.lastConsumed()));
                 if (records != null && !records.isEmpty()) {
                     applyAndAck(records);
+                }
+                else if (replaying) {
+                    replaying = false;
                 }
                 else {
                     Thread.sleep(IDLE_POLL.toMillis());
@@ -144,6 +167,7 @@ public class ReservationProjection implements SmartLifecycle {
                 else {
                     pause("Falha ao ler o stream de reservas", ex);
                 }
+                replaying = true;
             }
             catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
@@ -154,6 +178,8 @@ public class ReservationProjection implements SmartLifecycle {
                     return;
                 }
                 pause("Falha ao gravar entradas do stream de reservas", ex);
+                // O lote que falhou continua pendente para este consumidor: tenta de novo.
+                replaying = true;
             }
         }
     }
