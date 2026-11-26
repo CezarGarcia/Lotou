@@ -29,6 +29,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 class GatewayRoutingAndSecurityTests {
 
     private static final UpstreamStub eventService = UpstreamStub.start();
+    private static final UpstreamStub inventoryService = UpstreamStub.start();
+    private static final UpstreamStub orderService = UpstreamStub.start();
 
     @Autowired
     private ApplicationContext context;
@@ -38,16 +40,22 @@ class GatewayRoutingAndSecurityTests {
     @DynamicPropertySource
     static void routes(DynamicPropertyRegistry registry) {
         registry.add("EVENT_SERVICE_URL", eventService::url);
+        registry.add("INVENTORY_SERVICE_URL", inventoryService::url);
+        registry.add("ORDER_SERVICE_URL", orderService::url);
     }
 
     @AfterAll
     static void stopStub() {
         eventService.close();
+        inventoryService.close();
+        orderService.close();
     }
 
     @BeforeEach
     void setUp() {
         eventService.reset();
+        inventoryService.reset();
+        orderService.reset();
         this.client = WebTestClient.bindToApplicationContext(this.context)
                 .apply(springSecurity())
                 .configureClient()
@@ -136,6 +144,86 @@ class GatewayRoutingAndSecurityTests {
     }
 
     @Test
+    void disponibilidadeEhPublicaEVaiParaOInventory() {
+        this.client.get().uri("/api/v1/availability/0198c2f4-7f8e-7abc-8def-0123456789ab/sectors/x/seats")
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(inventoryService.lastRequest().path())
+                .isEqualTo("/v1/availability/0198c2f4-7f8e-7abc-8def-0123456789ab/sectors/x/seats");
+        assertThat(eventService.requests()).isEmpty();
+    }
+
+    @Test
+    void reservarEComprarExigemOPapelDeComprador() {
+        for (String path : new String[] {"/api/v1/reservations", "/api/v1/orders"}) {
+            this.client.post().uri(path).contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                    .exchange()
+                    .expectStatus().isUnauthorized();
+            this.client.mutateWith(userWithRole("producer"))
+                    .post().uri(path).contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                    .exchange()
+                    .expectStatus().isForbidden();
+        }
+        this.client.get().uri("/api/v1/orders").exchange().expectStatus().isUnauthorized();
+
+        assertThat(inventoryService.requests()).isEmpty();
+        assertThat(orderService.requests()).isEmpty();
+    }
+
+    @Test
+    void reservaDoCompradorVaiParaOInventoryEOPedidoParaOOrder() {
+        inventoryService.respondWith(201, Map.of("Location", "/v1/reservations/r1"), "{\"id\":\"r1\"}");
+        orderService.respondWith(201, Map.of("Location", "/v1/orders/o1"), "{\"id\":\"o1\"}");
+
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/reservations")
+                .header("Idempotency-Key", "chave-r")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange()
+                .expectStatus().isCreated()
+                .expectHeader().valueEquals("Location", "/api/v1/reservations/r1");
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/orders")
+                .header("Idempotency-Key", "chave-o")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange()
+                .expectStatus().isCreated()
+                .expectHeader().valueEquals("Location", "/api/v1/orders/o1");
+        orderService.respondWith(200, Map.of(), "{\"items\":[]}");
+        this.client.mutateWith(userWithRole("buyer")).get().uri("/api/v1/orders?limit=5").exchange()
+                .expectStatus().isOk();
+
+        assertThat(inventoryService.lastRequest().path()).isEqualTo("/v1/reservations");
+        assertThat(inventoryService.lastRequest().header("Idempotency-Key")).isEqualTo("chave-r");
+        assertThat(orderService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/orders", "/v1/orders");
+    }
+
+    @Test
+    void pausarLoteExigeOPapelDeProdutor() {
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/lots/l1/pause").exchange()
+                .expectStatus().isForbidden();
+        this.client.mutateWith(userWithRole("producer"))
+                .post().uri("/api/v1/lots/l1/pause").exchange()
+                .expectStatus().isOk();
+
+        assertThat(inventoryService.lastRequest().path()).isEqualTo("/v1/lots/l1/pause");
+    }
+
+    @Test
+    void apiInternaDosServicosNaoTemRotaNoGateway() {
+        for (String path : new String[] {"/api/internal/v1/reservations/r1", "/internal/v1/reservations/r1",
+                "/api/internal/v1/catalog/shows"}) {
+            this.client.mutateWith(userWithRole("service")).get().uri(path).exchange()
+                    .expectStatus().isNotFound();
+        }
+        assertThat(inventoryService.requests()).isEmpty();
+        assertThat(eventService.requests()).isEmpty();
+    }
+
+    @Test
     void erroDoServicoPassaSemAlteracao() {
         String problem = "{\"type\":\"urn:lotou:problem:not-found\",\"title\":\"Recurso não encontrado\",\"status\":404}";
         eventService.respondWith(404, Map.of("Content-Type", "application/problem+json"), problem);
@@ -160,20 +248,20 @@ class GatewayRoutingAndSecurityTests {
 
     @Test
     void rotaForaDoCatalogoEhFechadaPorPadrao() {
-        this.client.get().uri("/api/v1/orders").exchange().expectStatus().isUnauthorized();
+        this.client.get().uri("/api/v1/payments").exchange().expectStatus().isUnauthorized();
         this.client.get().uri("/qualquer-coisa").exchange().expectStatus().isUnauthorized();
     }
 
     @Test
     void rotaInexistenteResponde404EmProblemDetailsParaQuemEstaAutenticado() {
         this.client.mutateWith(userWithRole("buyer"))
-                .get().uri("/api/v1/orders")
+                .get().uri("/api/v1/payments")
                 .exchange()
                 .expectStatus().isNotFound()
                 .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.status").isEqualTo(404)
-                .jsonPath("$.instance").isEqualTo("/api/v1/orders");
+                .jsonPath("$.instance").isEqualTo("/api/v1/payments");
     }
 
     @Test

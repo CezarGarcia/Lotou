@@ -12,6 +12,12 @@ spring:
     virtual:
       enabled: true
 
+  # Chamadas a outros serviços: falham rápido em vez de segurar um job.
+  http:
+    clients:
+      connect-timeout: 1s
+      read-timeout: 5s
+
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/inventory}
     username: ${DATABASE_USERNAME:inventory}

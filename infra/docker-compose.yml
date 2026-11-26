@@ -22,6 +22,8 @@ x-auth-env: &auth-env
   AUTH_ISSUER: http://localhost:8180/realms/lotou
   AUTH_JWKS_URI: http://keycloak:8080/realms/lotou/protocol/openid-connect/certs
   AUTH_AUDIENCE: lotou-api
+  # Onde um serviço busca o token da sua conta de serviço (client credentials).
+  AUTH_TOKEN_URI: http://keycloak:8080/realms/lotou/protocol/openid-connect/token
 
 services:
   # ------------------------------------------------------------- aplicação
@@ -46,10 +48,16 @@ services:
       <<: [*otel-env, *auth-env]
       OTEL_SERVICE_NAME: api-gateway
       EVENT_SERVICE_URL: http://event-service:3000
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
+      ORDER_SERVICE_URL: http://order-service:8083
     ports:
       - "8080:8080"
     depends_on:
       event-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      order-service:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -65,6 +73,52 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/event_service
     depends_on:
       mongodb:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  # Lotes, disponibilidade e reservas. Lê o catálogo do event-service por polling.
+  inventory-service:
+    build:
+      context: ../services/inventory-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: inventory-service
+      DATABASE_URL: jdbc:postgresql://postgres:5432/inventory
+      DATABASE_USERNAME: inventory
+      DATABASE_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
+      EVENT_SERVICE_URL: http://event-service:3000
+      # Chave do HMAC do CPF. A de desenvolvimento não serve para um ambiente real.
+      CPF_HASH_KEY: ${CPF_HASH_KEY:-lotou-dev-cpf-hash-key}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  # Pedidos e ingressos. Confirma e libera reservas no inventory-service.
+  order-service:
+    build:
+      context: ../services/order-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: order-service
+      DATABASE_URL: jdbc:postgresql://postgres:5432/orders
+      DATABASE_USERNAME: orders
+      DATABASE_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
+      INVENTORY_SERVICE_URL: http://inventory-service:8082
+      # Porcentagem de pagamentos recusados pelo simulador (0 a 100).
+      PAYMENT_DECLINE_RATE: ${PAYMENT_DECLINE_RATE:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      inventory-service:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -95,6 +149,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lotou}
       POSTGRES_DB: postgres
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
+      ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
     ports:
       - "5432:5432"
     volumes:

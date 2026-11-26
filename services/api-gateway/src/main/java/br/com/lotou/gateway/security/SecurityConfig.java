@@ -22,7 +22,8 @@ import org.springframework.security.web.server.savedrequest.NoOpServerRequestCac
  * realm, o emissor, a audiência e a validade, sem chamar o Keycloak a cada requisição. Ele é a
  * primeira barreira; cada serviço valida o token de novo (ADR 21).
  *
- * <p>Tudo é fechado por padrão: uma rota nova só fica pública se for listada aqui.
+ * <p>Tudo é fechado por padrão: uma rota nova só fica pública se for listada aqui. As APIs
+ * internas dos serviços ({@code /internal/**}) não têm rota no gateway.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebFluxSecurity
@@ -57,6 +58,12 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET, CATALOG).permitAll()
                         // Cadastrar e alterar shows e locais é do produtor.
                         .pathMatchers(CATALOG).hasRole(Roles.PRODUCER)
+                        // O que está à venda agora (lote, preço e cadeiras livres) também é público.
+                        .pathMatchers(HttpMethod.GET, "/api/v1/availability/**").permitAll()
+                        // Reservar e comprar é do comprador.
+                        .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**").hasRole(Roles.BUYER)
+                        // Pausar e retomar lote é do produtor.
+                        .pathMatchers("/api/v1/lots/**").hasRole(Roles.PRODUCER)
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
