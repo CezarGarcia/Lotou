@@ -59,6 +59,9 @@ spring:
       group-id: inventory-service
       # Um consumer group novo lê o tópico desde o começo: o catálogo compactado vem inteiro.
       auto-offset-reset: earliest
+      # O event-service publica o catálogo em transações Kafka: só lê o que foi confirmado, e
+      # nada de um lote abortado por um relay que perdeu a vez (ADR 29).
+      isolation-level: read_committed
     listener:
       ack-mode: record
 
