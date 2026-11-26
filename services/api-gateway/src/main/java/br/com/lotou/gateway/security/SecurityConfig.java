@@ -63,6 +63,9 @@ public class SecurityConfig {
                         // Reservar e comprar é do comprador.
                         .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**", "/api/v1/queue/**")
                         .hasRole(Roles.BUYER)
+                        // WebSocket do painel: o navegador não manda token na abertura, então quem
+                        // autentica é o analytics, na primeira mensagem (ADR 17).
+                        .pathMatchers(HttpMethod.GET, "/api/v1/analytics/live").permitAll()
                         // Pausar e retomar lote, e ver as vendas dos shows, é do produtor.
                         .pathMatchers("/api/v1/lots/**", "/api/v1/analytics/**").hasRole(Roles.PRODUCER)
                         .anyExchange().authenticated())

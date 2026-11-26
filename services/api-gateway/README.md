@@ -13,6 +13,8 @@ Faz três coisas: **roteia** para os serviços, **valida o JWT** emitido pelo Ke
 | `GET /api/v1/availability/**` (inclui o SSE do mapa) | inventory-service | público |
 | `/api/v1/reservations/**`, `/api/v1/queue/**` | inventory-service | papel `buyer` |
 | `/api/v1/lots/**` | inventory-service | papel `producer` |
+| `/api/v1/analytics/**` | analytics-service | papel `producer` |
+| `GET /api/v1/analytics/live` (WebSocket do painel) | analytics-service | público no gateway: o token vai na primeira mensagem e quem valida é o analytics ([ADR 17](../../docs/adr/0017-sse-na-loja-websocket-no-painel.md)) |
 | `/api/v1/orders/**` | order-service | papel `buyer` |
 | `/actuator/health/**` | o próprio gateway | público |
 | qualquer outra | — | exige autenticação (fechado por padrão) |
