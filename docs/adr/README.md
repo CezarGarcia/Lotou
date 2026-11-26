@@ -36,6 +36,7 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0010](0010-duas-instancias-de-redis.md) | Duas instâncias de Redis | aceita |
 | [0011](0011-pubsub-streams-e-kafka.md) | Pub/sub para o mapa, Streams para as reservas, Kafka para fatos de domínio | aceita |
 | [0013](0013-fila-virtual-so-em-shows-de-alta-demanda.md) | Fila virtual só em shows de alta demanda | aceita |
+| [0015](0015-qr-code-assinado-com-hmac.md) | QR code do ingresso assinado com HMAC | aceita |
 | [0017](0017-sse-na-loja-websocket-no-painel.md) | SSE na loja, WebSocket no painel | aceita |
 | [0018](0018-um-banco-por-servico.md) | Um banco por serviço | aceita |
 | [0019](0019-keycloak-como-provedor-de-identidade.md) | Keycloak como provedor de identidade | aceita |

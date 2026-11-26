@@ -368,7 +368,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | inventory | `purchase_limits` | ingressos por CPF em cada show; a chave usa o HMAC do CPF |
 | inventory | `outbox` | fatos de reservas e lotes a publicar em `inventory.events`, gravados por trigger na mesma transação de cada mudança de status (ADR 8) |
 | order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; o cupom aplicado entra na fase 6 |
-| order | `tickets` | ingresso emitido e status (VALID, USED ou CANCELLED); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla. O código do QR entra na fase 4 |
+| order | `tickets` | ingresso emitido, status (VALID, USED ou CANCELLED) e o código do QR assinado com HMAC (ADR 15); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla |
 | order | `coupons` | código, desconto, limite de uso, validade e show |
 | order | `refunds` | pedido de reembolso, valor, status e tentativas |
 | order | `outbox` | eventos e comandos a publicar no Kafka, gravados na mesma transação do pedido e da saga |
