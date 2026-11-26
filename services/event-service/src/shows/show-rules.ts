@@ -80,6 +80,15 @@ export function buildSectors(
         field: `${path}.capacity`,
         message: `A capacidade (${capacity}) passa da capacidade do setor no local (${venueSector.capacity})`,
       });
+    } else if (
+      venueSector.kind === 'RESERVED_SEATING' &&
+      capacity !== venueSector.capacity
+    ) {
+      // Cada cadeira é um item único: o show vende todas as cadeiras do setor.
+      violations.push({
+        field: `${path}.capacity`,
+        message: `Num setor de cadeira numerada a capacidade é a do local (${venueSector.capacity})`,
+      });
     }
 
     const onSale = input.lots.reduce((sum, lot) => sum + lot.quantity, 0);
@@ -126,6 +135,10 @@ export function buildSectors(
       name: venueSector.name,
       kind: venueSector.kind,
       capacity,
+      rows: (venueSector.rows ?? []).map(({ label, seatCount }) => ({
+        label,
+        seatCount,
+      })),
       lots,
     });
   });

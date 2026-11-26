@@ -6,7 +6,15 @@ export const arena = {
   timezone: 'America/Sao_Paulo',
   sectors: [
     { name: 'Pista', kind: 'GENERAL_ADMISSION', capacity: 2000 },
-    { name: 'Cadeira inferior', kind: 'RESERVED_SEATING', capacity: 500 },
+    {
+      name: 'Cadeira inferior',
+      kind: 'RESERVED_SEATING',
+      capacity: 500,
+      rows: Array.from({ length: 10 }, (_, i) => ({
+        label: String.fromCharCode(65 + i),
+        seatCount: 50,
+      })),
+    },
   ],
 };
 

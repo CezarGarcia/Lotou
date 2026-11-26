@@ -18,6 +18,12 @@ export const envSchema = z.object({
     .string()
     .regex(/^mongodb(\+srv)?:\/\/.+/, 'Esperado mongodb:// ou mongodb+srv://'),
 
+  /**
+   * De quanto em quanto tempo os shows avançam de estado pelo horário
+   * (abertura e encerramento das vendas). Zero desliga.
+   */
+  SHOW_LIFECYCLE_INTERVAL_MS: z.coerce.number().int().min(0).default(1000),
+
   /** Emissor esperado no JWT: a URL pública do realm no Keycloak. */
   AUTH_ISSUER: z.url(),
   /** De onde baixar as chaves públicas do realm (pode ser um endereço interno). */

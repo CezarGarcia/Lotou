@@ -77,7 +77,8 @@ describe('Busca de shows', () => {
       artist: 'Marina Céu',
       status: 'PUBLISHED',
       startsAt: expect.any(String),
-      salesStartAt: null,
+      // Sem data agendada, as vendas abrem na publicação.
+      salesStartAt: expect.any(String),
       highDemand: false,
       venue: {
         id: saoPaulo.id,

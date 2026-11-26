@@ -12,12 +12,17 @@ const pista: VenueSector = {
   name: 'Pista',
   kind: 'GENERAL_ADMISSION',
   capacity: 2000,
+  rows: [],
 };
 const cadeira: VenueSector = {
   id: newId(),
   name: 'Cadeira inferior',
   kind: 'RESERVED_SEATING',
   capacity: 500,
+  rows: [
+    { label: 'A', seatCount: 250 },
+    { label: 'B', seatCount: 250 },
+  ],
 };
 const venue = { sectors: [pista, cadeira] };
 
@@ -41,6 +46,7 @@ describe('buildSectors', () => {
         name: 'Pista',
         kind: 'GENERAL_ADMISSION',
         capacity: 2000,
+        rows: [],
         lots: [
           {
             id: expect.any(String),
@@ -81,6 +87,27 @@ describe('buildSectors', () => {
       venue,
     );
     expect(violations.map((v) => v.field)).toEqual(['sectors.0.capacity']);
+  });
+
+  it('copia as fileiras do setor de cadeira numerada e exige a capacidade do local', () => {
+    const { sectors, violations } = buildSectors(
+      [{ sectorId: cadeira.id, lots: [lot(500)] }],
+      venue,
+    );
+    expect(violations).toEqual([]);
+    expect(sectors[0].rows).toEqual(cadeira.rows);
+
+    const reduced = buildSectors(
+      [{ sectorId: cadeira.id, capacity: 400, lots: [] }],
+      venue,
+    );
+    expect(reduced.violations).toEqual([
+      {
+        field: 'sectors.0.capacity',
+        message:
+          'Num setor de cadeira numerada a capacidade é a do local (500)',
+      },
+    ]);
   });
 
   it('recusa setor que não existe no local e setor repetido', () => {

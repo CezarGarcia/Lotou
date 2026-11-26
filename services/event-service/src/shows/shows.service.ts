@@ -23,6 +23,7 @@ import {
 import { type ShowSummaryResponse, toShowSummary } from './show.response.js';
 import { Show, type ShowSector, type ShowVenue } from './show.schema.js';
 import type {
+  CatalogQuery,
   CreateShowDto,
   SearchShowsQuery,
   UpdateShowDto,
@@ -41,6 +42,18 @@ const toShowVenue = (venue: Venue | null): ShowVenue | null =>
     timezone: venue.timezone,
     citySearch: normalizeText(venue.address.city),
   };
+
+/**
+ * A janela de vendas de um show publicado. Sem data de abertura, as vendas
+ * abrem na publicação; sem data de encerramento, fecham no início do show.
+ */
+const salesWindow = (
+  show: Pick<Show, 'salesStartAt' | 'salesEndAt' | 'startsAt'>,
+  publishedAt: Date,
+) => ({
+  salesStartAt: show.salesStartAt ?? publishedAt,
+  salesEndAt: show.salesEndAt ?? show.startsAt,
+});
 
 const toSectorInput = (sector: ShowSector): SectorInput => ({
   sectorId: sector.id,
@@ -208,9 +221,11 @@ export class ShowsService {
       sectors,
     };
 
-    // Um show publicado não pode voltar a um estado que não seria publicável.
+    // Um show publicado não pode voltar a um estado que não seria publicável,
+    // e continua com a janela de vendas definida.
     if (current.status === 'PUBLISHED') {
       violations.push(...publishViolations(next));
+      Object.assign(next, salesWindow(next, current.publishedAt ?? new Date()));
     }
     if (violations.length > 0) {
       throw Problems.businessRule(violations);
@@ -244,17 +259,97 @@ export class ShowsService {
       });
     }
 
+    const publishedAt = new Date();
     const published = await this.shows
       .findOneAndUpdate(
         { _id: id, version: current.version, status: current.status },
         {
-          $set: { status: 'PUBLISHED', publishedAt: new Date() },
+          $set: {
+            status: 'PUBLISHED',
+            publishedAt,
+            ...salesWindow(current, publishedAt),
+          },
           $inc: { version: 1 },
         },
         { returnDocument: 'after' },
       )
       .lean();
     return published ?? versionConflict();
+  }
+
+  /**
+   * Avança os shows cujo horário chegou: PUBLISHED -> ON_SALE na abertura das
+   * vendas e ON_SALE -> SALES_CLOSED no encerramento.
+   *
+   * Cada passo é um único update condicional, então pode rodar em várias
+   * instâncias ao mesmo tempo sem lock: só uma delas altera cada show.
+   */
+  async advanceLifecycle(now: Date = new Date()): Promise<number> {
+    const steps = [
+      { from: 'PUBLISHED', to: 'ON_SALE', when: 'salesStartAt' },
+      { from: 'ON_SALE', to: 'SALES_CLOSED', when: 'salesEndAt' },
+    ] as const;
+
+    let advanced = 0;
+    for (const { from, to, when } of steps) {
+      if (!canTransition(from, to)) {
+        throw new Error(`Transição fora da tabela: ${from} -> ${to}`);
+      }
+      const result = await this.shows.updateMany(
+        { status: from, [when]: { $lte: now } },
+        { $set: { status: to }, $inc: { version: 1 } },
+      );
+      if (result.modifiedCount > 0) {
+        this.logger.log({
+          msg: 'Shows avançaram de estado',
+          from,
+          to,
+          count: result.modifiedCount,
+        });
+      }
+      advanced += result.modifiedCount;
+    }
+    return advanced;
+  }
+
+  /**
+   * Catálogo para os outros serviços: os shows que já saíram do rascunho, em
+   * ordem de alteração. Quem consome guarda o `updatedAt` do último show lido
+   * e pede só o que mudou depois dele.
+   */
+  async listCatalog({
+    updatedAfter,
+    limit,
+    cursor,
+  }: CatalogQuery): Promise<Page<Show>> {
+    const filter: QueryFilter<Show> = { status: { $ne: 'DRAFT' } };
+    const and: QueryFilter<Show>[] = [];
+    if (updatedAfter) {
+      and.push({ updatedAt: { $gt: updatedAfter } });
+    }
+    if (cursor) {
+      const updatedAt = new Date(cursor.sortValue);
+      and.push({
+        $or: [
+          { updatedAt: { $gt: updatedAt } },
+          { updatedAt, _id: { $gt: cursor.id } },
+        ],
+      });
+    }
+    if (and.length > 0) {
+      filter.$and = and;
+    }
+    const found = await this.shows
+      .find(filter)
+      .sort({ updatedAt: 1, _id: 1 })
+      .limit(limit + 1)
+      .lean();
+    return toPage(
+      found,
+      limit,
+      (show) => ({ sortValue: show.updatedAt.getTime(), id: show._id }),
+      (show) => show,
+    );
   }
 
   /** Recusa, e registra em log, a transição que não está na tabela. */

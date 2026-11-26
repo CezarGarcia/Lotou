@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { newId } from '../common/ids/id.js';
 import { SECTOR_KINDS, type SectorKind } from '../venues/sector-kind.js';
+import { type SeatRow, SeatRowSchema } from '../venues/venue.schema.js';
 import { SHOW_STATUSES, type ShowStatus } from './show-status.js';
 
 @Schema({ _id: false })
@@ -40,6 +41,10 @@ export class ShowSector {
   /** Capacidade do setor neste show; nunca acima da capacidade do local. */
   @Prop({ required: true, min: 1 })
   capacity: number;
+
+  /** Fileiras copiadas do local (cadeira numerada); vazio na pista. */
+  @Prop({ type: [SeatRowSchema], default: [] })
+  rows: SeatRow[];
 
   /** Em ordem de virada: o próximo abre quando o atual esgota. */
   @Prop({ type: [ShowLotSchema], default: [] })
@@ -147,3 +152,5 @@ ShowSchema.index({ status: 1, startsAt: 1, _id: 1 });
 ShowSchema.index({ 'venue.citySearch': 1, status: 1, startsAt: 1, _id: 1 });
 // Shows de um local (propagação de nome e trava de edição dos setores).
 ShowSchema.index({ 'venue.id': 1 });
+// Leitura incremental do catálogo pelos outros serviços.
+ShowSchema.index({ updatedAt: 1, _id: 1 });

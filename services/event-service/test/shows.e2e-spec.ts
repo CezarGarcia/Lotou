@@ -50,6 +50,7 @@ describe('Shows', () => {
           name: 'Pista',
           kind: 'GENERAL_ADMISSION',
           capacity: 2000,
+          rows: [],
           lots: [
             expect.objectContaining({ name: '1º lote', priceCents: 12_000 }),
             expect.objectContaining({ name: '2º lote', priceCents: 16_000 }),

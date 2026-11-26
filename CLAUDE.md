@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fase 0 (Fundação). O checklist está em `docs/projeto.md`, seção "Roadmap", subseção "Primeiros passos (fase 0)".
+Fase 1 (Pedidos e estoque): inventory-service e order-service no Postgres, com reserva por lock no banco. A fase 0 (Fundação) está concluída. O roadmap está em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 

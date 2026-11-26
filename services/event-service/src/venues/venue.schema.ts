@@ -2,6 +2,19 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { newId } from '../common/ids/id.js';
 import { SECTOR_KINDS, type SectorKind } from './sector-kind.js';
 
+/** Uma fileira de um setor de cadeira numerada. */
+@Schema({ _id: false })
+export class SeatRow {
+  /** Rótulo da fileira, ex.: `A`. */
+  @Prop({ required: true })
+  label: string;
+
+  /** Cadeiras da fileira, numeradas de 1 a `seatCount` (`A-1`, `A-2`...). */
+  @Prop({ required: true, min: 1 })
+  seatCount: number;
+}
+export const SeatRowSchema = SchemaFactory.createForClass(SeatRow);
+
 @Schema({ _id: false })
 export class VenueSector {
   @Prop({ type: String, required: true })
@@ -16,6 +29,13 @@ export class VenueSector {
   /** Capacidade física do setor: o teto de qualquer show neste local. */
   @Prop({ required: true, min: 1 })
   capacity: number;
+
+  /**
+   * Fileiras, só em cadeira numerada. A soma das cadeiras é a capacidade. As
+   * coordenadas para desenhar o mapa entram com o mapa de assentos (fase 2).
+   */
+  @Prop({ type: [SeatRowSchema], default: [] })
+  rows: SeatRow[];
 }
 const VenueSectorSchema = SchemaFactory.createForClass(VenueSector);
 

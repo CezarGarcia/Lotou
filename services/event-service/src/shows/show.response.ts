@@ -34,6 +34,8 @@ export interface ShowResponse extends ShowSummaryResponse {
     name: string;
     kind: SectorKind;
     capacity: number;
+    /** Fileiras de um setor de cadeira numerada; vazio na pista. */
+    rows: { label: string; seatCount: number }[];
     lots: {
       id: string;
       name: string;
@@ -87,6 +89,10 @@ export function toShowResponse(show: Show): ShowResponse {
       name: sector.name,
       kind: sector.kind,
       capacity: sector.capacity,
+      rows: (sector.rows ?? []).map(({ label, seatCount }) => ({
+        label,
+        seatCount,
+      })),
       lots: sector.lots.map((lot) => ({
         id: lot.id,
         name: lot.name,

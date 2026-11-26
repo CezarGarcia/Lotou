@@ -73,6 +73,60 @@ describe('Locais', () => {
       .expect(404);
   });
 
+  it('exige fileiras que somem a capacidade na cadeira numerada', async () => {
+    const seated = (rows: object[]) => ({
+      ...arena,
+      sectors: [
+        { name: 'Plateia', kind: 'RESERVED_SEATING', capacity: 100, rows },
+      ],
+    });
+
+    const created = await producer
+      .post(
+        '/v1/venues',
+        seated([
+          { label: 'A', seatCount: 60 },
+          { label: 'B', seatCount: 40 },
+        ]),
+      )
+      .expect(201);
+    expect(created.body.sectors[0].rows).toEqual([
+      { label: 'A', seatCount: 60 },
+      { label: 'B', seatCount: 40 },
+    ]);
+
+    for (const rows of [
+      [],
+      [{ label: 'A', seatCount: 99 }],
+      [
+        { label: 'A', seatCount: 50 },
+        { label: 'A', seatCount: 50 },
+      ],
+    ]) {
+      const response = await producer
+        .post('/v1/venues', seated(rows))
+        .expect(400);
+      expect(response.body.errors[0].field).toBe('sectors.0.rows');
+    }
+  });
+
+  it('não aceita fileiras num setor sem lugar marcado', async () => {
+    const response = await producer
+      .post('/v1/venues', {
+        ...arena,
+        sectors: [
+          {
+            name: 'Pista',
+            kind: 'GENERAL_ADMISSION',
+            capacity: 100,
+            rows: [{ label: 'A', seatCount: 100 }],
+          },
+        ],
+      })
+      .expect(400);
+    expect(response.body.errors[0].field).toBe('sectors.0.rows');
+  });
+
   it('lista por cursor, do mais novo ao mais antigo, sem repetir', async () => {
     const created: string[] = [];
     for (let i = 1; i <= 5; i++) {

@@ -14,6 +14,8 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
+      // Os testes avançam o estado dos shows chamando o serviço, sem o timer.
+      SHOW_LIFECYCLE_INTERVAL_MS: '0',
       AUTH_ISSUER: 'http://keycloak.test/realms/lotou',
       // Nunca é chamado: os testes trocam o conjunto de chaves por um local.
       AUTH_JWKS_URI: 'http://keycloak.test/realms/lotou/certs',

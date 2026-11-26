@@ -89,3 +89,12 @@ export const searchShowsQuerySchema = z
 export type SearchShowsQuery = z.infer<typeof searchShowsQuerySchema>;
 
 export const showIdSchema = idSchema;
+
+/** Leitura incremental do catálogo por outro serviço. */
+export const catalogQuerySchema = z.strictObject({
+  /** Só shows alterados depois deste instante. */
+  updatedAfter: instant.optional(),
+  limit: limitSchema,
+  cursor: cursorSchema.optional(),
+});
+export type CatalogQuery = z.infer<typeof catalogQuerySchema>;
