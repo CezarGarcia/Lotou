@@ -23,11 +23,19 @@ Monorepo com pastas simples: cada serviço usa a ferramenta nativa da sua lingua
 
 ## Comandos
 
-- `make up` / `make down`: sobe e derruba o ambiente com Docker Compose
-- `make test`: roda os testes de todos os serviços
-- `make seed`: carrega shows, locais e compradores fictícios
+Na raiz (`make help` lista todos):
 
-(Ajuste esta seção quando os comandos existirem.)
+- `make up` / `make down`: sobe e derruba o ambiente com Docker Compose (`make clean` apaga também os volumes)
+- `make infra`: sobe só a infraestrutura, para rodar um serviço fora do Compose
+- `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
+- `make test`: roda os testes de todos os serviços
+- `make smoke`: confere o ambiente no ar, incluindo o trace até o MongoDB no Tempo
+
+Por serviço:
+
+- `services/event-service`: `npm test` (unitários), `npm run test:e2e` (integração com Testcontainers), `npm run lint`, `npm run format:check`
+- `services/api-gateway`: `./mvnw test`
+- `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
 
 ## Convenções obrigatórias
 

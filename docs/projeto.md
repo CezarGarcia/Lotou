@@ -331,11 +331,14 @@ lotou/
 │   ├── otel-collector.yaml
 │   └── grafana/dashboards/
 ├── seed/                      # shows, locais e compradores fictícios
+├── scripts/                   # verificação do ambiente (smoke)
 ├── load-tests/                # k6
 ├── chaos/                     # roteiros dos experimentos
-└── docs/
-    ├── adr/
-    └── architecture.md
+├── docs/
+│   ├── adr/
+│   └── projeto.md
+├── compose.yaml               # ponto de entrada: inclui infra/docker-compose.yml
+└── Makefile
 ```
 
 ## Modelo de dados
@@ -570,6 +573,8 @@ O OpenTelemetry entra na fase 0, e a meta é um único trace do clique no Angula
 
 **Pipeline:** serviços → OTel Collector (batch + tail sampling: 100% dos traces com erro ou acima de 500 ms, 10% do resto) → Tempo, Prometheus (com exemplars ligando métrica a trace) e Loki → Grafana. Logs em JSON com `trace_id` e `span_id`, para pular do log ao trace com um clique.
 
+Na fase 0 o Collector guarda 100% dos traces, para o desenvolvimento enxergar toda requisição. O tail sampling entra junto com os testes de carga, quando o volume justificar.
+
 ### Métricas de negócio
 
 - `orders_total{status}` e `saga_duration_seconds{saga}` (compra ou cancelamento)
@@ -763,17 +768,23 @@ As fases 0 a 3 são o núcleo técnico e já sustentam uma boa conversa de entre
 
 ### Primeiros passos (fase 0)
 
-- [ ] Escrever os ADRs já decididos: Keycloak (19) e monorepo com pastas simples (20)
-- [ ] Estrutura de pastas, README inicial e Makefile com `up`, `down`, `test` e `seed`
-- [ ] Docker Compose com Postgres, MongoDB, `redis-cache`, `redis-core` e `grafana/otel-lgtm`
-- [ ] OTel Collector configurado, já mascarando CPF e e-mail
-- [ ] Keycloak com os papéis comprador, produtor e portaria, com a configuração importada automaticamente ao subir o Compose
-- [ ] api-gateway roteando para o event-service e validando o JWT
-- [ ] event-service com cadastro de shows e locais no MongoDB
-- [ ] Seed com 3 a 5 shows e locais fictícios
-- [ ] Angular com busca e página do show consumindo o gateway, instrumentado com o OTel Web SDK
-- [ ] GitHub Actions rodando build e testes só das pastas alteradas
-- [ ] Critério de pronto: um clique no Angular gera um trace que atravessa gateway e event-service até o MongoDB, visível no Tempo
+Fase concluída em 26/11/2026.
+
+- [x] Escrever os ADRs já decididos: Keycloak (19) e monorepo com pastas simples (20)
+- [x] Estrutura de pastas, README inicial e Makefile com `up`, `down`, `test` e `seed`
+- [x] Docker Compose com Postgres, MongoDB, `redis-cache`, `redis-core` e `grafana/otel-lgtm`
+- [x] OTel Collector configurado, já mascarando CPF e e-mail
+- [x] Keycloak com os papéis comprador, produtor e portaria (`buyer`, `producer` e `gate-staff` no código), com a configuração importada automaticamente ao subir o Compose
+- [x] api-gateway roteando para o event-service e validando o JWT
+- [x] event-service com cadastro de shows e locais no MongoDB
+- [x] Seed com 3 a 5 shows e locais fictícios
+- [x] Angular com busca e página do show consumindo o gateway, instrumentado com o OTel Web SDK
+- [x] GitHub Actions rodando build e testes só das pastas alteradas
+- [x] Critério de pronto: um clique no Angular gera um trace que atravessa gateway e event-service até o MongoDB, visível no Tempo
+
+Duas decisões saíram da fase e viraram ADR: os serviços revalidam o JWT que o gateway já validou (21) e a `Idempotency-Key` do event-service fica no MongoDB (22).
+
+Na fase 0 os lotes ficam no documento do show só como configuração exibida na loja. O inventory-service assume preço e estoque na fase 1.
 
 ## Questões em aberto
 
@@ -786,5 +797,5 @@ As fases 0 a 3 são o núcleo técnico e já sustentam uma boa conversa de entre
 - [ ] Contratos: JSON Schema ou Avro com Schema Registry?
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: quantos containers rodam confortavelmente na máquina? Medir na fase 0 e, se preciso, criar um perfil "lite" no Compose
+- [ ] Memória: medido na fase 0, o ambiente usa cerca de 2,2 GB com dez containers (Keycloak 670 MB, `grafana/otel-lgtm` 580 MB e api-gateway 415 MB são os maiores). Medir de novo quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
 - [ ] Reconciliação após perda do Redis: definir o algoritmo exato para reconstruir o estoque dos lotes e o bitmap de assentos a partir do Postgres
