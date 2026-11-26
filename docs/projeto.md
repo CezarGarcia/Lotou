@@ -370,6 +370,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | `producer_statements` | por show: vendas brutas, descontos, cancelamentos, reembolsos, taxa da plataforma e valor a receber | read model financeiro, recalculável por replay |
 | `order_view` | pedido completo para o painel e o agente | evita joins entre serviços na leitura |
 | `agent_conversations` | histórico do chat e chamadas de ferramenta | estrutura aninhada e variável |
+| `idempotency_keys` | `Idempotency-Key` já vista nos POSTs do event-service, com a resposta original; TTL de 24 h | o índice único do `_id` decide a corrida entre requisições iguais (ADR 22) |
 
 ### Redis
 
@@ -702,6 +703,8 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 18 | Um banco por serviço | banco compartilhado | serviços só se acoplam por contratos de API e de eventos |
 | 19 | Keycloak como provedor de identidade (OAuth2 e OpenID Connect), com papéis comprador, produtor e portaria | login e JWT feitos à mão | autenticação própria é código arriscado e fora do foco; o gateway só valida o JWT pela chave pública, e o Angular usa o fluxo com PKCE |
 | 20 | Monorepo com pastas simples: ferramenta nativa por serviço, Makefile na raiz e filtros de caminho no CI | Nx | com três linguagens, o Nx acrescenta uma camada sem relação com os objetivos; cada serviço fica como seria numa empresa |
+| 21 | Cada serviço revalida o JWT que o gateway já validou | confiar em cabeçalhos de identidade montados pelo gateway | defesa em profundidade: um serviço alcançado pela rede interna não aceita requisição sem token válido |
+| 22 | `Idempotency-Key` do event-service guardada no MongoDB, com índice único e TTL de 24 h | `redis-core` (dependência nova só para isso) ou `redis-cache` (pode descartar a chave) | a idempotência fica na mesma base dos dados que protege; o `POST /orders` continua no Redis |
 
 ## Testes, carga e caos
 

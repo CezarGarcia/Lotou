@@ -10,7 +10,36 @@
 # As credenciais abaixo são de desenvolvimento. Para trocá-las, crie um arquivo
 # .env na raiz (veja .env.example).
 
+# Destino da telemetria, igual para todos os serviços.
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=lotou,deployment.environment.name=local
+
+# Validação do JWT, igual para todos os serviços. O emissor é a URL pública do
+# realm (a que aparece no token); as chaves são baixadas pela rede interna.
+x-auth-env: &auth-env
+  AUTH_ISSUER: http://localhost:8180/realms/lotou
+  AUTH_JWKS_URI: http://keycloak:8080/realms/lotou/protocol/openid-connect/certs
+  AUTH_AUDIENCE: lotou-api
+
 services:
+  # ------------------------------------------------------------- aplicação
+  # Sem porta publicada: só o api-gateway fala com ele.
+  event-service:
+    build:
+      context: ../services/event-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: event-service
+      PORT: "3000"
+      MONGODB_URI: mongodb://mongodb:27017/event_service
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
   # ---------------------------------------------------------------- dados
   postgres:
     image: postgres:18-alpine

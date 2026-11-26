@@ -28,3 +28,5 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | --- | --- | --- |
 | [0019](0019-keycloak-como-provedor-de-identidade.md) | Keycloak como provedor de identidade | aceita |
 | [0020](0020-monorepo-com-pastas-simples.md) | Monorepo com pastas simples | aceita |
+| [0021](0021-servicos-revalidam-o-jwt.md) | Os serviços revalidam o JWT que o gateway já validou | aceita |
+| [0022](0022-idempotency-key-do-event-service-no-mongodb.md) | Idempotency-Key do event-service no MongoDB | aceita |
