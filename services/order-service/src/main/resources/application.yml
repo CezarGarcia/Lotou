@@ -1,0 +1,82 @@
+server:
+  port: ${PORT:8083}
+  # Ao receber SIGTERM, termina as requisições em andamento antes de sair.
+  shutdown: graceful
+
+spring:
+  application:
+    name: order-service
+
+  # Uma thread virtual por requisição: esperar o inventory não prende uma thread do sistema.
+  threads:
+    virtual:
+      enabled: true
+
+  # Chamadas a outros serviços: falham rápido em vez de segurar a requisição do comprador.
+  http:
+    clients:
+      connect-timeout: 1s
+      read-timeout: 5s
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/orders}
+    username: ${DATABASE_USERNAME:orders}
+    password: ${DATABASE_PASSWORD:orders}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:20}
+
+  jpa:
+    # O esquema é do Flyway; o Hibernate só confere se as entidades batem com ele.
+    hibernate:
+      ddl-auto: validate
+    # Sem transação aberta fora do serviço: a conexão volta ao pool assim que a transação termina.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Emissor esperado no token: a URL pública do realm no Keycloak.
+          issuer-uri: ${AUTH_ISSUER:http://localhost:8180/realms/lotou}
+          # De onde baixar as chaves públicas (pode ser um endereço interno).
+          jwk-set-uri: ${AUTH_JWKS_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/certs}
+          audiences: ${AUTH_AUDIENCE:lotou-api}
+      client:
+        registration:
+          # Conta de serviço deste serviço, para chamar os outros (client credentials).
+          lotou:
+            provider: keycloak
+            client-id: ${SERVICE_CLIENT_ID:order-service}
+            client-secret: ${SERVICE_CLIENT_SECRET:order-service-dev-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${AUTH_TOKEN_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/token}
+
+lotou:
+  order:
+    inventory:
+      base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+    checkout:
+      # Por quanto tempo um pedido pendente fica com quem o processa antes de o job assumir.
+      processing-lease: ${ORDER_PROCESSING_LEASE:30s}
+    payment:
+      # Porcentagem de pagamentos recusados pelo simulador (0 a 100).
+      decline-rate: ${PAYMENT_DECLINE_RATE:0}
+    jobs:
+      enabled: ${JOBS_ENABLED:true}
+      recovery-interval: ${ORDER_RECOVERY_INTERVAL:10s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
