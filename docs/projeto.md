@@ -302,7 +302,7 @@ flowchart TB
 
 Todos os serviços exportam traces, métricas e logs via OTLP para o OTel Collector.
 
-O gateway também leva o SSE e o WebSocket até o analytics-service, que é o hub de tempo real, e as leituras de QR até o checkin-service. O producer-assistant não usa o Kafka: só lê os read models.
+O gateway também leva o WebSocket do painel até o analytics-service, que é o hub de tempo real do produtor, e as leituras de QR até o checkin-service. A posição na fila e o mapa de assentos da loja ficam no inventory, que é o dono desses dados (ADR 31). O producer-assistant não usa o Kafka: só lê os read models.
 
 **Até a fase 3 não há broker.** Nas fases 1 e 2 os serviços se falam por HTTP: o inventory lê o catálogo do event-service por polling, o order-service confirma e libera reservas por uma API interna do inventory, e o pagamento é simulado dentro do order-service. Essas ligações são provisórias e viram eventos e comandos no Kafka na fase 3 (ADR 23). As APIs internas (`/internal/**`) não têm rota no gateway e exigem o token de uma conta de serviço.
 
@@ -425,7 +425,7 @@ Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, 
 | `lock:{nome}` | string | segundos | core | lock distribuído de jobs |
 | `metrics:sectors:{showId}` | sorted set | 48 h | core | vendas por setor ao vivo |
 | `stream:reservations` | stream | aparado até a entrada mais antiga ainda não gravada (`XTRIM MINID`) | core | reservas a persistir no Postgres |
-| `stream:activity` | stream | MAXLEN \~1000 | core | feed de atividade do painel |
+| `stream:activity:{showId}` | stream | MAXLEN \~1000 | core | feed de atividade do painel, por show |
 
 ## Mensageria
 
@@ -465,9 +465,9 @@ O `notification-service` consome `order.events` do Kafka. Ao ver um `OrderConfir
 | Canal | Tipo | Quem escreve | Quem lê | Por que esse tipo |
 | --- | --- | --- | --- | --- |
 | `stream:reservations` | Stream + consumer group | script Lua da reserva (na mesma operação atômica) | inventory, que grava no Postgres | não pode perder: usa `XACK`, `XPENDING` e `XCLAIM` para reprocessar |
-| `seatmap.{showId}` | pub/sub | script Lua, a cada assento segurado, liberado ou vendido | inventory na fase 2 e analytics a partir da fase 4, que repassam por SSE a quem está no mapa | quem conecta lê o bitmap atual e depois só recebe as mudanças; perder uma mensagem se corrige na próxima leitura do bitmap |
-| `stream:activity` | Stream | analytics | WebSocket do painel | um painel que conecta lê os últimos 50 eventos com `XREVRANGE` |
-| `dashboard.metrics` | pub/sub | analytics, 1 vez por segundo | WebSocket do painel | perder um tick não importa; o próximo chega em 1 s |
+| `seatmap.{showId}` | pub/sub | script Lua, a cada assento segurado, liberado ou vendido | inventory, que repassa por SSE a quem está no mapa (ADR 31) | quem conecta lê o bitmap atual e depois só recebe as mudanças; perder uma mensagem se corrige na próxima leitura do bitmap |
+| `stream:activity:{showId}` | Stream | analytics | WebSocket do painel | um painel que conecta lê os últimos 50 eventos com `XREVRANGE` |
+| `dashboard.metrics:{showId}` | pub/sub | analytics, 1 vez por segundo | WebSocket do painel | perder um tick não importa; o próximo chega em 1 s |
 
 A comparação entre pub/sub (fire-and-forget), Streams (persistente, com consumer groups) e Kafka está no ADR 11.
 
@@ -753,6 +753,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 28 | Contratos dos eventos em JSON Schema autocontido, com um exemplo por mensagem conferido no CI | Avro com Schema Registry | mensagens legíveis no Kafka UI e nos logs, sem serviço a mais nem geração de código em três linguagens; o Schema Registry é o passo seguinte |
 | 29 | Outbox do event-service no MongoDB, na mesma transação do show (replica set), publicado em transações Kafka com um `transactional.id` só | gravar e publicar separadamente; change streams | sem escrita dupla; o broker corta um relay que perdeu a vez, então uma versão antiga do show nunca sai depois de uma nova |
 | 30 | Replay dos read models em gerações: cada geração tem coleções e consumer group próprios, e uma troca atômica de ponteiro a torna ativa | apagar e reconstruir no lugar | o painel segue respondendo durante o replay; se ele falha, a geração anterior continua ativa |
+| 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
 
 ## Testes, carga e caos
 

@@ -36,6 +36,7 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0010](0010-duas-instancias-de-redis.md) | Duas instâncias de Redis | aceita |
 | [0011](0011-pubsub-streams-e-kafka.md) | Pub/sub para o mapa, Streams para as reservas, Kafka para fatos de domínio | aceita |
 | [0013](0013-fila-virtual-so-em-shows-de-alta-demanda.md) | Fila virtual só em shows de alta demanda | aceita |
+| [0017](0017-sse-na-loja-websocket-no-painel.md) | SSE na loja, WebSocket no painel | aceita |
 | [0018](0018-um-banco-por-servico.md) | Um banco por serviço | aceita |
 | [0019](0019-keycloak-como-provedor-de-identidade.md) | Keycloak como provedor de identidade | aceita |
 | [0020](0020-monorepo-com-pastas-simples.md) | Monorepo com pastas simples | aceita |
@@ -49,3 +50,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0028](0028-contratos-em-json-schema.md) | Contratos dos eventos em JSON Schema, com exemplos | aceita |
 | [0029](0029-outbox-do-event-service-no-mongodb.md) | Outbox do event-service no MongoDB | aceita |
 | [0030](0030-replay-dos-read-models.md) | Replay dos read models em gerações, com troca atômica do ponteiro | aceita |
+| [0031](0031-hub-de-tempo-real-so-para-o-painel.md) | O analytics é o hub de tempo real do painel; o SSE da loja fica no inventory | aceita |
