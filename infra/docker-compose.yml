@@ -150,6 +150,36 @@ services:
       otel-collector:
         condition: service_started
 
+  # Gateway de pagamento simulado: lê os comandos de payment.commands e
+  # responde em payment.events. Sem porta publicada: só conversa pelo Kafka.
+  payment-mock:
+    build:
+      context: ../services/payment-mock
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: payment-mock
+      PORT: "3002"
+      KAFKA_BROKERS: kafka:9092
+      DATABASE_URL: postgres://payments@postgres:5432/payments
+      DATABASE_PASSWORD: ${PAYMENTS_DB_PASSWORD:-payments}
+      # Fração dos pagamentos recusados e dos estornos que falham (0 a 1). O
+      # experimento de caos "payment-mock recusando 30%" usa 0.3.
+      DECLINE_RATE: ${PAYMENT_MOCK_DECLINE_RATE:-0}
+      REFUND_FAILURE_RATE: ${PAYMENT_MOCK_REFUND_FAILURE_RATE:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/health/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
   # Carga de dados fictícios. Não sobe com o ambiente: roda com `make seed`.
   seed:
     image: node:24-alpine

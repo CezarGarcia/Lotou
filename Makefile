@@ -5,7 +5,7 @@ INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui key
 
 .DEFAULT_GOAL := help
 .PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \
-	test-event-service test-api-gateway test-inventory-service test-order-service test-web
+	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-web
 
 help: ## Lista os comandos
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -67,7 +67,7 @@ logs: ## Acompanha os logs de todos os serviços
 ps: ## Mostra o estado dos containers
 	$(COMPOSE) ps
 
-test: test-event-service test-api-gateway test-inventory-service test-order-service test-web ## Roda os testes de todos os serviços
+test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-web ## Roda os testes de todos os serviços
 
 test-event-service: ## Testes do event-service (unitários e integração com Testcontainers)
 	cd services/event-service && ([ -d node_modules ] || npm ci) && npm test && npm run test:e2e
@@ -82,6 +82,9 @@ test-inventory-service: ## Testes do inventory-service (regras de lote e concorr
 test-order-service: ## Testes do order-service (checkout de ponta a ponta com o inventory real)
 	$(COMPOSE) build inventory-service
 	cd services/order-service && ./mvnw -B -q test
+
+test-payment-mock: ## Testes do payment-mock (unitários e integração com Postgres e Kafka via Testcontainers)
+	cd services/payment-mock && ([ -d node_modules ] || npm ci) && npm test && npm run test:e2e
 
 test-web: ## Testes unitários do Angular
 	cd apps/web && ([ -d node_modules ] || npm ci) && npm test -- --watch=false

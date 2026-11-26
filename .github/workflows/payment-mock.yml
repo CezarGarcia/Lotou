@@ -1,0 +1,43 @@
+name: payment-mock
+
+# Só roda quando o serviço, os contratos que ele testa ou este workflow mudam.
+on:
+  push:
+    paths:
+      - services/payment-mock/**
+      - contracts/payment.commands/**
+      - contracts/payment.events/**
+      - contracts/examples/payment.*/**
+      - .github/workflows/payment-mock.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/payment-mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/payment-mock/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      # Os unitários validam as respostas contra os schemas de contracts/.
+      - name: Testes unitários
+        run: npm test
+      # O Testcontainers sobe um Postgres e um Kafka reais no Docker do runner.
+      - name: Testes de integração
+        run: npm run test:e2e
