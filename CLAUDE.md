@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fases 0 (Fundação) e 1 (Pedidos e estoque) concluídas. A próxima é a fase 2 (Redis e abertura de vendas). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
+Fases 0 (Fundação), 1 (Pedidos e estoque) e 2 (Redis e abertura de vendas) concluídas. A próxima é a fase 3 (Kafka e saga). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 
@@ -30,6 +30,7 @@ Na raiz (`make help` lista todos):
 - `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
 - `make test`: roda os testes de todos os serviços
 - `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
+- `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
 
 Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
 

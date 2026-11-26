@@ -8,30 +8,31 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 
 ## Onde o projeto está
 
-**Fases 0 e 1 concluídas.** O que já funciona:
+**Fases 0, 1 e 2 concluídas.** O que já funciona:
 
 - o ambiente inteiro sobe com um comando;
 - o produtor cadastra e publica shows pela API, e a loja busca e exibe;
-- **a compra funciona de ponta a ponta pela API:** reserva de pista ou de cadeira numerada, pedido, pagamento simulado e ingresso emitido, com o estoque protegido contra venda além da capacidade;
+- **a compra funciona de ponta a ponta na loja:** login, escolha das cadeiras num mapa que se atualiza sozinho, reserva de 10 minutos, pagamento simulado e ingresso emitido;
+- **a abertura de vendas aguenta disputa:** reserva atômica num script Lua no Redis, fila virtual com sorteio nos shows de alta demanda, rate limit no gateway e cache da página do show, tudo medido com k6;
 - a autenticação é de verdade (Keycloak, OAuth 2.0 e JWT validado no gateway e em cada serviço);
-- cada requisição gera um trace que atravessa os serviços até o banco.
+- cada requisição gera um trace que atravessa os serviços até o banco e o Redis.
 
 | Fase | Entrega | Estado |
 | --- | --- | --- |
 | 0. Fundação | Compose, CI, OpenTelemetry, gateway, shows e loja Angular | concluída |
 | 1. Pedidos e estoque | inventory e order no Postgres, reserva com lock no banco | concluída |
-| 2. Redis e abertura de vendas | cache, fila virtual, reserva em Lua e mapa de assentos | próxima |
-| 3. Kafka e saga | outbox, saga com pagamento simulado e read models | |
+| 2. Redis e abertura de vendas | cache, fila virtual, reserva em Lua e mapa de assentos | concluída |
+| 3. Kafka e saga | outbox, saga com pagamento simulado e read models | próxima |
 | 4. RabbitMQ e tempo real | ingresso com QR code, DLQ e painel ao vivo | |
 | 5. Agente de IA | assistente do produtor com LangGraph | |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | |
 | 7. Vitrine | testes de carga e caos, SLOs e vídeo | |
 
-A fase 1 usa lock no Postgres de propósito: ela é a linha de base que a reserva no Redis precisa superar na fase 2. A tela de checkout da loja ainda não existe; a compra é feita pela API.
+A fase 1 reservou com lock no Postgres de propósito: ela é a linha de base que a reserva no Redis superou na fase 2. Os dois motores continuam no código, e o teste de carga compara um com o outro.
 
 ## Como rodar
 
-Você precisa de Docker (com Compose) e `make`. O ambiente usa cerca de 3,5 GB de memória.
+Você precisa de Docker (com Compose) e `make`. O ambiente usa cerca de 4 GB de memória.
 
 ```bash
 make up     # sobe tudo e espera ficar saudável (a primeira vez constrói as imagens)
@@ -52,7 +53,41 @@ Outros comandos: `make test` roda os testes de todos os serviços, `make down` d
 
 Se você já tinha o ambiente de uma versão anterior, rode `make clean` antes do `make up`: o realm do Keycloak e os bancos do Postgres só são criados com o volume vazio.
 
-## A compra de ponta a ponta
+## A compra na loja
+
+Entre na loja com `comprador` / `lotou123`, abra um show em venda e escolha o setor. Nas cadeiras numeradas, o mapa mostra o que está livre e muda sozinho quando outra pessoa reserva (SSE). A reserva segura os ingressos por 10 minutos, e o pagamento é simulado.
+
+![Checkout com o mapa de cadeiras](docs/img/loja-mapa-de-cadeiras.png)
+
+![Reserva com cronômetro de 10 minutos](docs/img/loja-reserva.png)
+
+Num show de alta demanda (no seed, "Nação Coral"), a compra passa antes pela fila virtual: a sala de espera abre 30 minutos antes das vendas, as posições de quem estava na sala são sorteadas na abertura e o checkout admite um número fixo de pessoas por segundo.
+
+## Abertura de vendas sob carga
+
+A reserva tem dois motores, escolhidos por implantação: o script Lua no `redis-core` (padrão) e o lock no Postgres da fase 1, mantido como linha de base. Os testes de carga rodam com k6 dentro do Compose e, no fim, conferem no Postgres que nada foi vendido além da capacidade.
+
+```bash
+make load-opening ENGINE=redis      # 2.000 usuários disputando 2.500 ingressos por 40 s
+make load-contention ENGINE=redis   # 1.000 compradores pelas mesmas 50 cadeiras
+make load-show-page                 # página do show com o cache ligado e desligado
+```
+
+Troque `ENGINE=redis` por `ENGINE=postgres` para o motor da fase 1, e rode `make clean up seed` antes de trocar de motor.
+
+| Cenário | Redis + Lua | Postgres + lock |
+| --- | --- | --- |
+| Abertura: tentativas de reserva respondidas em 40 s | 78.621 | 19.415 |
+| Abertura: ingressos vendidos | 2.500 de 2.500 | 2.481 de 2.500 |
+| Abertura: latência p99 | 2,98 s | 20,5 s, com 18 timeouts |
+| Disputa por cadeira: latência p99 | 283 ms | 1,95 s |
+| Venda além da capacidade ou cadeira vendida duas vezes | 0 | 0 |
+
+Com o cache da página do show, o event-service atendeu 2,5 vezes mais leituras (2.475 contra 996 por segundo), com p95 de 117 ms contra 273 ms.
+
+Os números vêm de uma máquina só, de 4 CPUs, com os doze containers e o k6 disputando os mesmos núcleos: o que importa é a comparação, não o valor absoluto. A análise, com o que ficou abaixo da meta, está no [ADR 3](docs/adr/0003-reserva-com-lua-no-redis.md).
+
+## A compra pela API
 
 `make smoke` faz uma compra como um comprador faria, passando pelo gateway:
 
@@ -104,8 +139,11 @@ flowchart LR
     gw --> ev["event-service<br/>NestJS<br/>shows, locais e busca"]
     gw --> inv["inventory-service<br/>Spring Boot<br/>lotes, cadeiras e reservas"]
     gw --> ord["order-service<br/>Spring Boot<br/>pedidos e ingressos"]
+    gw -- "rate limit" --> core
     ev --> mongo[("MongoDB")]
-    inv --> pg[("Postgres<br/>um banco por serviço")]
+    ev -- "página e busca" --> cache[("redis-cache<br/>LRU, descartável")]
+    inv -- "reserva em Lua, fila,<br/>mapa e stream" --> core[("redis-core<br/>noeviction, AOF")]
+    inv -- "stream de reservas" --> pg[("Postgres<br/>um banco por serviço")]
     ord --> pg
     inv -. "lê o catálogo (polling)" .-> ev
     ord -. "confirma e libera reservas" .-> inv
@@ -114,16 +152,18 @@ flowchart LR
 
 Todos os serviços validam o JWT com as chaves públicas do Keycloak e exportam traces, métricas e logs por OTLP para o OTel Collector, que mascara CPF e e-mail antes de repassar ao Tempo, ao Prometheus e ao Loki.
 
-As linhas pontilhadas entre serviços são HTTP síncrono, com token de conta de serviço. Elas são provisórias: na fase 3 viram eventos e comandos no Kafka ([ADR 23](docs/adr/0023-fase-1-sem-broker-integracao-sincrona.md)). O `redis-cache` e o `redis-core` já sobem no Compose e passam a ser usados na fase 2. A arquitetura completa, com os nove serviços, Kafka e RabbitMQ, está em [`docs/projeto.md`](docs/projeto.md#arquitetura).
+As linhas pontilhadas entre serviços são HTTP síncrono, com token de conta de serviço. Elas são provisórias: na fase 3 viram eventos e comandos no Kafka ([ADR 23](docs/adr/0023-fase-1-sem-broker-integracao-sincrona.md)).
+
+Durante a venda, o `redis-core` decide a reserva, e o Postgres recebe o resultado por um Redis Stream escrito no mesmo script ([ADR 26](docs/adr/0026-redis-como-fonte-da-verdade-durante-a-venda.md)). Os dois Redis têm políticas de memória opostas: o cache pode descartar chaves, o estoque não ([ADR 10](docs/adr/0010-duas-instancias-de-redis.md)). A arquitetura completa, com os nove serviços, Kafka e RabbitMQ, está em [`docs/projeto.md`](docs/projeto.md#arquitetura).
 
 ### Serviços
 
 | Pasta | Stack | Responsabilidade |
 | --- | --- | --- |
-| [`apps/web`](apps/web) | Angular 22 | loja: busca de shows e página do show |
-| [`services/api-gateway`](services/api-gateway) | Java 21, Spring Cloud Gateway | roteamento e validação do JWT |
-| [`services/event-service`](services/event-service) | Node, NestJS 12, MongoDB | shows, locais, setores e busca |
-| [`services/inventory-service`](services/inventory-service) | Java 21, Spring Boot 4, Postgres | lotes, disponibilidade e reservas de pista e de cadeira |
+| [`apps/web`](apps/web) | Angular 22 | loja: busca, página do show, login, fila, checkout com mapa de cadeiras e meus ingressos |
+| [`services/api-gateway`](services/api-gateway) | Java 21, Spring Cloud Gateway, Redis | roteamento, validação do JWT e rate limit da compra |
+| [`services/event-service`](services/event-service) | Node, NestJS 12, MongoDB, Redis | shows, locais, setores e busca, com cache e rate limit |
+| [`services/inventory-service`](services/inventory-service) | Java 21, Spring Boot 4, Redis, Postgres | lotes, disponibilidade, reservas, fila virtual e mapa de assentos ao vivo |
 | [`services/order-service`](services/order-service) | Java 21, Spring Boot 4, Postgres | pedidos, ingressos e orquestração do checkout |
 
 Cada pasta tem seu README, com a API, a estrutura e os comandos.
@@ -144,6 +184,7 @@ lotou/
 │   ├── keycloak/            # realm importado na subida
 │   └── postgres/            # criação dos bancos
 ├── seed/                    # locais e shows fictícios
+├── load-tests/              # testes de carga com k6 e conferência das invariantes
 ├── scripts/                 # verificação do ambiente
 ├── docs/
 │   ├── projeto.md           # produto, regras de negócio e arquitetura
@@ -157,14 +198,17 @@ lotou/
 
 ## O que já dá para ver no código
 
-- **Reserva atômica com lock no banco.** Uma transação trava, sempre na mesma ordem, a cota do CPF, os lotes do setor e as cadeiras; ou segura tudo, ou nada ([`ReservationService`](services/inventory-service/src/main/java/br/com/lotou/inventory/reservation/ReservationService.java)).
+- **Reserva atômica em Lua.** Um script confere idempotência, fila, cota do CPF, lote e estoque, e só então segura tudo, grava o stream para o Postgres e avisa o mapa ao vivo; ou segura tudo, ou nada ([`reserve.lua`](services/inventory-service/src/main/resources/redis/reserve.lua)). O motor com lock no Postgres da fase 1 passa pelos mesmos testes ([`PostgresReservationEngine`](services/inventory-service/src/main/java/br/com/lotou/inventory/reservation/PostgresReservationEngine.java)).
+- **Postgres alimentado por stream, sem perder nem duplicar.** Cada entrada leva o estado final e a posição no stream; reaplicar não muda nada, e entradas de uma instância que caiu são assumidas por outra ([`ReservationProjection`](services/inventory-service/src/main/java/br/com/lotou/inventory/redis/ReservationProjection.java)). Se o Redis perder os dados, o estoque é recarregado do Postgres.
+- **Fila virtual justa.** Quem entra na sala de espera recebe uma posição sorteada na abertura, e o checkout admite N pessoas por segundo ([ADR 13](docs/adr/0013-fila-virtual-so-em-shows-de-alta-demanda.md)).
+- **Cache que não derruba a leitura.** Dois níveis, proteção contra stampede, cache negativo e jitter; se o Redis cair, a leitura vai ao MongoDB.
 - **Regras de negócio isoladas e testadas sem banco.** Virada de lote por esgotamento ou por data, devolução ao lote em venda e pausa ([`SectorLots`](services/inventory-service/src/main/java/br/com/lotou/inventory/lot/SectorLots.java)); capacidade e publicação de show ([`show-rules.ts`](services/event-service/src/shows/show-rules.ts)).
 - **Transições de estado numa tabela única por entidade.** Show, lote, reserva, pedido e ingresso: o que não está na tabela é recusado e registrado em log.
 - **Checkout que aguenta falha no meio.** Cada passo grava o que decidiu e é idempotente; um pedido que ficou pendente é retomado por um job, sem cobrar de novo ([`CheckoutService`](services/order-service/src/main/java/br/com/lotou/order/order/CheckoutService.java)).
 - **Última defesa no banco.** Um `CHECK` impede contador de estoque negativo, e um índice único parcial impede dois ingressos ativos para a mesma cadeira ([ADR 4](docs/adr/0004-constraint-unica-de-show-e-assento.md)).
 - **Idempotência.** Todo POST que cria recurso exige `Idempotency-Key`; requisições simultâneas com a mesma chave criam um único recurso.
 - **Defesa em profundidade.** O gateway valida o JWT e cada serviço valida de novo; as rotas são fechadas por padrão, e as chamadas entre serviços usam contas de serviço ([ADR 21](docs/adr/0021-servicos-revalidam-o-jwt.md)).
-- **Jobs sem lock distribuído.** Abertura de vendas, expiração de reservas e retomada de pedidos travam a linha no banco e conferem a condição de novo, então rodam em várias instâncias sem coordenação.
+- **Jobs seguros em várias instâncias.** Expiração de reservas e retomada de pedidos travam a linha no banco e conferem a condição de novo; carga do estoque, sorteio e admissão da fila usam lock no Redis com token e liberação em Lua, e o script confere a condição de novo.
 - **Contrato de API previsível.** Erros em Problem Details (RFC 9457) com o `traceId` da requisição, paginação por cursor, IDs em UUID v7 e dinheiro em centavos.
 - **Dados pessoais protegidos.** O CPF só é gravado como HMAC com chave secreta ([ADR 24](docs/adr/0024-cpf-como-hmac-e-limite-por-cpf-no-banco.md)), e o Collector mascara CPF e e-mail em traces, métricas e logs.
 - **Datas corretas.** Tudo é gravado em UTC e exibido no fuso do local; o filtro por data usa o dia no fuso do show.
@@ -177,11 +221,11 @@ make test
 
 | Onde | O que roda |
 | --- | --- |
-| event-service | testes unitários das regras de domínio e testes de integração da aplicação inteira contra um MongoDB real (Testcontainers) |
-| api-gateway | regras de acesso e roteamento, e um teste com um Keycloak real (Testcontainers) usando o mesmo realm do Compose |
-| inventory-service | regras de lote sem banco e testes de concorrência, de ciclo das vendas e de API num Postgres real (Testcontainers) |
+| event-service | testes unitários das regras de domínio e testes de integração da aplicação inteira contra MongoDB e Redis reais (Testcontainers) |
+| api-gateway | regras de acesso e roteamento, rate limit num Redis real e um teste com um Keycloak real (Testcontainers) usando o mesmo realm do Compose |
+| inventory-service | regras de lote sem banco; testes de concorrência, de ciclo das vendas, de API, da fila e da reconstrução do Redis num Postgres e num Redis reais (Testcontainers), cada cenário contra os dois motores de reserva |
 | order-service | checkout de ponta a ponta com o inventory-service de verdade (a imagem Docker dele) e Postgres real; falhas no meio do checkout provocadas com um inventory de teste |
-| web | testes unitários de estado, componentes e formatação |
+| web | testes unitários de estado, componentes, login, leitor de SSE e mapa de cadeiras |
 | ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta e os traces no Tempo |
 
 Os testes de integração usam as dependências reais, não mocks de banco. No GitHub Actions cada serviço tem seu workflow, que só roda quando a pasta dele muda; um workflow à parte sobe o ambiente inteiro numa máquina limpa.

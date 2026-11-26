@@ -142,9 +142,10 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 
 ### Fila virtual
 
-- Só existe em shows marcados como alta demanda.
+- Só existe em shows marcados como alta demanda, e vale durante toda a venda deles (ADR 13).
 - A sala de espera abre 30 minutos antes das vendas. Na abertura, quem estava na sala recebe uma posição sorteada; quem chega depois entra no fim da fila. Assim, chegar 30 minutos antes não dá vantagem sobre quem chegou 1 minuto antes, e robôs que entram cedo perdem a vantagem.
-- O token de admissão vale 5 minutos; quem não reserva nesse tempo perde a vez.
+- A cada segundo, os próximos N da fila são admitidos (N configurável por implantação, 100 por padrão).
+- O token de admissão vale 5 minutos; quem não reserva nesse tempo perde a vez e, se entrar de novo, vai para o fim da fila.
 
 ### Financeiro
 
@@ -180,6 +181,7 @@ stateDiagram-v2
     PAUSED --> ON_SALE: produtor retoma
     ON_SALE --> CLOSED: vendas encerradas
     PAUSED --> CLOSED: vendas encerradas
+    SOLD_OUT --> CLOSED: vendas encerradas
     SOLD_OUT --> ON_SALE: ingresso devolvido
     CLOSED --> [*]
 ```
@@ -241,6 +243,7 @@ Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não 
 | Lote | ON\_SALE | PAUSED | produtor pausa | produtor |
 | Lote | PAUSED | ON\_SALE | produtor retoma | produtor |
 | Lote | ON\_SALE ou PAUSED | CLOSED | vendas do show encerradas | inventory |
+| Lote | SOLD\_OUT | CLOSED | vendas encerradas: só o último lote esgotado de cada setor, que ainda podia reabrir; os outros já viraram e ficam em SOLD\_OUT | inventory |
 | Reserva | HELD | CONFIRMED | pagamento aprovado (`ConfirmReservation`) | order |
 | Reserva | HELD | RELEASED | pagamento recusado (`ReleaseReservation`) | order |
 | Reserva | HELD | EXPIRED | 10 minutos sem pagamento | job de expiração |
@@ -389,26 +392,36 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 
 ### Redis
 
-Duas instâncias com políticas diferentes: `redis-cache` pode perder dados (`allkeys-lru`, sem persistência) e `redis-core` não pode (`noeviction`, AOF a cada segundo).
+Duas instâncias com políticas diferentes: `redis-cache` pode perder dados (`allkeys-lru`, sem persistência) e `redis-core` não pode (`noeviction`, AOF a cada segundo) (ADR 10).
+
+Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, das cotas e das reservas ativas; o Postgres é a cópia durável, alimentada por `stream:reservations` (ADR 26). Por isso nada do estado da venda expira sozinho: a reserva e as cadeiras dela saem juntas, pelo script que devolve tudo, e não por TTL.
 
 | Chave | Tipo | TTL | Instância | Uso |
 | --- | --- | --- | --- | --- |
-| `cache:event:{id}` | string (JSON) | 10 min + jitter | cache | detalhe do show |
+| `cache:event:{id}` | string (JSON) | 10 min + jitter (30 s se o show não existe) | cache | detalhe do show, já serializado |
+| `cache:lock:event:{id}` | string | 2 s | cache | só uma requisição recarrega o show quando a chave esfria |
 | `cache:events:{hash da consulta}` | string (JSON) | 60 s | cache | busca e listagens |
-| `lot:{lotId}:stock` | inteiro | fim das vendas | core | ingressos restantes do lote de pista |
-| `seat:{showId}:{seatId}` | string | 10 min | core | assento segurado; o valor é o id da reserva |
-| `seatmap:{showId}:{sectorId}` | bitmap | fim das vendas | core | um bit por cadeira (livre ou ocupada), para desenhar o mapa sem ir ao banco |
-| `res:{resId}` | hash | 10 min | core | reserva ativa |
+| `show:{showId}` | hash | fim das vendas | core | marca de estoque carregado (gravada por último) e se o show é de alta demanda |
+| `sector:{showId}:{sectorId}` | hash | fim das vendas | core | lote em venda e status dele (`ON_SALE`, `PAUSED`, `SOLD_OUT`, `CLOSED`) e tipo do setor |
+| `sector:{showId}:{sectorId}:next` | lista | fim das vendas | core | lotes seguintes do setor, na ordem, para a virada por esgotamento |
+| `lot:{lotId}:stock` | inteiro | fim das vendas | core | ingressos restantes do lote |
+| `seat:{showId}:{seatId}` | string | nenhum | core | cadeira segurada ou vendida; o valor é o id da reserva |
+| `seatmap:{showId}:{sectorId}` | bitmap | fim das vendas | core | um bit por cadeira (livre ou ocupada), para desenhar o mapa sem ir ao banco (ADR 5) |
+| `res:{resId}` | hash | nenhum enquanto ativa; 24 h depois de concluída | core | reserva, com comprador, lote, cadeiras, prazo e CPF (em hash) |
 | `limit:{showId}:{cpfHash}` | inteiro | fim das vendas | core | ingressos por CPF (máximo 4); a chave usa um hash do CPF, nunca o CPF |
+| `idem:reservation:{hash}` | string | 24 h | core | Idempotency-Key da reserva; o hash junta comprador e chave |
 | `coupon:{code}:uses` | inteiro | validade do cupom | core | usos do cupom, com limite checado de forma atômica |
-| `queue:{showId}` | sorted set | fim da abertura | core | fila virtual (só em shows de alta demanda), score = hora de chegada |
+| `queue:{showId}` | sorted set | fim das vendas | core | fila virtual (só em shows de alta demanda); score = posição sorteada para quem estava na sala, hora de chegada para quem veio depois |
+| `queue:{showId}:room` | set | fim das vendas | core | sala de espera, antes do sorteio |
+| `queue:{showId}:drawn` | string | fim das vendas | core | marca de sorteio feito |
 | `admitted:{showId}:{userId}` | string | 5 min | core | token de admissão ao checkout |
 | `checkin:{ticketId}` | string | até o fim do show | core | entrada já registrada; o valor guarda portão e horário |
 | `idem:{chave}` | string | 24 h | core | Idempotency-Key do POST /orders |
-| `rl:{userId}` | sorted set | janela | core | rate limit por janela deslizante |
+| `rl:{sub}` ou `rl:ip:{hash do IP}` | sorted set | janela | core | rate limit por janela deslizante do event-service |
+| `request_rate_limiter.{operação:user:sub}.tokens` e `.timestamp` | string | segundos | core | balde do token bucket do gateway, por operação de compra e usuário (sem token, `ip:{hash do IP}`) |
 | `lock:{nome}` | string | segundos | core | lock distribuído de jobs |
 | `metrics:sectors:{showId}` | sorted set | 48 h | core | vendas por setor ao vivo |
-| `stream:reservations` | stream | MAXLEN | core | reservas a persistir no Postgres |
+| `stream:reservations` | stream | aparado até a entrada mais antiga ainda não gravada (`XTRIM MINID`) | core | reservas a persistir no Postgres |
 | `stream:activity` | stream | MAXLEN \~1000 | core | feed de atividade do painel |
 
 ## Mensageria
@@ -449,11 +462,13 @@ O `notification-service` consome `order.events` do Kafka. Ao ver um `OrderConfir
 | Canal | Tipo | Quem escreve | Quem lê | Por que esse tipo |
 | --- | --- | --- | --- | --- |
 | `stream:reservations` | Stream + consumer group | script Lua da reserva (na mesma operação atômica) | inventory, que grava no Postgres | não pode perder: usa `XACK`, `XPENDING` e `XCLAIM` para reprocessar |
-| `seatmap.{showId}` | pub/sub | inventory, a cada assento segurado, liberado ou vendido | analytics, que repassa por SSE a quem está no mapa | quem conecta lê o bitmap atual e depois só recebe as mudanças; perder uma mensagem se corrige na próxima leitura do bitmap |
+| `seatmap.{showId}` | pub/sub | script Lua, a cada assento segurado, liberado ou vendido | inventory na fase 2 e analytics a partir da fase 4, que repassam por SSE a quem está no mapa | quem conecta lê o bitmap atual e depois só recebe as mudanças; perder uma mensagem se corrige na próxima leitura do bitmap |
 | `stream:activity` | Stream | analytics | WebSocket do painel | um painel que conecta lê os últimos 50 eventos com `XREVRANGE` |
 | `dashboard.metrics` | pub/sub | analytics, 1 vez por segundo | WebSocket do painel | perder um tick não importa; o próximo chega em 1 s |
 
-A comparação entre pub/sub (fire-and-forget), Streams (persistente, com consumer groups) e Kafka vira um ADR e um trecho do README.
+A comparação entre pub/sub (fire-and-forget), Streams (persistente, com consumer groups) e Kafka está no ADR 11.
+
+Cada entrada de `stream:reservations` leva o estado final do que o script mudou (contador do lote, status das cadeiras, cota do CPF e a reserva inteira) e a posição no stream. O consumidor grava essa posição em cada linha (`redis_seq`) e nunca aplica uma entrada mais antiga por cima de uma mais nova, então reprocessar não estraga nada (ADR 26).
 
 ## Fluxos críticos
 
@@ -463,11 +478,11 @@ Seis fluxos concentram a dificuldade do projeto: abrir as vendas, comprar sem ve
 
 A fila só é ativada em shows que o produtor marcou como alta demanda. Nos demais, o comprador vai direto ao checkout, sem token de admissão.
 
-1. Antes da abertura, um job protegido por lock distribuído carrega no `redis-core` o estoque de cada lote de pista e o bitmap de assentos de cada setor.
-2. O comprador entra na fila com `ZADD NX` e recebe a posição via `ZRANK`.
-3. A cada segundo, `ZPOPMIN` admite um lote de N compradores; cada um recebe um token de admissão com TTL de 5 min. O N controla a carga no checkout.
+1. Na abertura, um job protegido por lock distribuído abre o show no Postgres e carrega no `redis-core` os setores, o estoque de cada lote e o bitmap de assentos de cada setor. A marca `show:{id}` é gravada por último: sem ela, a reserva responde 503 e o job carrega de novo.
+2. Meia hora antes, o comprador entra na sala de espera. Na abertura, um script sorteia a ordem da sala e a passa para a fila; quem chega depois entra no fim com `ZADD NX` e a hora de chegada.
+3. A cada segundo, `ZPOPMIN` admite N compradores; cada um recebe um token de admissão com TTL de 5 min. O N controla a carga no checkout.
 4. O Angular recebe posição e admissão por SSE.
-5. O rate limit do gateway barra robôs e cliques em excesso antes de chegarem ao serviço.
+5. O rate limit do gateway (token bucket no `redis-core`, por usuário e por operação) barra robôs e cliques em excesso antes de chegarem ao serviço.
 
 ### Fluxo B: checkout e saga
 
@@ -489,7 +504,7 @@ flowchart TD
 A reserva é síncrona porque o comprador precisa saber na hora se garantiu o ingresso; o pagamento segue assíncrono pela saga.
 
 - **Idempotência na entrada:** o POST /orders exige `Idempotency-Key`; um `SET NX` no Redis faz um clique duplo devolver o mesmo pedido.
-- **Pista:** o script Lua confere o token (em shows de alta demanda), o limite do CPF e o estoque do lote, decrementa, cria a reserva com TTL e faz `XADD` em `stream:reservations`. Um consumer group do inventory grava a reserva no Postgres.
+- **Pista:** o script Lua confere o token (em shows de alta demanda), o limite do CPF, o status do lote e o estoque, decrementa, cria a reserva e faz `XADD` em `stream:reservations`. Um consumer group do inventory grava a reserva no Postgres.
 - **Cadeira numerada:** o comprador escolhe até 4 assentos e o script Lua tenta `SET NX` em todos de uma vez: segura todos ou nenhum. Em seguida marca os bits no bitmap e publica a mudança em `seatmap.{showId}`, e os outros compradores veem os assentos ficarem ocupados.
 - **Cupom:** o order-service valida código, show e validade, e incrementa `coupon:{code}:uses` com um script que recusa acima do limite. Se o pedido for cancelado, o uso volta.
 - **Última defesa:** a constraint única de (show, assento) na tabela `tickets` impede a venda dupla mesmo se o Redis falhar.
@@ -499,9 +514,9 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 
 ### Fluxo C: virada de lote
 
-1. Quando o contador de um lote chega a zero, o inventory publica `LotSoldOut`.
-2. O próprio inventory consome o evento, carrega no Redis o estoque do próximo lote do setor e publica `LotOpened`.
-3. O event-service apaga o cache do show, porque o preço exibido mudou, e o analytics atualiza o painel do produtor.
+1. Quando o contador de um lote chega a zero, o mesmo script da reserva que o zerou marca o lote como esgotado e abre o próximo da lista do setor (o estoque dele já está no Redis desde a abertura). A virada por data é outro script, chamado pelo job.
+2. A partir da fase 3, o inventory publica `LotSoldOut` e `LotOpened` no Kafka.
+3. Com esses eventos, o event-service apaga o cache do show, porque o preço exibido mudou, e o analytics atualiza o painel do produtor. Até lá, o documento do show no cache pode mostrar o lote antigo por até 10 minutos. A loja não depende disso: lote, preço e ingressos restantes vêm da disponibilidade do inventory, consultada a cada 5 s, e o preço cobrado também.
 
 ### Fluxo D: atualização de show
 
@@ -539,7 +554,7 @@ Cada dado tem um padrão de cache escolhido pela tolerância a dado velho. Preç
 | Detalhe do show | cache-aside | 10 min + jitter de 0 a 60 s | `DEL` na escrita, na virada de lote e via evento em `shows.catalog` |
 | Busca e listagens | cache-aside | 60 s | só TTL; aceita até 1 min de atraso |
 | Show inexistente | cache negativo | 30 s | só TTL |
-| Show em abertura de vendas (hot key) | dois níveis: L1 em memória + L2 no Redis | L1 de 2 s | L1 expira sozinho; L2 como acima |
+| Show em abertura de vendas (hot key) | dois níveis: L1 em memória + L2 no Redis, para todo show | L1 de 2 s | L1 expira sozinho; L2 como acima |
 | Layout do local (mapa sem status) | cache-aside | 1 h | `DEL` quando o produtor edita o local |
 | Status dos assentos | sem cache | — | bitmap no `redis-core` + mudanças via pub/sub |
 | Ingressos restantes do lote | sem cache | — | lê o contador `lot:{lotId}:stock` direto |
@@ -690,9 +705,9 @@ Um único app Angular com duas áreas carregadas sob demanda: a loja e o painel 
 
 **Mapa de assentos:** é a tela mais rica do projeto. Ela desenha o layout do local a partir do MongoDB, pinta o status a partir do bitmap e aplica as mudanças que chegam por SSE sem redesenhar tudo, um bom exercício de signals e performance de renderização.
 
-**SSE ou WebSocket:** SSE onde o servidor só empurra dados ao cliente (fila, assentos, pedido, chat), porque é mais simples e passa pelo gateway como HTTP comum. WebSocket no painel, onde o cliente também envia mensagens (trocar filtros e assinaturas). Usar os dois é proposital e vira um ADR.
+**SSE ou WebSocket:** SSE onde o servidor só empurra dados ao cliente (fila, assentos, pedido, chat), porque é mais simples e passa pelo gateway como HTTP comum. A loja lê o SSE com `fetch`, e não com `EventSource`, para mandar o token no cabeçalho e nunca na URL (ADR 27). WebSocket no painel, onde o cliente também envia mensagens (trocar filtros e assinaturas). Usar os dois é proposital e vira um ADR.
 
-**Bibliotecas e testes:** Angular Material ou PrimeNG para componentes, ngx-echarts para gráficos, OTel Web SDK para tracing, testes unitários com o runner padrão da versão e Playwright para o fluxo de compra ponta a ponta.
+**Bibliotecas e testes:** Angular Material para componentes, `angular-auth-oidc-client` para o login (ADR 27), ngx-echarts para gráficos, OTel Web SDK para tracing, testes unitários com o runner padrão da versão (Vitest) e Playwright para o fluxo de compra ponta a ponta.
 
 ## Decisões de arquitetura (ADRs)
 
@@ -725,6 +740,8 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 23 | Fase 1 sem broker: catálogo por polling, reserva por API interna e pagamento simulado no order-service | antecipar o Kafka e o payment-mock | a fase 1 entrega o checkout completo como linha de base; a fase 3 troca as ligações por eventos e mostra a diferença |
 | 24 | CPF gravado como HMAC-SHA-256 com chave secreta; limite por CPF conferido num único comando no banco | SHA puro do CPF; ler o total e somar na aplicação | só existem 10^11 CPFs, então um hash sem chave se reverte por força bruta; o comando único evita a corrida entre reservas do mesmo CPF |
 | 25 | Devolução de ingresso reabre o último lote esgotado; uma reserva sai de um lote só | `SOLD_OUT` final; dividir a reserva entre dois lotes | sem isso, ingressos de reservas expiradas no último lote sairiam de venda para sempre; um lote por reserva mantém um preço só |
+| 26 | Redis como fonte da verdade durante a venda; Postgres alimentado por stream escrito no mesmo script, com estado final e posição em cada entrada; nada do estado da venda expira por TTL | gravar no Redis e no Postgres na mesma requisição; Redis só como cache | duas escritas sem transação divergem e devolvem o gargalo ao banco; o stream atômico com o script não perde nada e pode ser reaplicado; a reconciliação recarrega do Postgres |
+| 27 | Login na loja com `angular-auth-oidc-client`; SSE lido com `fetch` e o token no cabeçalho | `keycloak-js`; `EventSource` com o token na URL | biblioteca certificada e independente do provedor; token na URL vaza em logs, histórico e traces |
 
 ## Testes, carga e caos
 
@@ -817,9 +834,47 @@ Decisões da fase que viraram ADR: constraint única nos ingressos (4), um banco
 
 O que ficou para as fases seguintes, de propósito:
 
-- A tela de checkout na loja. A fase 1 entrega a compra pela API; a tela precisa de login no Angular, e a biblioteca de OIDC ainda não foi escolhida (veja as questões em aberto).
+- A tela de checkout na loja, que entrou na fase 2 junto com o login.
 - A taxa de serviço de 10% e os cupons, que entram com o lado financeiro na fase 6. Hoje o total do pedido é a soma dos ingressos.
 - O cancelamento pelo comprador e o reembolso (fase 6). As tabelas de estado do pedido e do ingresso já têm essas transições.
+
+### Fase 2 (Redis e abertura de vendas)
+
+Fase concluída em 26/11/2026. Critério de pronto atingido: no k6, nenhuma venda além da capacidade e nenhuma cadeira vendida duas vezes, com os dois motores de reserva; e a reserva em Lua foi comparada ao lock no Postgres (ADR 3).
+
+- [x] Reserva atômica em Lua no `redis-core`: contador na pista e tudo ou nada nas cadeiras, com idempotência, cota por CPF, token da fila, virada de lote por esgotamento, pausa, encerramento e devolução, todos em script (ADR 3)
+- [x] Redis como fonte da verdade durante a venda e o Postgres alimentado por `stream:reservations` com consumer group, reentrega e reaplicação segura; reconstrução do Redis a partir do Postgres se ele perder os dados (ADR 26)
+- [x] Motor de reserva escolhido por implantação (`RESERVATION_ENGINE=redis|postgres`), com os mesmos testes de concorrência, ciclo de vida, API e virada de lote rodando contra os dois
+- [x] Fila virtual nos shows de alta demanda: sala de espera, sorteio na abertura, admissão de N por segundo e token de 5 minutos conferido no script da reserva (ADR 13)
+- [x] Mapa de assentos com bitmap no Redis e mudanças por pub/sub; posição na fila e mapa ao vivo por SSE, servidos pelo inventory nesta fase (ADR 5 e 11)
+- [x] event-service: cache-aside da página do show em dois níveis (L1 de 2 s e `redis-cache`), cache negativo, jitter, proteção contra stampede e cache da busca; rate limit por janela deslizante no `redis-core`
+- [x] api-gateway: rate limit por token bucket no `redis-core` para reservar, entrar na fila e criar pedido, por usuário; rotas da fila e dos fluxos SSE, sem timeout
+- [x] Loja: login com Keycloak, disponibilidade ao vivo na página do show, fila, checkout com mapa de cadeiras em SVG, reserva com cronômetro, pagamento, pedido e "Meus ingressos" (ADR 27)
+- [x] Testes de carga com k6 dentro do Compose (`make load-opening`, `load-contention` e `load-show-page`) e conferência das invariantes no Postgres depois de cada rodada (`make load-check`)
+
+Resultados, numa máquina de 4 CPUs com o ambiente inteiro e o k6 juntos (detalhes no ADR 3):
+
+| Cenário | Redis + Lua | Postgres + lock |
+| --- | --- | --- |
+| Abertura: 2.000 usuários por 40 s, 2.500 ingressos | 78.621 tentativas, estoque esgotado, p99 2,98 s | 19.415 tentativas, 19 ingressos sem vender, p99 20,5 s, 18 timeouts |
+| Disputa: 1.000 compradores pelas mesmas 50 cadeiras | p99 283 ms | p99 1,95 s |
+| Venda além da capacidade ou cadeira duplicada | 0 | 0 |
+
+| Página do show, 200 usuários por 30 s | Com cache | Sem cache |
+| --- | --- | --- |
+| Requisições por segundo | 2.475 | 996 |
+| Latência p95 / p99 | 117 ms / 146 ms | 273 ms / 391 ms |
+
+As metas de latência do documento (reserva com p99 abaixo de 50 ms e página do show com p95 abaixo de 30 ms) não foram atingidas nesta máquina: com 2.000 usuários disparando sem pausa, o tempo é fila de CPU entre o k6 e os serviços. A comparação entre os motores e entre com e sem cache é o que os testes provam.
+
+Decisões da fase que viraram ADR: reserva em Lua (3), bitmap de assentos (5), duas instâncias de Redis (10), pub/sub, Streams e Kafka (11), fila só em alta demanda (13), Redis como fonte da verdade durante a venda (26) e login e SSE na loja (27).
+
+O que ficou para as fases seguintes, de propósito:
+
+- `LotSoldOut` e `LotOpened` no Kafka, e o event-service apagando o cache do show na virada de lote (fase 3). Até lá, o documento do show no cache pode ficar até 10 minutos atrás na virada; a loja mostra lote e preço a partir da disponibilidade do inventory.
+- Os fluxos SSE passam ao analytics-service, o hub de tempo real, na fase 4.
+- O cache do layout do local e o `POST /orders` com a `Idempotency-Key` no Redis: a idempotência do pedido continua no Postgres do order-service, que já resolve a corrida.
+- Trocar de motor de reserva com vendas abertas não é suportado (ADR 26).
 
 ## Questões em aberto
 
@@ -832,7 +887,7 @@ O que ficou para as fases seguintes, de propósito:
 - [ ] Contratos: JSON Schema ou Avro com Schema Registry?
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0 e passou a 3,5 GB na fase 1, com doze containers (cada serviço Java ocupa de 400 a 600 MB; Keycloak e `grafana/otel-lgtm`, cerca de 600 MB cada). Medir de novo quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
-- [ ] Login no Angular: qual biblioteca de OIDC usar para o fluxo com PKCE (`keycloak-js`, `angular-auth-oidc-client` ou outra)? A tela de checkout depende disso
+- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1 e 3,8 GB na fase 2 em repouso, com doze containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
+- [x] Login no Angular: `angular-auth-oidc-client`, com Authorization Code e PKCE (ADR 27)
 - [ ] CPF do comprador: hoje ele é informado na reserva. Num produto real viria do cadastro, validado; vale levar o CPF para o cadastro no Keycloak?
-- [ ] Reconciliação após perda do Redis: definir o algoritmo exato para reconstruir o estoque dos lotes e o bitmap de assentos a partir do Postgres
+- [x] Reconciliação após perda do Redis: a marca `show:{id}` é gravada por último na carga; sem ela, o job recarrega o show inteiro a partir do Postgres (ADR 26)
