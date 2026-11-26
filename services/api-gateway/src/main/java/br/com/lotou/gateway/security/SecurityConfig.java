@@ -63,8 +63,8 @@ public class SecurityConfig {
                         // Reservar e comprar é do comprador.
                         .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**", "/api/v1/queue/**")
                         .hasRole(Roles.BUYER)
-                        // Pausar e retomar lote é do produtor.
-                        .pathMatchers("/api/v1/lots/**").hasRole(Roles.PRODUCER)
+                        // Pausar e retomar lote, e ver as vendas dos shows, é do produtor.
+                        .pathMatchers("/api/v1/lots/**", "/api/v1/analytics/**").hasRole(Roles.PRODUCER)
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))

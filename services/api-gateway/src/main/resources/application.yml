@@ -84,6 +84,13 @@ spring:
               filters:
                 - StripPrefix=1
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+            # Vendas, relatório e pedidos de cada show, para o produtor (read models).
+            - id: analytics-service
+              uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/v1/analytics/**
+              filters:
+                - StripPrefix=1
 
   data:
     redis:

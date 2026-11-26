@@ -31,6 +31,7 @@ class GatewayRoutingAndSecurityTests {
     private static final UpstreamStub eventService = UpstreamStub.start();
     private static final UpstreamStub inventoryService = UpstreamStub.start();
     private static final UpstreamStub orderService = UpstreamStub.start();
+    private static final UpstreamStub analyticsService = UpstreamStub.start();
 
     @Autowired
     private ApplicationContext context;
@@ -42,6 +43,7 @@ class GatewayRoutingAndSecurityTests {
         registry.add("EVENT_SERVICE_URL", eventService::url);
         registry.add("INVENTORY_SERVICE_URL", inventoryService::url);
         registry.add("ORDER_SERVICE_URL", orderService::url);
+        registry.add("ANALYTICS_SERVICE_URL", analyticsService::url);
     }
 
     @AfterAll
@@ -49,6 +51,7 @@ class GatewayRoutingAndSecurityTests {
         eventService.close();
         inventoryService.close();
         orderService.close();
+        analyticsService.close();
     }
 
     @BeforeEach
@@ -56,6 +59,7 @@ class GatewayRoutingAndSecurityTests {
         eventService.reset();
         inventoryService.reset();
         orderService.reset();
+        analyticsService.reset();
         this.client = WebTestClient.bindToApplicationContext(this.context)
                 .apply(springSecurity())
                 .configureClient()
@@ -198,6 +202,21 @@ class GatewayRoutingAndSecurityTests {
         assertThat(inventoryService.lastRequest().header("Idempotency-Key")).isEqualTo("chave-r");
         assertThat(orderService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
                 .containsExactly("/v1/orders", "/v1/orders");
+    }
+
+    @Test
+    void vendasDoShowSaoDoProdutorEVaoParaOAnalytics() {
+        this.client.get().uri("/api/v1/analytics/shows/s1/sales").exchange()
+                .expectStatus().isUnauthorized();
+        this.client.mutateWith(userWithRole("buyer"))
+                .get().uri("/api/v1/analytics/shows/s1/sales").exchange()
+                .expectStatus().isForbidden();
+        this.client.mutateWith(userWithRole("producer"))
+                .get().uri("/api/v1/analytics/shows/s1/statement").exchange()
+                .expectStatus().isOk();
+
+        assertThat(analyticsService.lastRequest().path()).isEqualTo("/v1/analytics/shows/s1/statement");
+        assertThat(inventoryService.requests()).isEmpty();
     }
 
     @Test
