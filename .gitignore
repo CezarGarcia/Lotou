@@ -32,3 +32,6 @@ playwright-report/
 !.vscode/extensions.json
 *.iml
 .DS_Store
+
+# Worktrees temporários das ferramentas de desenvolvimento.
+.claude/worktrees/
