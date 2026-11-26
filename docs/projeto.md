@@ -366,12 +366,12 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | inventory | `seats` | uma linha por cadeira numerada, com status e a reserva que a segura |
 | inventory | `reservations`, `reservation_items` | reserva com status e `expires_at`; um item por ingresso, com o preço congelado. Na fase 1 é gravada direto; na fase 2 passa a vir do Redis Stream |
 | inventory | `purchase_limits` | ingressos por CPF em cada show; a chave usa o HMAC do CPF |
-| inventory | `catalog_sync` | até onde a leitura do catálogo já chegou (fases 1 e 2) |
+| inventory | `outbox` | fatos de reservas e lotes a publicar em `inventory.events`, gravados por trigger na mesma transação de cada mudança de status (ADR 8) |
 | order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; o cupom aplicado entra na fase 6 |
 | order | `tickets` | ingresso emitido e status (VALID, USED ou CANCELLED); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla. O código do QR entra na fase 4 |
 | order | `coupons` | código, desconto, limite de uso, validade e show |
 | order | `refunds` | pedido de reembolso, valor, status e tentativas |
-| order | `outbox` | eventos a publicar no Kafka, gravados na mesma transação do pedido |
+| order | `outbox` | eventos e comandos a publicar no Kafka, gravados na mesma transação do pedido e da saga |
 | order | `saga_state` | passo atual de cada saga (compra ou cancelamento), para retomar após falha |
 | checkin | `valid_tickets` | cópia local dos ingressos válidos, alimentada por eventos do Kafka |
 | checkin | `checkins` | entrada registrada, com portão e horário; constraint única em `ticket_id` |
@@ -430,16 +430,16 @@ A regra que guia tudo: **Kafka carrega fatos de domínio, RabbitMQ carrega taref
 
 ### Kafka (fatos de domínio e comandos da saga)
 
-Todo evento usa o mesmo envelope: `eventId`, `type`, `version`, `occurredAt` e `payload`. O contexto de trace vai no header `traceparent`, os contratos ficam em JSON Schema na pasta `contracts/`, e a retenção é de 7 dias.
+Todo evento usa o mesmo envelope: `eventId`, `type`, `version`, `occurredAt` e `payload`. O contexto de trace vai no header `traceparent`, os contratos ficam em JSON Schema na pasta `contracts/`, com um exemplo de cada mensagem (ADR 28). A retenção depende do papel do tópico (ADR 1): o catálogo é compactado, `order.events` e `inventory.events` não têm prazo, porque são a fonte do replay dos read models, e os comandos e respostas da saga ficam 7 dias.
 
 | Tópico | Chave | Mensagens | Produz | Consome |
 | --- | --- | --- | --- | --- |
-| `shows.catalog` (compactado) | showId | ShowPublished, ShowUpdated, LotPriceChanged | event | inventory, analytics |
+| `shows.catalog` (compactado) | showId | ShowPublished, ShowUpdated (o show inteiro, com versão; uma mudança de preço de lote é um ShowUpdated) | event | inventory, analytics |
 | `order.events` | orderId | OrderCreated, OrderConfirmed, OrderCancelled, OrderRefunded, TicketsIssued, TicketsCancelled | order (via outbox) | analytics, notification, checkin |
 | `payment.commands` | orderId | AuthorizePayment, RefundPayment | order | payment-mock |
 | `payment.events` | orderId | PaymentAuthorized, PaymentDeclined, PaymentRefunded, RefundFailed | payment-mock | order |
-| `inventory.commands` | orderId | ConfirmReservation, ReleaseReservation, ReturnTickets | order | inventory |
-| `inventory.events` | showId | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened | inventory | order, analytics, inventory (virada de lote) |
+| `inventory.commands` | orderId | ConfirmReservation, ReleaseReservation (ReturnTickets na fase 6) | order | inventory |
+| `inventory.events` | showId | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened: fatos de cada mudança de status, não respostas a comandos | inventory | order, analytics, event-service (apaga o cache do show) |
 | `checkin.events` | showId | TicketCheckedIn, CheckinRejected | checkin | analytics |
 | `*.dlt` | igual à origem | mensagens que falharam após os retries | consumidores | inspeção manual |
 
@@ -494,21 +494,26 @@ flowchart TD
     C -- sim --> D["Pedido PENDING + outbox<br/>order-service, uma transação"]
     D --> E["AuthorizePayment<br/>comando no Kafka para o payment-mock"]
     E --> F{"Pagamento aprovado?"}
-    F -- não --> G["Compensação<br/>devolve os ingressos à venda, pedido CANCELLED"]
+    F -- não --> G["ReleaseReservation<br/>ingressos de volta à venda, pedido CANCELLED"]
+    F -- sim --> I["ConfirmReservation<br/>comando para o inventory"]
+    I --> J{"Reserva ainda segurada?"}
+    J -- sim --> H["Pedido CONFIRMED<br/>ingressos emitidos no Postgres"]
+    J -- "não: expirou" --> R["RefundPayment<br/>estorno, pedido CANCELLED"]
     T["Reserva expira<br/>10 min sem pagamento"] --> G
-    F -- sim --> H["Pedido CONFIRMED<br/>ingressos emitidos no Postgres"]
     H --> N["Evento no Kafka para o notification-service<br/>PDF com QR code e e-mail via RabbitMQ"]
     G --> N
+    R --> N
 ```
 
 A reserva é síncrona porque o comprador precisa saber na hora se garantiu o ingresso; o pagamento segue assíncrono pela saga.
 
-- **Idempotência na entrada:** o POST /orders exige `Idempotency-Key`; um `SET NX` no Redis faz um clique duplo devolver o mesmo pedido.
+- **Idempotência na entrada:** o POST /orders exige `Idempotency-Key`; a chave única (comprador, chave) e a reserva única por pedido no Postgres fazem um clique duplo devolver o mesmo pedido.
 - **Pista:** o script Lua confere o token (em shows de alta demanda), o limite do CPF, o status do lote e o estoque, decrementa, cria a reserva e faz `XADD` em `stream:reservations`. Um consumer group do inventory grava a reserva no Postgres.
 - **Cadeira numerada:** o comprador escolhe até 4 assentos e o script Lua tenta `SET NX` em todos de uma vez: segura todos ou nenhum. Em seguida marca os bits no bitmap e publica a mudança em `seatmap.{showId}`, e os outros compradores veem os assentos ficarem ocupados.
 - **Cupom:** o order-service valida código, show e validade, e incrementa `coupon:{code}:uses` com um script que recusa acima do limite. Se o pedido for cancelado, o uso volta.
 - **Última defesa:** a constraint única de (show, assento) na tabela `tickets` impede a venda dupla mesmo se o Redis falhar.
-- **Outbox:** pedido e evento são gravados na mesma transação; um relay publica no Kafka e marca como publicado.
+- **Outbox:** pedido, passo da saga e mensagens são gravados na mesma transação; um relay publica no Kafka em ordem, com advisory lock, e marca como publicado (ADR 8).
+- **Saga orquestrada:** o order-service guarda o passo de cada pedido em `saga_state`, envia os comandos e reage às respostas e aos fatos da reserva; se uma resposta não chega no prazo, repete o comando ou consulta a reserva (ADR 7).
 - **Consumidores idempotentes:** cada efeito é gravado junto com o `event_id` em `processed_events`; um evento repetido é ignorado.
 - **Expiração confiável:** um job no inventory varre reservas vencidas no Postgres e dispara a compensação. Notificações de expiração de chave do Redis não têm garantia de entrega, então não são usadas como gatilho.
 
@@ -883,8 +888,8 @@ O que ficou para as fases seguintes, de propósito:
 - [ ] Portaria sem internet: o leitor precisa funcionar offline e sincronizar depois?
 - [ ] QR dinâmico, que muda a cada 30 segundos para impedir print e revenda, como fase extra?
 - [ ] LLM: API paga (melhor qualidade, custo por uso) ou modelo local via Ollama (custo zero)?
-- [ ] Outbox: polling publisher (simples) ou Debezium com CDC (fase extra)?
-- [ ] Contratos: JSON Schema ou Avro com Schema Registry?
+- [x] Outbox: polling publisher com advisory lock; Debezium fica como passo seguinte se o volume crescer (ADR 8)
+- [x] Contratos: JSON Schema autocontido, com exemplos conferidos no CI (ADR 28)
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
 - [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1 e 3,8 GB na fase 2 em repouso, com doze containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
