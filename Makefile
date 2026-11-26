@@ -71,7 +71,7 @@ ps: ## Mostra o estado dos containers
 test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-analytics-service test-web ## Roda os testes de todos os serviços
 
 test-event-service: ## Testes do event-service (unitários e integração com Testcontainers)
-	cd services/event-service && ([ -d node_modules ] || npm ci) && npm test && npm run test:e2e
+	cd services/event-service && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
 
 test-api-gateway: ## Testes do api-gateway (inclui Keycloak real via Testcontainers)
 	cd services/api-gateway && ./mvnw -B -q test
@@ -85,7 +85,7 @@ test-order-service: ## Testes do order-service (checkout de ponta a ponta com o 
 	cd services/order-service && ./mvnw -B -q test
 
 test-payment-mock: ## Testes do payment-mock (unitários e integração com Postgres e Kafka via Testcontainers)
-	cd services/payment-mock && ([ -d node_modules ] || npm ci) && npm test && npm run test:e2e
+	cd services/payment-mock && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
 
 test-analytics-service: ## Testes do analytics-service (lint, tipos, unitários e integração com Kafka e MongoDB reais)
 	cd services/analytics-service && uv sync --locked && uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
@@ -95,4 +95,4 @@ replay-analytics: ## Replay dos read models do analytics (roda dentro do contain
 	$(COMPOSE) exec analytics-service python -m analytics.replay
 
 test-web: ## Testes unitários do Angular
-	cd apps/web && ([ -d node_modules ] || npm ci) && npm test -- --watch=false
+	cd apps/web && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test -- --watch=false
