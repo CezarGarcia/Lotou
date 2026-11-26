@@ -120,7 +120,8 @@ console.log('2. Compra de ponta a ponta');
 // pode estar lendo o catálogo e abrindo as vendas: espera um pouco.
 let target;
 for (let attempt = 0; attempt < 30 && !target; attempt++) {
-  for (const show of shows) {
+  // Shows de alta demanda pedem a fila virtual; a compra direta usa um show comum.
+  for (const show of shows.filter((item) => !item.highDemand)) {
     const response = await fetch(`${API}/availability/${show.id}`);
     if (!response.ok) continue;
     const sector = (await response.json()).sectors.find(

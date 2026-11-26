@@ -47,6 +47,7 @@ services:
     environment:
       <<: [*otel-env, *auth-env]
       OTEL_SERVICE_NAME: api-gateway
+      REDIS_URL: redis://redis-core:6379
       EVENT_SERVICE_URL: http://event-service:3000
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       ORDER_SERVICE_URL: http://order-service:8083
@@ -58,6 +59,8 @@ services:
       inventory-service:
         condition: service_healthy
       order-service:
+        condition: service_healthy
+      redis-core:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -71,8 +74,17 @@ services:
       OTEL_SERVICE_NAME: event-service
       PORT: "3000"
       MONGODB_URI: mongodb://mongodb:27017/event_service
+      # Cache da página e da busca (pode perder dados) e rate limit das leituras.
+      REDIS_CACHE_URL: redis://redis-cache:6379
+      REDIS_CORE_URL: redis://redis-core:6379
+      SHOW_CACHE_ENABLED: ${SHOW_CACHE_ENABLED:-true}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
     depends_on:
       mongodb:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-core:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -88,6 +100,10 @@ services:
       DATABASE_USERNAME: inventory
       DATABASE_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
       EVENT_SERVICE_URL: http://event-service:3000
+      REDIS_URL: redis://redis-core:6379
+      # redis (fase 2) ou postgres (fase 1): o teste de carga compara os dois (ADR 3).
+      RESERVATION_ENGINE: ${RESERVATION_ENGINE:-redis}
+      QUEUE_ADMISSION_RATE: ${QUEUE_ADMISSION_RATE:-100}
       # Chave do HMAC do CPF. A de desenvolvimento não serve para um ambiente real.
       CPF_HASH_KEY: ${CPF_HASH_KEY:-lotou-dev-cpf-hash-key}
     depends_on:
@@ -96,6 +112,8 @@ services:
       keycloak:
         condition: service_healthy
       event-service:
+        condition: service_healthy
+      redis-core:
         condition: service_healthy
       otel-collector:
         condition: service_started
