@@ -227,7 +227,7 @@ describe('Shows', () => {
         .post(`/v1/shows/${withoutLots.id}/publish`, {}, null)
         .expect(422);
       expect(second.body.errors).toEqual([
-        { field: 'sectors', message: 'Configure ao menos um lote' },
+        { field: 'sectors.0.lots', message: 'Configure ao menos um lote' },
       ]);
     });
 
@@ -338,7 +338,7 @@ describe('Shows', () => {
           sectors: [{ sectorId: venue.sectors[0].id, lots: [] }],
         })
         .expect(422);
-      expect(withoutLots.body.errors[0].field).toBe('sectors');
+      expect(withoutLots.body.errors[0].field).toBe('sectors.0.lots');
 
       const withoutVenue = await producer
         .patch(`/v1/shows/${show.id}`, { version: show.version, venueId: null })

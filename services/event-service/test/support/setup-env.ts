@@ -22,3 +22,11 @@ const last = await allocator.incrby('test:databases', 2);
 await allocator.quit();
 process.env.REDIS_CACHE_URL = redisUrl(last - 1);
 process.env.REDIS_CORE_URL = redisUrl(last);
+
+// No Kafka, cada arquivo tem o próprio grupo de consumidores e o próprio
+// transactional.id: os arquivos rodam em paralelo contra o mesmo broker, e um
+// não pode consumir as mensagens do outro nem cercar o relay do outro.
+const suffix = randomUUID();
+process.env.KAFKA_BROKERS = inject('kafkaBrokers');
+process.env.KAFKA_CONSUMER_GROUP = `event-service-${suffix}`;
+process.env.OUTBOX_TRANSACTIONAL_ID = `event-service-outbox-${suffix}`;

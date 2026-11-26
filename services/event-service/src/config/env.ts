@@ -62,6 +62,36 @@ export const envSchema = z.object({
    */
   TRUST_PROXY: trustProxy.default('loopback, linklocal, uniquelocal'),
 
+  /** Brokers do Kafka, separados por vírgula. */
+  KAFKA_BROKERS: z
+    .string()
+    .default('localhost:9094')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((broker) => broker.trim())
+        .filter(Boolean),
+    )
+    .pipe(
+      z.array(z.string().regex(/^[^:/\s]+:\d+$/, 'Esperado host:porta')).min(1),
+    ),
+  /**
+   * Relay do outbox: publica no Kafka as mensagens gravadas junto com os
+   * shows. Os testes que não precisam do Kafka o desligam.
+   */
+  OUTBOX_RELAY_ENABLED: z.stringbool().default(true),
+  /** De quanto em quanto tempo o relay procura mensagens pendentes. */
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(10).default(500),
+  /**
+   * `transactional.id` do produtor do relay. É o mesmo em todas as
+   * instâncias: quem assume o relay cerca (fence) o produtor da instância
+   * anterior, que não consegue mais publicar.
+   */
+  OUTBOX_TRANSACTIONAL_ID: z.string().min(1).default('event-service-outbox'),
+  /** Consumidor de `inventory.events` (apaga o cache da página do show). */
+  INVENTORY_EVENTS_CONSUMER_ENABLED: z.stringbool().default(true),
+  KAFKA_CONSUMER_GROUP: z.string().min(1).default('event-service'),
+
   /** Emissor esperado no JWT: a URL pública do realm no Keycloak. */
   AUTH_ISSUER: z.url(),
   /** De onde baixar as chaves públicas do realm (pode ser um endereço interno). */

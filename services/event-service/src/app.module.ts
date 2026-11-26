@@ -11,6 +11,9 @@ import { ProblemDetailsFilter } from './common/problem/problem-details.filter.js
 import { createValidationPipe } from './common/problem/validation.js';
 import { type Env, envSchema } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
+import { InventoryEventsModule } from './inventory-events/inventory-events.module.js';
+import { KafkaModule } from './kafka/kafka.module.js';
+import { OutboxModule } from './outbox/outbox.module.js';
 import { RateLimitModule } from './rate-limit/rate-limit.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { ShowsModule } from './shows/shows.module.js';
@@ -56,12 +59,16 @@ import { VenuesModule } from './venues/venues.module.js';
       }),
     }),
     RedisModule,
+    KafkaModule,
     AuthModule,
     RateLimitModule,
     IdempotencyModule,
     HealthModule,
     VenuesModule,
     ShowsModule,
+    // O relay publica o que os módulos acima gravam no outbox.
+    OutboxModule,
+    InventoryEventsModule,
   ],
   providers: [
     // Providers do módulo, e não chamadas no main.ts: os testes sobem o
