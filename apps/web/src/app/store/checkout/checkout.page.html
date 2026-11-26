@@ -1,0 +1,203 @@
+<div class="container page">
+  <a matButton [routerLink]="['/shows', id()]" class="back">
+    <mat-icon aria-hidden="true">arrow_back</mat-icon>
+    Voltar ao show
+  </a>
+
+  @if (store.show.hasValue()) {
+    <app-show-heading [show]="store.show.value()" eyebrow="Comprar ingressos" />
+
+    @if (store.admission()?.status === 'ADMITTED' && store.admissionLeft(); as left) {
+      @if (left.done) {
+        <div class="banner expired" role="alert">
+          <mat-icon aria-hidden="true">timer_off</mat-icon>
+          <p>Seu tempo para reservar acabou. A vez passou para o próximo da fila.</p>
+          <button matButton="filled" type="button" (click)="store.goToQueue()">
+            Voltar para a fila
+          </button>
+        </div>
+      } @else {
+        <div class="banner" role="timer" aria-live="off">
+          <mat-icon aria-hidden="true">how_to_reg</mat-icon>
+          <p>
+            Chegou a sua vez na fila. Você tem <strong>{{ admissionClock() }}</strong> para
+            reservar.
+          </p>
+        </div>
+      }
+    }
+
+    @if (store.sector(); as sector) {
+      @let live = store.live();
+      <div class="layout">
+        <section class="main" aria-labelledby="sector-title">
+          <header class="sector">
+            <div>
+              <h2 id="sector-title">{{ sector.name }}</h2>
+              <p>
+                {{ kindLabels[sector.kind] }}
+                @if (live?.lot; as lot) {
+                  · {{ lot.name }}
+                }
+              </p>
+            </div>
+            @if (live) {
+              <app-sale-chip [sale]="live.sale" />
+            }
+          </header>
+
+          @if (store.seatMap(); as map) {
+            <p class="instructions">
+              Escolha até {{ maxSeats }} cadeiras no mapa. Ele se atualiza sozinho quando alguém
+              reserva.
+            </p>
+            <app-seat-map
+              [state]="map"
+              [sectorName]="sector.name"
+              (toggled)="store.toggleSeat($event)"
+            />
+            @if (store.seatsError(); as error) {
+              <div class="inline-error" role="alert">
+                <p>Não foi possível carregar as cadeiras. {{ error.message }}</p>
+                <button matButton type="button" (click)="store.retrySeats()">Tentar de novo</button>
+              </div>
+            }
+          } @else {
+            <div class="quantity">
+              <span id="quantity-label">Quantidade de ingressos</span>
+              <div class="stepper" role="group" aria-labelledby="quantity-label">
+                <button
+                  matIconButton
+                  type="button"
+                  aria-label="Menos um ingresso"
+                  [disabled]="store.quantity() <= 1"
+                  (click)="store.setQuantity(store.quantity() - 1)"
+                >
+                  <mat-icon>remove</mat-icon>
+                </button>
+                <output aria-live="polite">{{ store.quantity() }}</output>
+                <button
+                  matIconButton
+                  type="button"
+                  aria-label="Mais um ingresso"
+                  [disabled]="store.quantity() >= store.maxQuantity()"
+                  (click)="store.setQuantity(store.quantity() + 1)"
+                >
+                  <mat-icon>add</mat-icon>
+                </button>
+              </div>
+              <small>Até {{ maxSeats }} ingressos por CPF neste show.</small>
+            </div>
+          }
+
+          @if (store.notice(); as notice) {
+            <p class="notice" role="status">
+              <mat-icon aria-hidden="true">info</mat-icon>
+              {{ notice }}
+            </p>
+          }
+        </section>
+
+        <aside class="side" aria-label="Resumo da compra">
+          <form class="summary" [formGroup]="form" (ngSubmit)="submit()">
+            <h2>Resumo</h2>
+            <dl>
+              @if (store.seated()) {
+                <div>
+                  <dt>Cadeiras</dt>
+                  <dd>{{ store.seatMap()?.selected()?.join(', ') || 'nenhuma ainda' }}</dd>
+                </div>
+              }
+              <div>
+                <dt>Preço por ingresso</dt>
+                <dd>
+                  {{ store.unitPriceCents() !== null ? (store.unitPriceCents() | brl) : '–' }}
+                </dd>
+              </div>
+              <div>
+                <dt>Ingressos</dt>
+                <dd>{{ store.count() }}</dd>
+              </div>
+              <div class="total">
+                <dt>Total</dt>
+                <dd>{{ store.totalCents() !== null ? (store.totalCents() | brl) : '–' }}</dd>
+              </div>
+            </dl>
+
+            <mat-form-field appearance="outline">
+              <mat-label>CPF de quem compra</mat-label>
+              <input
+                matInput
+                appCpfMask
+                formControlName="cpf"
+                placeholder="000.000.000-00"
+                required
+              />
+              <mat-hint>Usado no limite de {{ maxSeats }} ingressos por CPF.</mat-hint>
+              @if (cpf.hasError('required')) {
+                <mat-error>Informe o CPF.</mat-error>
+              } @else if (cpf.hasError('cpfIncomplete')) {
+                <mat-error>O CPF tem 11 dígitos.</mat-error>
+              } @else if (cpf.hasError('cpf')) {
+                <mat-error>CPF inválido. Confira os números.</mat-error>
+              }
+            </mat-form-field>
+
+            @if (store.error(); as error) {
+              <div class="error" role="alert">
+                <mat-icon aria-hidden="true">error</mat-icon>
+                <div>
+                  <p>{{ error.message }}</p>
+                  @if (error.traceId) {
+                    <small>Código para o suporte: {{ error.traceId }}</small>
+                  }
+                </div>
+              </div>
+            }
+
+            <button matButton="filled" type="submit" class="cta" [disabled]="!store.canReserve()">
+              @if (store.submitting()) {
+                <mat-spinner diameter="20" aria-label="Reservando" />
+              } @else if (store.cooldown() > 0) {
+                Aguarde {{ store.cooldown() }} s
+              } @else {
+                Reservar
+              }
+            </button>
+            @if (!live) {
+              <p class="hint">Consultando os ingressos disponíveis...</p>
+            } @else if (live.sale !== 'ON_SALE') {
+              <p class="hint">Este setor não está à venda agora.</p>
+            } @else {
+              <p class="hint">A reserva segura os ingressos por 10 minutos para você pagar.</p>
+            }
+          </form>
+        </aside>
+      </div>
+    } @else {
+      <div class="state">
+        <mat-icon aria-hidden="true">search_off</mat-icon>
+        <h2>Setor não encontrado</h2>
+        <p>Este setor não existe neste show.</p>
+        <a matButton="tonal" [routerLink]="['/shows', id()]">Escolher outro setor</a>
+      </div>
+    }
+  } @else if (store.show.isLoading()) {
+    <div class="state" aria-busy="true">
+      <mat-spinner diameter="40" aria-label="Carregando" />
+    </div>
+  } @else if (notFound()) {
+    <div class="state">
+      <mat-icon aria-hidden="true">search_off</mat-icon>
+      <h2>Show não encontrado</h2>
+      <a matButton="tonal" routerLink="/">Ver todos os shows</a>
+    </div>
+  } @else if (showError(); as error) {
+    <div class="state" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <h2>Não foi possível carregar o show</h2>
+      <p>{{ error.message }}</p>
+      <button matButton="tonal" type="button" (click)="store.show.reload()">Tentar de novo</button>
+    </div>
+  }
+</div>

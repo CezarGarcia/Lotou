@@ -63,18 +63,36 @@
         <section>
           <h2>Setores e preços</h2>
           <div class="sectors">
-            @for (sector of s.sectors; track sector.id) {
+            @for (item of sectors(); track item.sector.id) {
+              @let sector = item.sector;
+              @let live = item.live;
               <div class="sector">
                 <header>
                   <h3>{{ sector.name }}</h3>
-                  <span class="kind">{{ kindLabels[sector.kind] }}</span>
+                  @if (live) {
+                    <app-sale-chip [sale]="live.sale" />
+                  }
                 </header>
+                <p class="meta">
+                  {{ kindLabels[sector.kind] }}
+                  @if (live?.sale === 'ON_SALE') {
+                    · {{ availableLabel(live!.available) }}
+                  }
+                </p>
                 @if (sector.lots.length > 0) {
                   <ol class="lots">
                     @for (lot of sector.lots; track lot.id) {
-                      <li>
-                        <span>{{ lot.name }}</span>
-                        <strong>{{ lot.priceCents | brl }}</strong>
+                      @let current = live?.lot?.id === lot.id;
+                      <li [class.current]="current">
+                        <span>
+                          {{ lot.name }}
+                          @if (current) {
+                            <em>{{ live?.sale === 'PAUSED' ? 'pausado' : 'em venda' }}</em>
+                          }
+                        </span>
+                        <strong>{{
+                          (current ? live!.lot!.priceCents : lot.priceCents) | brl
+                        }}</strong>
                       </li>
                     }
                   </ol>
@@ -88,28 +106,7 @@
       </div>
 
       <aside class="side" aria-label="Ingressos">
-        <div class="buy">
-          @if (s.priceFromCents !== null) {
-            <p class="from">
-              <small>Ingressos a partir de</small>
-              <strong>{{ s.priceFromCents | brl }}</strong>
-            </p>
-          }
-
-          @if (s.salesStartAt && s.status !== 'CANCELLED') {
-            <app-sales-countdown [opensAt]="s.salesStartAt" [timezone]="tz" />
-          }
-
-          @if (s.highDemand && salesPending()) {
-            <p class="note">
-              <mat-icon aria-hidden="true">groups</mat-icon>
-              Show de alta demanda: a abertura das vendas terá fila virtual.
-            </p>
-          }
-
-          <button matButton="filled" type="button" class="cta" disabled>Comprar ingressos</button>
-          <p class="hint">A compra pelo site estará disponível em breve.</p>
-        </div>
+        <app-buy-panel [show]="s" [availability]="availability.state()" />
       </aside>
     </article>
   } @else if (show.isLoading()) {

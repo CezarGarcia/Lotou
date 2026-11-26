@@ -4,7 +4,24 @@
   <div class="container">
     <a class="brand" routerLink="/" aria-label="Lotou, página inicial">Lotou<span>.</span></a>
     <nav aria-label="Principal">
-      <a routerLink="/">Shows</a>
+      <a routerLink="/" class="shows">Shows</a>
+      @if (auth.authenticated()) {
+        <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
+          Meus ingressos
+        </a>
+        @if (auth.firstName(); as name) {
+          <span class="user">
+            <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
+            {{ name }}
+          </span>
+        }
+        <button type="button" class="action" (click)="auth.logout()">Sair</button>
+      } @else {
+        <button type="button" class="action primary" (click)="auth.login()">
+          <span class="material-symbols-outlined" aria-hidden="true">login</span>
+          Entrar
+        </button>
+      }
     </nav>
   </div>
 </header>

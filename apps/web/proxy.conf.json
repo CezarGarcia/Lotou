@@ -1,6 +1,9 @@
 {
   "/api": {
-    "target": "http://localhost:8080"
+    "target": "http://localhost:8080",
+    "xfwd": true,
+    "proxyTimeout": 0,
+    "timeout": 0
   },
   "/otlp": {
     "target": "http://localhost:4318",

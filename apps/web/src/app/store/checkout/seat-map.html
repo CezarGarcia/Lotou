@@ -1,0 +1,115 @@
+<div class="toolbar">
+  <ul class="legend" aria-label="Legenda do mapa">
+    <li>
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle class="free" cx="10" cy="10" r="8" />
+      </svg>
+      Livre
+    </li>
+    <li>
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle class="selected" cx="10" cy="10" r="8" />
+      </svg>
+      Sua escolha
+    </li>
+    <li>
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle class="taken" cx="10" cy="10" r="8" />
+        <line class="taken" x1="5" y1="15" x2="15" y2="5" />
+      </svg>
+      Ocupada
+    </li>
+  </ul>
+  <div class="zoom" role="group" aria-label="Zoom do mapa">
+    <button
+      matIconButton
+      type="button"
+      (click)="zoomBy(-1)"
+      [disabled]="zoom() === 0"
+      aria-label="Diminuir o mapa"
+    >
+      <mat-icon>zoom_out</mat-icon>
+    </button>
+    <button
+      matIconButton
+      type="button"
+      (click)="zoomBy(1)"
+      [disabled]="!canZoomIn()"
+      aria-label="Aumentar o mapa"
+    >
+      <mat-icon>zoom_in</mat-icon>
+    </button>
+  </div>
+</div>
+
+<div class="viewport" #viewport>
+  <svg
+    [attr.viewBox]="viewBox()"
+    [style.width.%]="scale() * 100"
+    [style.max-width.px]="maxWidth()"
+    [style.min-width.px]="minWidth()"
+    role="grid"
+    aria-multiselectable="true"
+    [attr.aria-label]="'Cadeiras do setor ' + sectorName()"
+    [attr.aria-busy]="!state().loaded()"
+    (keydown)="onKeydown($event)"
+  >
+    <g aria-hidden="true">
+      <rect
+        class="stage"
+        [attr.x]="gutter"
+        y="8"
+        [attr.width]="width() - gutter * 2"
+        height="26"
+        rx="13"
+      />
+      <text class="stage-label" [attr.x]="width() / 2" y="21">PALCO</text>
+    </g>
+
+    @for (row of state().rows; track row.label) {
+      <g role="row">
+        <text role="rowheader" class="row-label" [attr.x]="gutter / 2" [attr.y]="y(row.index)">
+          {{ row.label }}
+        </text>
+        @for (seat of row.seats; track seat.label) {
+          @let available = seat.available();
+          @let selected = state().isSelected(seat.label);
+          @let cx = x(seat);
+          @let cy = y(row.index);
+          <g
+            role="gridcell"
+            class="seat"
+            [attr.data-seat]="seat.label"
+            [class.free]="available === true"
+            [class.taken]="available === false"
+            [class.selected]="selected"
+            [attr.tabindex]="tabStop() === seat.label ? 0 : -1"
+            [attr.aria-selected]="selected"
+            [attr.aria-disabled]="available !== true && !selected"
+            [attr.aria-label]="label(seat)"
+            (click)="choose(seat.label)"
+            (focus)="focused.set(seat.label)"
+          >
+            <circle [attr.cx]="cx" [attr.cy]="cy" [attr.r]="radius" />
+            @if (available === false) {
+              <line [attr.x1]="cx - 5" [attr.y1]="cy + 5" [attr.x2]="cx + 5" [attr.y2]="cy - 5" />
+            } @else {
+              <text [attr.x]="cx" [attr.y]="cy">{{ seat.number }}</text>
+            }
+          </g>
+        }
+        <text
+          class="row-label"
+          aria-hidden="true"
+          [attr.x]="width() - gutter / 2"
+          [attr.y]="y(row.index)"
+        >
+          {{ row.label }}
+        </text>
+      </g>
+    }
+  </svg>
+  @if (!state().loaded()) {
+    <p class="loading" role="status">Carregando as cadeiras...</p>
+  }
+</div>
