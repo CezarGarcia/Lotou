@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.nimbusds.jose.JOSEException;
@@ -33,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>o Keycloak: assina tokens com uma chave RSA própria e publica a chave pública (JWKS), então
  *       o order-service e o inventory-service validam os tokens de verdade;
- *   <li>o event-service: serve o catálogo de shows que o inventory lê por polling.
+ *   <li>o event-service: publica shows em {@code shows.catalog}, que o inventory lê.
  * </ul>
  */
 public final class Neighbours {
@@ -45,7 +44,6 @@ public final class Neighbours {
 
     private final HttpServer server;
     private final RSAKey key;
-    private final List<Map<String, Object>> catalog = new CopyOnWriteArrayList<>();
     private final AtomicInteger serviceTokens = new AtomicInteger();
 
     private Neighbours(HttpServer server, RSAKey key) {
@@ -64,12 +62,6 @@ public final class Neighbours {
                 neighbours.serviceTokens.incrementAndGet();
                 respond(exchange, JSON.writeValueAsString(Map.of("access_token",
                         neighbours.token("service-account", "service"), "token_type", "Bearer", "expires_in", 300)));
-            });
-            neighbours.server.createContext("/internal/v1/catalog/shows", exchange -> {
-                Map<String, Object> page = new LinkedHashMap<>();
-                page.put("items", neighbours.catalog);
-                page.put("nextCursor", null);
-                respond(exchange, JSON.writeValueAsString(page));
             });
             neighbours.server.start();
             return neighbours;
@@ -138,21 +130,38 @@ public final class Neighbours {
                 List.of(lot));
     }
 
+    /**
+     * Publica o show em {@code shows.catalog}, como o event-service publicaria: o inventory de
+     * verdade lê o tópico e monta a cópia local.
+     */
     private Show publish(UUID sectorId, Map<String, Object> sector) {
         UUID showId = UUID.randomUUID();
         Instant now = Instant.now();
         Map<String, Object> show = new LinkedHashMap<>();
-        show.put("id", showId.toString());
+        show.put("showId", showId.toString());
+        show.put("version", 2);
         show.put("producerId", "produtor-1");
         show.put("status", "PUBLISHED");
-        show.put("version", 2);
-        show.put("updatedAt", now.toString());
+        show.put("title", "Show de teste");
+        show.put("artist", "Artista de teste");
         show.put("startsAt", now.plusSeconds(60L * 86_400).toString());
+        show.put("doorsOpenAt", null);
         show.put("salesStartAt", now.minusSeconds(60).toString());
-        show.put("salesEndAt", now.plusSeconds(60L * 86_400).toString());
+        show.put("salesEndAt", now.plusSeconds(59L * 86_400).toString());
         show.put("highDemand", false);
+        show.put("venue", Map.of("id", UUID.randomUUID().toString(), "name", "Arena de teste", "city", "Recife",
+                "state", "PE", "timezone", "America/Recife"));
         show.put("sectors", List.of(sector));
-        this.catalog.add(show);
+        show.put("updatedAt", now.toString());
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("eventId", UUID.randomUUID().toString());
+        envelope.put("type", "ShowPublished");
+        envelope.put("version", 1);
+        envelope.put("occurredAt", now.toString());
+        envelope.put("payload", show);
+        String message = JSON.writeValueAsString(envelope);
+        Contracts.assertValid("shows.catalog", "ShowPublished", message);
+        TestKafka.send("shows.catalog", showId.toString(), message);
         return new Show(showId, sectorId);
     }
 

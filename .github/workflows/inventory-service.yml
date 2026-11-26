@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - services/inventory-service/**
+      # Os testes de contrato leem contracts/.
+      - contracts/**
       - .github/workflows/inventory-service.yml
   workflow_dispatch:
 

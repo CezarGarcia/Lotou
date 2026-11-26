@@ -38,15 +38,35 @@ public final class InventoryApi {
         return reserved(reserve(buyer, show, "\"seats\": [\"" + String.join("\", \"", seats) + "\"]", Cpfs.next()));
     }
 
+    /**
+     * Reserva como a loja reserva: logo depois da abertura, o estoque ainda pode estar sendo
+     * carregado no Redis (503 {@code inventory-loading}), e a mesma requisição, com a mesma
+     * Idempotency-Key, é repetida em instantes.
+     */
     public Response reserve(String buyer, Neighbours.Show show, String selection, String cpf) {
         String body = """
                 {"showId": "%s", "sectorId": "%s", %s, "cpf": "%s"}
                 """.formatted(show.id(), show.sectorId(), selection, cpf);
-        return send(HttpRequest.newBuilder(URI.create(this.baseUrl + "/v1/reservations"))
-                .header("Authorization", "Bearer " + this.neighbours.token(buyer, "buyer"))
-                .header("Idempotency-Key", UUID.randomUUID().toString())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        String key = UUID.randomUUID().toString();
+        for (int attempt = 1;; attempt++) {
+            Response response = send(HttpRequest.newBuilder(URI.create(this.baseUrl + "/v1/reservations"))
+                    .header("Authorization", "Bearer " + this.neighbours.token(buyer, "buyer"))
+                    .header("Idempotency-Key", key)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)));
+            boolean loading = response.status() == 503 && response.body() != null
+                    && "urn:lotou:problem:inventory-loading".equals(response.body().path("type").asString());
+            if (!loading || attempt == 20) {
+                return response;
+            }
+            try {
+                Thread.sleep(100);
+            }
+            catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return response;
+            }
+        }
     }
 
     private static UUID reserved(Response response) {
@@ -68,9 +88,17 @@ public final class InventoryApi {
                 .get("reservation").get("status").asString();
     }
 
-    /** Libera a reserva, como se o prazo dela tivesse acabado. */
+    /** Libera a reserva pelo comando da saga, e espera o inventory aplicá-lo. */
     public void release(UUID reservationId) {
-        internal("POST", "/internal/v1/reservations/" + reservationId + "/release");
+        String orderId = UUID.randomUUID().toString();
+        String command = """
+                {"eventId": "%s", "type": "ReleaseReservation", "version": 1, "occurredAt": "%s",
+                 "payload": {"orderId": "%s", "reservationId": "%s", "reason": "PAYMENT_DECLINED"}}
+                """.formatted(UUID.randomUUID(), java.time.Instant.now(), orderId, reservationId);
+        Contracts.assertValid("inventory.commands", "ReleaseReservation", command);
+        TestKafka.send("inventory.commands", orderId, command);
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(20))
+                .until(() -> "RELEASED".equals(reservationStatus(reservationId)));
     }
 
     private Response internal(String method, String path) {
