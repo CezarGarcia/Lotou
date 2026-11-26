@@ -1,0 +1,139 @@
+<div class="container page">
+  <a matButton routerLink="/" class="back">
+    <mat-icon aria-hidden="true">arrow_back</mat-icon>
+    Todos os shows
+  </a>
+
+  @if (show.hasValue()) {
+    @let s = show.value();
+    @let tz = s.venue?.timezone;
+
+    <article class="layout">
+      <div class="main">
+        <div class="cover">
+          <app-show-cover [artist]="s.artist" />
+          @if (s.highDemand) {
+            <span class="badge">Alta demanda</span>
+          }
+        </div>
+
+        <header class="heading">
+          <p class="title">{{ s.title }}</p>
+          <h1>{{ s.artist }}</h1>
+        </header>
+
+        @if (s.status === 'CANCELLED') {
+          <p class="cancelled" role="status">
+            <mat-icon aria-hidden="true">event_busy</mat-icon>
+            Este show foi cancelado.
+          </p>
+        }
+
+        <ul class="facts">
+          <li>
+            <mat-icon aria-hidden="true">event</mat-icon>
+            <div>
+              <strong class="capitalize">{{ s.startsAt | showDate: tz : 'full' }}</strong>
+              <span>
+                Início às {{ s.startsAt | showDate: tz : 'time' }}
+                @if (s.doorsOpenAt) {
+                  · Portões às {{ s.doorsOpenAt | showDate: tz : 'time' }}
+                }
+              </span>
+            </div>
+          </li>
+          @if (s.venue; as venue) {
+            <li>
+              <mat-icon aria-hidden="true">location_on</mat-icon>
+              <div>
+                <strong>{{ venue.name }}</strong>
+                <span>{{ venue.city }}/{{ venue.state }} · horário local</span>
+              </div>
+            </li>
+          }
+        </ul>
+
+        @if (s.description) {
+          <section>
+            <h2>Sobre o show</h2>
+            <p class="description">{{ s.description }}</p>
+          </section>
+        }
+
+        <section>
+          <h2>Setores e preços</h2>
+          <div class="sectors">
+            @for (sector of s.sectors; track sector.id) {
+              <div class="sector">
+                <header>
+                  <h3>{{ sector.name }}</h3>
+                  <span class="kind">{{ kindLabels[sector.kind] }}</span>
+                </header>
+                @if (sector.lots.length > 0) {
+                  <ol class="lots">
+                    @for (lot of sector.lots; track lot.id) {
+                      <li>
+                        <span>{{ lot.name }}</span>
+                        <strong>{{ lot.priceCents | brl }}</strong>
+                      </li>
+                    }
+                  </ol>
+                } @else {
+                  <p class="no-lots">Preços em breve.</p>
+                }
+              </div>
+            }
+          </div>
+        </section>
+      </div>
+
+      <aside class="side" aria-label="Ingressos">
+        <div class="buy">
+          @if (s.priceFromCents !== null) {
+            <p class="from">
+              <small>Ingressos a partir de</small>
+              <strong>{{ s.priceFromCents | brl }}</strong>
+            </p>
+          }
+
+          @if (s.salesStartAt && s.status !== 'CANCELLED') {
+            <app-sales-countdown [opensAt]="s.salesStartAt" [timezone]="tz" />
+          }
+
+          @if (s.highDemand && salesPending()) {
+            <p class="note">
+              <mat-icon aria-hidden="true">groups</mat-icon>
+              Show de alta demanda: a abertura das vendas terá fila virtual.
+            </p>
+          }
+
+          <button matButton="filled" type="button" class="cta" disabled>Comprar ingressos</button>
+          <p class="hint">A compra pelo site estará disponível em breve.</p>
+        </div>
+      </aside>
+    </article>
+  } @else if (show.isLoading()) {
+    <div class="loading" aria-busy="true" aria-label="Carregando o show">
+      <div class="skeleton cover"></div>
+      <div class="skeleton line wide"></div>
+      <div class="skeleton line"></div>
+    </div>
+  } @else if (notFound()) {
+    <div class="state">
+      <mat-icon aria-hidden="true">search_off</mat-icon>
+      <h1>Show não encontrado</h1>
+      <p>O link pode estar errado, ou o show saiu do ar.</p>
+      <a matButton="tonal" routerLink="/">Ver todos os shows</a>
+    </div>
+  } @else if (error(); as error) {
+    <div class="state" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <h1>Não foi possível carregar o show</h1>
+      <p>{{ error.message }}</p>
+      @if (error.traceId) {
+        <p class="trace">Código para o suporte: {{ error.traceId }}</p>
+      }
+      <button matButton="tonal" type="button" (click)="show.reload()">Tentar de novo</button>
+    </div>
+  }
+</div>

@@ -1,0 +1,9 @@
+{
+  "/api": {
+    "target": "http://localhost:8080"
+  },
+  "/otlp": {
+    "target": "http://localhost:4318",
+    "pathRewrite": { "^/otlp": "" }
+  }
+}

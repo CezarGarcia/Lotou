@@ -1,0 +1,96 @@
+<section class="hero">
+  <div class="container">
+    <h1>Seu próximo show começa aqui.</h1>
+    <p class="lead">Busque por artista, cidade ou data e garanta seu lugar.</p>
+
+    <form class="filters" [formGroup]="form" (ngSubmit)="submit()" role="search">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Artista</mat-label>
+        <mat-icon matPrefix aria-hidden="true">mic</mat-icon>
+        <input matInput formControlName="artist" maxlength="100" autocomplete="off" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Cidade</mat-label>
+        <mat-icon matPrefix aria-hidden="true">location_on</mat-icon>
+        <input matInput formControlName="city" maxlength="100" autocomplete="off" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>De</mat-label>
+        <input matInput type="date" formControlName="from" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Até</mat-label>
+        <input matInput type="date" formControlName="to" [min]="form.controls.from.value" />
+      </mat-form-field>
+
+      <button matButton="filled" type="submit" class="submit" [disabled]="invalidPeriod">
+        <mat-icon aria-hidden="true">search</mat-icon>
+        Buscar
+      </button>
+    </form>
+
+    @if (invalidPeriod) {
+      <p class="form-error" role="alert">A data final precisa ser igual ou posterior à inicial.</p>
+    }
+  </div>
+</section>
+
+<section class="results container" aria-live="polite" [attr.aria-busy]="store.loading()">
+  <header class="results-header">
+    <h2>{{ hasFilters ? 'Resultado da busca' : 'Próximos shows' }}</h2>
+    @if (hasFilters) {
+      <button matButton type="button" (click)="clear()">
+        <mat-icon aria-hidden="true">close</mat-icon>
+        Limpar filtros
+      </button>
+    }
+  </header>
+
+  @if (store.loading()) {
+    <div class="grid" aria-hidden="true">
+      @for (item of skeletons; track $index) {
+        <div class="skeleton"></div>
+      }
+    </div>
+  } @else if (store.error(); as error) {
+    <div class="state" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <h3>Não foi possível carregar os shows</h3>
+      <p>{{ error.message }}</p>
+      @if (error.traceId) {
+        <p class="trace">Código para o suporte: {{ error.traceId }}</p>
+      }
+      <button matButton="tonal" type="button" (click)="store.retry()">Tentar de novo</button>
+    </div>
+  } @else if (store.empty()) {
+    <div class="state">
+      <mat-icon aria-hidden="true">search_off</mat-icon>
+      <h3>Nenhum show encontrado</h3>
+      <p>Tente outro artista, outra cidade ou um período maior.</p>
+      @if (hasFilters) {
+        <button matButton="tonal" type="button" (click)="clear()">Ver todos os shows</button>
+      }
+    </div>
+  } @else {
+    <div class="grid">
+      @for (show of store.shows(); track show.id) {
+        <app-show-card [show]="show" />
+      }
+    </div>
+
+    @if (store.hasMore()) {
+      <div class="more">
+        @if (store.loadingMore()) {
+          <mat-progress-bar mode="indeterminate" aria-label="Carregando mais shows" />
+        } @else {
+          <button matButton="outlined" type="button" (click)="store.loadMore()">
+            Carregar mais shows
+          </button>
+        }
+      </div>
+    }
+  }
+</section>
