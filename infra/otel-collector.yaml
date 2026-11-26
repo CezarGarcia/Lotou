@@ -1,0 +1,65 @@
+# OTel Collector: ponto único de entrada da telemetria.
+#
+#   serviços e navegador --OTLP--> Collector --OTLP--> Tempo, Prometheus e Loki
+#
+# O Collector é quem garante a regra de LGPD do projeto: CPF e e-mail não chegam
+# ao backend de observabilidade, mesmo que um serviço os coloque num span ou log
+# por engano.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Evita que um pico de telemetria derrube o Collector por falta de memória.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Remove atributos cujo nome já indica dado pessoal, e mascara qualquer valor
+  # com formato de CPF ou de e-mail, esteja onde estiver (atributos de span, de
+  # log, de recurso e corpo do log).
+  redaction/pii:
+    allow_all_keys: true
+    blocked_key_patterns:
+      - (?i).*cpf.*
+      - (?i).*e-?mail.*
+    blocked_values:
+      # CPF com ou sem pontuação: 123.456.789-09 ou 12345678909
+      - \b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b
+      # E-mail
+      - \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b
+    summary: silent
+
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp/lgtm:
+    endpoint: http://lgtm:4318
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction/pii, batch]
+      exporters: [otlphttp/lgtm]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction/pii, batch]
+      exporters: [otlphttp/lgtm]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction/pii, batch]
+      exporters: [otlphttp/lgtm]

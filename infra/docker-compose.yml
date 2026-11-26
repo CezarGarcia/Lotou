@@ -1,0 +1,153 @@
+# Ambiente local do Lotou. Suba pela raiz: `make up` ou `docker compose up`.
+#
+# Portas publicadas no host:
+#   4200  loja (Angular)             8080  api-gateway
+#   8180  Keycloak                   3000  Grafana (Tempo, Prometheus e Loki)
+#   5432  Postgres                   27017 MongoDB
+#   6379  redis-cache                6380  redis-core
+#   4317/4318  OTel Collector (OTLP gRPC e HTTP)
+#
+# As credenciais abaixo são de desenvolvimento. Para trocá-las, crie um arquivo
+# .env na raiz (veja .env.example).
+
+services:
+  # ---------------------------------------------------------------- dados
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lotou}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lotou}
+      POSTGRES_DB: postgres
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongodb:
+    image: mongo:8.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Cache: pode perder dados. Descarta por LRU e não persiste nada.
+  redis-cache:
+    image: redis:8.8-alpine
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "6379:6379"
+    healthcheck: &redis-healthcheck
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Estado quente (estoque, assentos, fila): não pode perder dados.
+  # Nunca descarta chave e grava AOF a cada segundo.
+  redis-core:
+    image: redis:8.8-alpine
+    command:
+      - redis-server
+      - --maxmemory-policy
+      - noeviction
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-core-data:/data
+    healthcheck: *redis-healthcheck
+
+  # ------------------------------------------------------------ identidade
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # O emissor dos tokens é sempre a URL que o navegador enxerga, mesmo
+      # quando um serviço fala com o Keycloak pela rede interna do Compose.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak/lotou-realm.json:/opt/keycloak/data/import/lotou-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # A imagem não tem curl: o teste abre um socket na porta de management.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # -------------------------------------------------------- observabilidade
+  # Todos os serviços exportam para o Collector, que mascara dados pessoais
+  # e repassa para o Tempo, o Prometheus e o Loki.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.166.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      lgtm:
+        condition: service_healthy
+
+  # Tempo, Prometheus, Loki e Grafana num container só (desenvolvimento).
+  lgtm:
+    image: grafana/otel-lgtm:0.41.1
+    ports:
+      - "3000:3000"
+    volumes:
+      - lgtm-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  postgres-data:
+  mongodb-data:
+  redis-core-data:
+  lgtm-data:

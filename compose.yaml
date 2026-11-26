@@ -1,0 +1,6 @@
+# Ponto de entrada: `docker compose up` na raiz sobe o ambiente inteiro.
+# A definição dos serviços fica em infra/docker-compose.yml.
+name: lotou
+
+include:
+  - infra/docker-compose.yml

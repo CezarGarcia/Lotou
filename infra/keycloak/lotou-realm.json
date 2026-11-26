@@ -1,0 +1,160 @@
+{
+  "realm": "lotou",
+  "displayName": "Lotou",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["pt-BR"],
+  "defaultLocale": "pt-BR",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "roles": {
+    "realm": [
+      {
+        "name": "buyer",
+        "description": "Comprador: compra ingressos na loja e acompanha seus pedidos"
+      },
+      {
+        "name": "producer",
+        "description": "Produtor: cria shows e acompanha vendas, portaria e financeiro"
+      },
+      {
+        "name": "gate-staff",
+        "description": "Portaria: lê o QR code dos ingressos na entrada do show"
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-lotou",
+    "description": "Papéis de quem se cadastra pela loja",
+    "composite": true,
+    "composites": {
+      "realm": ["buyer"]
+    }
+  },
+  "clientScopes": [
+    {
+      "name": "lotou-api",
+      "description": "Marca o token como destinado à API do Lotou e expõe os papéis do realm",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-lotou-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "lotou-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "lotou-web",
+      "name": "Lotou (loja, painel e portaria)",
+      "description": "Aplicação Angular. Cliente público: autentica com Authorization Code + PKCE",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:4200",
+      "baseUrl": "/",
+      "redirectUris": ["http://localhost:4200/*"],
+      "webOrigins": ["http://localhost:4200"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*"
+      },
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["basic", "profile", "email", "lotou-api"],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "lotou-seed",
+      "name": "Lotou seed",
+      "description": "Carga de dados fictícios. Cliente confidencial com conta de serviço (client credentials)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "lotou-seed-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["basic", "lotou-api"],
+      "optionalClientScopes": []
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "lotou-api",
+      "roles": ["buyer", "producer", "gate-staff"]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-lotou-seed",
+      "enabled": true,
+      "serviceAccountClientId": "lotou-seed",
+      "realmRoles": ["producer"]
+    },
+    {
+      "username": "comprador",
+      "email": "comprador@lotou.test",
+      "emailVerified": true,
+      "firstName": "Bia",
+      "lastName": "Compradora",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
+      "realmRoles": ["buyer"]
+    },
+    {
+      "username": "produtor",
+      "email": "produtor@lotou.test",
+      "emailVerified": true,
+      "firstName": "Caio",
+      "lastName": "Produtor",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
+      "realmRoles": ["producer"]
+    },
+    {
+      "username": "portaria",
+      "email": "portaria@lotou.test",
+      "emailVerified": true,
+      "firstName": "Duda",
+      "lastName": "Portaria",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "lotou123", "temporary": false }],
+      "realmRoles": ["gate-staff"]
+    }
+  ]
+}
