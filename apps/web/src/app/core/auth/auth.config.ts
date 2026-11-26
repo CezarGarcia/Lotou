@@ -13,7 +13,8 @@ export const AUTH_SETTINGS = {
   clientId: 'lotou-web',
   /** Para onde o Keycloak devolve o comprador depois do login e do logout. */
   redirectUrl: 'http://localhost:4200/',
-  scope: 'openid profile email',
+  // Sem `email`: a loja não precisa do e-mail, e um dado pessoal a menos circula no navegador.
+  scope: 'openid profile',
 } as const;
 
 /**
@@ -33,7 +34,7 @@ export const OIDC_CONFIG: OpenIdConfiguration = {
   renewTimeBeforeTokenExpiresInSeconds: 30,
   // O Keycloak entrega refresh token no fluxo padrão, sem pedir `offline_access`.
   disableRefreshTokenOfflineAccessScopeWarning: true,
-  // Nome e e-mail vêm do ID token; não precisa chamar o userinfo.
+  // O nome vem do ID token; não precisa chamar o userinfo.
   autoUserInfo: false,
   // A volta do login é tratada pelo AuthService, que leva o comprador à página que ele queria.
   triggerAuthorizationResultEvent: true,
