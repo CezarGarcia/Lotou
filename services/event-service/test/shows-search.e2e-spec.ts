@@ -59,6 +59,9 @@ describe('Busca de shows', () => {
       }),
     );
   });
+  // Aqui se testa o filtro da busca, não o cache (veja
+  // show-search-cache.e2e-spec.ts): cada teste lê o MongoDB.
+  beforeEach(() => t.redisCache.flushdb());
   afterAll(() => t.close());
 
   it('lista só os publicados, do mais próximo ao mais distante', async () => {

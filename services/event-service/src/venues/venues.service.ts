@@ -5,6 +5,7 @@ import { newId } from '../common/ids/id.js';
 import { type Page, toPage } from '../common/pagination/cursor.js';
 import { ProblemException, Problems } from '../common/problem/problem.js';
 import { normalizeText } from '../common/text/normalize.js';
+import { ShowPageCache } from '../shows/cache/show-page.cache.js';
 import { Show } from '../shows/show.schema.js';
 import { Venue } from './venue.schema.js';
 import { toVenueResponse, type VenueResponse } from './venue.response.js';
@@ -21,6 +22,7 @@ export class VenuesService {
     // Os shows guardam uma cópia de nome e cidade do local (para a busca), e
     // o local não pode mudar de setores enquanto um show depende deles.
     @InjectModel(Show.name) private readonly shows: Model<Show>,
+    private readonly showPageCache: ShowPageCache,
   ) {}
 
   async create(producerId: string, dto: CreateVenueDto): Promise<Venue> {
@@ -132,6 +134,10 @@ export class VenuesService {
           },
         },
       );
+      // Lidos depois do update: todo show que recebeu o nome novo sai do
+      // cache. Um show que entrar no local depois disso já lê o local atual.
+      const showIds = await this.shows.distinct('_id', { 'venue.id': id });
+      await this.showPageCache.evict(showIds);
     }
     return updated;
   }

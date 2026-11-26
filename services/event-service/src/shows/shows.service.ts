@@ -1,12 +1,12 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model, QueryFilter } from 'mongoose';
-import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { type Page, toPage } from '../common/pagination/cursor.js';
 import { ProblemException, Problems } from '../common/problem/problem.js';
 import { escapeRegExp, normalizeText } from '../common/text/normalize.js';
 import type { Venue } from '../venues/venue.schema.js';
 import { VenuesService } from '../venues/venues.service.js';
+import { ShowPageCache } from './cache/show-page.cache.js';
 import {
   buildSectors,
   localDate,
@@ -68,6 +68,7 @@ export class ShowsService {
   constructor(
     @InjectModel(Show.name) private readonly shows: Model<Show>,
     private readonly venues: VenuesService,
+    private readonly pageCache: ShowPageCache,
   ) {}
 
   /** Cria o show como rascunho. Ele só aparece na loja depois de publicado. */
@@ -159,15 +160,6 @@ export class ShowsService {
     );
   }
 
-  /** O show como a loja o vê. Um rascunho só existe para o dono. */
-  async getVisible(id: string, user?: AuthenticatedUser): Promise<Show> {
-    const show = await this.shows.findById(id).lean();
-    if (!show || (show.status === 'DRAFT' && show.producerId !== user?.id)) {
-      throw Problems.notFound('Show');
-    }
-    return show;
-  }
-
   async update(
     id: string,
     producerId: string,
@@ -240,7 +232,11 @@ export class ShowsService {
         { returnDocument: 'after' },
       )
       .lean();
-    return updated ?? versionConflict();
+    if (!updated) {
+      versionConflict();
+    }
+    await this.pageCache.evict([id]);
+    return updated;
   }
 
   /** DRAFT -> PUBLISHED: exige local, ao menos um setor e ao menos um lote. */
@@ -274,15 +270,21 @@ export class ShowsService {
         { returnDocument: 'after' },
       )
       .lean();
-    return published ?? versionConflict();
+    if (!published) {
+      versionConflict();
+    }
+    await this.pageCache.evict([id]);
+    return published;
   }
 
   /**
    * Avança os shows cujo horário chegou: PUBLISHED -> ON_SALE na abertura das
    * vendas e ON_SALE -> SALES_CLOSED no encerramento.
    *
-   * Cada passo é um único update condicional, então pode rodar em várias
-   * instâncias ao mesmo tempo sem lock: só uma delas altera cada show.
+   * Cada passo lê os candidatos e faz um único update condicional sobre eles,
+   * então pode rodar em várias instâncias ao mesmo tempo sem lock: só uma
+   * delas altera cada show. Os candidatos saem do cache da página; a
+   * instância que perdeu a corrida também os tira, o que não faz mal.
    */
   async advanceLifecycle(now: Date = new Date()): Promise<number> {
     const steps = [
@@ -295,10 +297,18 @@ export class ShowsService {
       if (!canTransition(from, to)) {
         throw new Error(`Transição fora da tabela: ${from} -> ${to}`);
       }
+      const due: QueryFilter<Show> = { status: from, [when]: { $lte: now } };
+      const ids = await this.shows.distinct('_id', due);
+      if (ids.length === 0) {
+        continue;
+      }
+      // A condição se repete no update: um candidato que outra instância já
+      // avançou não muda de novo.
       const result = await this.shows.updateMany(
-        { status: from, [when]: { $lte: now } },
+        { ...due, _id: { $in: ids } },
         { $set: { status: to }, $inc: { version: 1 } },
       );
+      await this.pageCache.evict(ids);
       if (result.modifiedCount > 0) {
         this.logger.log({
           msg: 'Shows avançaram de estado',

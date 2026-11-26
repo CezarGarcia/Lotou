@@ -11,6 +11,8 @@ import { ProblemDetailsFilter } from './common/problem/problem-details.filter.js
 import { createValidationPipe } from './common/problem/validation.js';
 import { type Env, envSchema } from './config/env.js';
 import { HealthModule } from './health/health.module.js';
+import { RateLimitModule } from './rate-limit/rate-limit.module.js';
+import { RedisModule } from './redis/redis.module.js';
 import { ShowsModule } from './shows/shows.module.js';
 import { TelemetryModule } from './telemetry/telemetry.module.js';
 import { VenuesModule } from './venues/venues.module.js';
@@ -53,7 +55,9 @@ import { VenuesModule } from './venues/venues.module.js';
         waitForModelInit: true,
       }),
     }),
+    RedisModule,
     AuthModule,
+    RateLimitModule,
     IdempotencyModule,
     HealthModule,
     VenuesModule,

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
-// Testes de integração: a aplicação inteira contra um MongoDB real, que o
-// Testcontainers sobe uma vez para a execução toda.
+// Testes de integração: a aplicação inteira contra um MongoDB e um Redis
+// reais, que o Testcontainers sobe uma vez para a execução toda.
 export default defineConfig({
   test: {
     globals: true,
@@ -20,6 +20,9 @@ export default defineConfig({
       // Nunca é chamado: os testes trocam o conjunto de chaves por um local.
       AUTH_JWKS_URI: 'http://keycloak.test/realms/lotou/certs',
       AUTH_AUDIENCE: 'lotou-api',
+      // O rate limit fica ligado em todo teste, mas com um teto que nenhum
+      // alcança; rate-limit.e2e-spec.ts testa o limite com um teto baixo.
+      RATE_LIMIT_MAX: '1000000',
     },
   },
 });

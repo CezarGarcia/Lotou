@@ -2,6 +2,7 @@ import { newId } from '../common/ids/id.js';
 import type { VenueSector } from '../venues/venue.schema.js';
 import {
   buildSectors,
+  isVisibleTo,
   localDate,
   publishViolations,
   scheduleViolations,
@@ -258,6 +259,23 @@ describe('publishViolations', () => {
         (v) => v.field,
       ),
     ).toEqual(['startsAt']);
+  });
+});
+
+describe('isVisibleTo', () => {
+  const producerId = 'produtor';
+
+  it('mostra o show publicado a todos', () => {
+    const show = { status: 'ON_SALE' as const, producerId };
+    expect(isVisibleTo(show)).toBe(true);
+    expect(isVisibleTo(show, 'outro')).toBe(true);
+  });
+
+  it('mostra o rascunho só ao dono', () => {
+    const draft = { status: 'DRAFT' as const, producerId };
+    expect(isVisibleTo(draft, producerId)).toBe(true);
+    expect(isVisibleTo(draft, 'outro')).toBe(false);
+    expect(isVisibleTo(draft)).toBe(false);
   });
 });
 

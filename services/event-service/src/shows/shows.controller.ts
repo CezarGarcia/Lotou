@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,12 +15,10 @@ import type { Response } from 'express';
 import { CurrentUser, Public, Roles } from '../auth/auth.decorators.js';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { Idempotent } from '../common/idempotency/idempotency.interceptor.js';
-import type { Page } from '../common/pagination/cursor.js';
-import {
-  type ShowResponse,
-  type ShowSummaryResponse,
-  toShowResponse,
-} from './show.response.js';
+import { RateLimited } from '../rate-limit/rate-limit.guard.js';
+import { ShowPageCache } from './cache/show-page.cache.js';
+import { ShowSearchCache } from './cache/show-search.cache.js';
+import { type ShowResponse, toShowResponse } from './show.response.js';
 import {
   type CreateShowDto,
   createShowSchema,
@@ -31,9 +30,15 @@ import {
 } from './shows.schemas.js';
 import { ShowsService } from './shows.service.js';
 
+const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
+
 @Controller({ path: 'shows', version: '1' })
 export class ShowsController {
-  constructor(private readonly shows: ShowsService) {}
+  constructor(
+    private readonly shows: ShowsService,
+    private readonly pageCache: ShowPageCache,
+    private readonly searchCache: ShowSearchCache,
+  ) {}
 
   @Post()
   @Roles('producer')
@@ -48,21 +53,28 @@ export class ShowsController {
     return toShowResponse(show);
   }
 
+  // As duas leituras devolvem o JSON pronto, como está no cache: sem parse e
+  // nova serialização a cada acerto. O contrato é `Page<ShowSummaryResponse>`
+  // na busca e `ShowResponse` na página do show.
   @Get()
   @Public()
+  @RateLimited()
+  @Header('Content-Type', JSON_CONTENT_TYPE)
   search(
     @Query({ schema: searchShowsQuerySchema }) query: SearchShowsQuery,
-  ): Promise<Page<ShowSummaryResponse>> {
-    return this.shows.search(query);
+  ): Promise<string> {
+    return this.searchCache.get(query, () => this.shows.search(query));
   }
 
   @Get(':id')
   @Public()
-  async get(
+  @RateLimited()
+  @Header('Content-Type', JSON_CONTENT_TYPE)
+  get(
     @Param('id', { schema: showIdSchema }) id: string,
     @CurrentUser() user: AuthenticatedUser | undefined,
-  ): Promise<ShowResponse> {
-    return toShowResponse(await this.shows.getVisible(id, user));
+  ): Promise<string> {
+    return this.pageCache.get(id, user);
   }
 
   @Patch(':id')

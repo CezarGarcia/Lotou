@@ -13,6 +13,7 @@ import { CurrentUser, Public, Roles } from '../auth/auth.decorators.js';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { Idempotent } from '../common/idempotency/idempotency.interceptor.js';
 import type { Page } from '../common/pagination/cursor.js';
+import { RateLimited } from '../rate-limit/rate-limit.guard.js';
 import { toVenueResponse, type VenueResponse } from './venue.response.js';
 import {
   type CreateVenueDto,
@@ -44,6 +45,7 @@ export class VenuesController {
 
   @Get()
   @Public()
+  @RateLimited()
   list(
     @Query({ schema: listVenuesQuerySchema }) query: ListVenuesQuery,
   ): Promise<Page<VenueResponse>> {
@@ -52,6 +54,7 @@ export class VenuesController {
 
   @Get(':id')
   @Public()
+  @RateLimited()
   async get(
     @Param('id', { schema: venueIdSchema }) id: string,
   ): Promise<VenueResponse> {

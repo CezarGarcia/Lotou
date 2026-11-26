@@ -213,6 +213,17 @@ export function publishViolations(
   return violations;
 }
 
+/**
+ * Quem enxerga o show na loja: todos, menos o rascunho, que só existe para o
+ * dono. Sem `userId`, é a visão de quem não está autenticado.
+ */
+export function isVisibleTo(
+  show: Pick<Show, 'status' | 'producerId'>,
+  userId?: string,
+): boolean {
+  return show.status !== 'DRAFT' || show.producerId === userId;
+}
+
 /** O dia `AAAA-MM-DD` de um instante, no fuso informado. */
 export function localDate(instant: Date, timezone: string): string {
   // O locale en-CA formata datas como AAAA-MM-DD.
