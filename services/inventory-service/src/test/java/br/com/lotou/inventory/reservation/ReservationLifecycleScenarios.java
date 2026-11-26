@@ -17,7 +17,6 @@ import br.com.lotou.inventory.support.Concurrently;
 import br.com.lotou.inventory.support.Concurrently.Result;
 import br.com.lotou.inventory.support.Cpfs;
 import br.com.lotou.inventory.support.Fixtures;
-import br.com.lotou.inventory.support.IntegrationTest;
 import br.com.lotou.inventory.support.MutableClock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -25,8 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /** O ciclo da reserva: segurar, confirmar, liberar e expirar. */
-@IntegrationTest
-class ReservationLifecycleTests {
+abstract class ReservationLifecycleScenarios {
 
     @Autowired
     private ReservationService service;
@@ -45,7 +43,13 @@ class ReservationLifecycleTests {
         this.clock.reset();
     }
 
-    private Reservation reserve(CreateReservationRequest request) {
+    /** O job de expiração varre o Postgres: no motor Redis, espera o stream chegar ao banco. */
+    private int expireDue() {
+        this.fixtures.settle();
+        return this.expiryJob.expireDue();
+    }
+
+    private ReservationView reserve(CreateReservationRequest request) {
         return this.service.reserve("comprador-" + UUID.randomUUID(), UUID.randomUUID().toString(), request)
                 .reservation();
     }
@@ -59,17 +63,17 @@ class ReservationLifecycleTests {
         var lote = lot("1º lote", 18_000, 10);
         CatalogShow show = this.fixtures.onSale(pista(lote));
 
-        Reservation reservation = reserve(pistaRequest(show, 3, Cpfs.next()));
+        ReservationView reservation = reserve(pistaRequest(show, 3, Cpfs.next()));
 
-        assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.HELD);
-        assertThat(reservation.getTotalCents()).isEqualTo(54_000);
-        assertThat(Duration.between(reservation.getCreatedAt(), reservation.getExpiresAt()))
+        assertThat(reservation.status()).isEqualTo(ReservationStatus.HELD);
+        assertThat(reservation.totalCents()).isEqualTo(54_000);
+        assertThat(Duration.between(reservation.createdAt(), reservation.expiresAt()))
                 .isEqualTo(Duration.ofMinutes(10));
-        assertThat(reservation.getItems()).hasSize(3)
+        assertThat(reservation.items()).hasSize(3)
                 .allSatisfy(item -> {
-                    assertThat(item.getLotId()).isEqualTo(lote.id());
-                    assertThat(item.getUnitPriceCents()).isEqualTo(18_000);
-                    assertThat(item.getSeatLabel()).isNull();
+                    assertThat(item.lotId()).isEqualTo(lote.id());
+                    assertThat(item.unitPriceCents()).isEqualTo(18_000);
+                    assertThat(item.seat()).isNull();
                 });
         assertThat(this.fixtures.available(lote.id())).isEqualTo(7);
     }
@@ -80,24 +84,24 @@ class ReservationLifecycleTests {
         var segundo = lot("2º lote", 15_000, 10);
         CatalogShow show = this.fixtures.onSale(pista(primeiro, segundo));
 
-        Reservation doPrimeiro = reserve(pistaRequest(show, 2, Cpfs.next()));
-        Reservation doSegundo = reserve(pistaRequest(show, 1, Cpfs.next()));
-        this.service.confirm(doPrimeiro.getId());
+        ReservationView doPrimeiro = reserve(pistaRequest(show, 2, Cpfs.next()));
+        ReservationView doSegundo = reserve(pistaRequest(show, 1, Cpfs.next()));
+        this.service.confirm(doPrimeiro.id());
 
-        assertThat(this.service.get(doPrimeiro.getId()).reservation().getTotalCents()).isEqualTo(20_000);
-        assertThat(doSegundo.getTotalCents()).isEqualTo(15_000);
+        assertThat(this.service.get(doPrimeiro.id()).reservation().totalCents()).isEqualTo(20_000);
+        assertThat(doSegundo.totalCents()).isEqualTo(15_000);
     }
 
     @Test
     void confirmarVendeAsCadeirasEEhIdempotente() {
         var setor = cadeiras(1, 10, 30_000);
         CatalogShow show = this.fixtures.onSale(setor);
-        Reservation reservation = reserve(seatsRequest(show, setor.id(), Cpfs.next(), "A-1", "A-2"));
+        ReservationView reservation = reserve(seatsRequest(show, setor.id(), Cpfs.next(), "A-1", "A-2"));
 
-        this.service.confirm(reservation.getId());
-        Reservation again = this.service.confirm(reservation.getId()).reservation();
+        this.service.confirm(reservation.id());
+        ReservationView again = this.service.confirm(reservation.id()).reservation();
 
-        assertThat(again.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+        assertThat(again.status()).isEqualTo(ReservationStatus.CONFIRMED);
         assertThat(this.fixtures.seatStatus(show.id(), "A-1")).isEqualTo("SOLD");
         assertThat(this.fixtures.seatStatus(show.id(), "A-2")).isEqualTo("SOLD");
         assertThat(this.fixtures.available(setor.lots().getFirst().id())).isEqualTo(8);
@@ -108,17 +112,17 @@ class ReservationLifecycleTests {
         var setor = cadeiras(1, 10, 30_000);
         CatalogShow show = this.fixtures.onSale(setor);
         String cpf = Cpfs.next();
-        Reservation reservation = reserve(seatsRequest(show, setor.id(), cpf, "A-1", "A-2", "A-3", "A-4"));
+        ReservationView reservation = reserve(seatsRequest(show, setor.id(), cpf, "A-1", "A-2", "A-3", "A-4"));
         assertThatThrownBy(() -> reserve(seatsRequest(show, setor.id(), cpf, "A-5")))
                 .satisfies(e -> assertThat(slugOf(e)).isEqualTo("purchase-limit-exceeded"));
 
-        this.service.release(reservation.getId());
-        this.service.release(reservation.getId()); // idempotente
+        this.service.release(reservation.id());
+        this.service.release(reservation.id()); // idempotente
 
         assertThat(this.fixtures.seatStatus(show.id(), "A-1")).isEqualTo("AVAILABLE");
         assertThat(this.fixtures.available(setor.lots().getFirst().id())).isEqualTo(10);
         // Reserva liberada devolve a cota: o mesmo CPF compra de novo.
-        assertThat(reserve(seatsRequest(show, setor.id(), cpf, "A-1", "A-2", "A-3", "A-4")).getQuantity())
+        assertThat(reserve(seatsRequest(show, setor.id(), cpf, "A-1", "A-2", "A-3", "A-4")).quantity())
                 .isEqualTo(4);
     }
 
@@ -127,40 +131,40 @@ class ReservationLifecycleTests {
         var lote = lot("Lote único", 12_000, 4);
         CatalogShow show = this.fixtures.onSale(pista(lote));
         String cpf = Cpfs.next();
-        Reservation reservation = reserve(pistaRequest(show, 4, cpf));
+        ReservationView reservation = reserve(pistaRequest(show, 4, cpf));
         assertThat(this.fixtures.lotStatus(lote.id())).isEqualTo("SOLD_OUT");
 
         this.clock.advance(Duration.ofMinutes(9));
-        assertThat(this.expiryJob.expireDue()).isZero();
+        assertThat(expireDue()).isZero();
 
         this.clock.advance(Duration.ofMinutes(2));
-        assertThat(this.expiryJob.expireDue()).isGreaterThanOrEqualTo(1);
+        assertThat(expireDue()).isGreaterThanOrEqualTo(1);
 
-        assertThat(this.service.get(reservation.getId()).reservation().getStatus())
+        assertThat(this.service.get(reservation.id()).reservation().status())
                 .isEqualTo(ReservationStatus.EXPIRED);
         // O setor estava esgotado: a devolução reabre o último lote.
         assertThat(this.fixtures.lotStatus(lote.id())).isEqualTo("ON_SALE");
         assertThat(this.fixtures.available(lote.id())).isEqualTo(4);
-        assertThat(reserve(pistaRequest(show, 4, cpf)).getStatus()).isEqualTo(ReservationStatus.HELD);
+        assertThat(reserve(pistaRequest(show, 4, cpf)).status()).isEqualTo(ReservationStatus.HELD);
     }
 
     @Test
     void reservaConfirmadaNaoExpiraEReservaExpiradaNaoConfirma() {
         CatalogShow show = this.fixtures.onSale(pista(lot("Lote único", 12_000, 10)));
-        Reservation paid = reserve(pistaRequest(show, 1, Cpfs.next()));
-        Reservation abandoned = reserve(pistaRequest(show, 1, Cpfs.next()));
-        this.service.confirm(paid.getId());
+        ReservationView paid = reserve(pistaRequest(show, 1, Cpfs.next()));
+        ReservationView abandoned = reserve(pistaRequest(show, 1, Cpfs.next()));
+        this.service.confirm(paid.id());
 
         this.clock.advance(Duration.ofMinutes(11));
-        this.expiryJob.expireDue();
+        expireDue();
 
-        assertThat(this.service.get(paid.getId()).reservation().getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
-        assertThatThrownBy(() -> this.service.confirm(abandoned.getId())).satisfies(e -> {
+        assertThat(this.service.get(paid.id()).reservation().status()).isEqualTo(ReservationStatus.CONFIRMED);
+        assertThatThrownBy(() -> this.service.confirm(abandoned.id())).satisfies(e -> {
             assertThat(slugOf(e)).isEqualTo("reservation-not-held");
             assertThat(((ProblemException) e).toProblemDetail().getProperties())
                     .containsEntry("status", ReservationStatus.EXPIRED);
         });
-        assertThatThrownBy(() -> this.service.release(paid.getId()))
+        assertThatThrownBy(() -> this.service.release(paid.id()))
                 .satisfies(e -> assertThat(slugOf(e)).isEqualTo("reservation-not-held"));
     }
 
@@ -175,9 +179,9 @@ class ReservationLifecycleTests {
 
         // Metade das tarefas confirma, metade expira, todas na mesma reserva de cada par.
         var results = Concurrently.run(60, i -> {
-            UUID id = reservations.get(i / 2).getId();
+            UUID id = reservations.get(i / 2).id();
             if (i % 2 == 0) {
-                return this.service.confirm(id).reservation().getStatus().name();
+                return this.service.confirm(id).reservation().status().name();
             }
             return this.service.expire(id) ? "EXPIRED" : "kept";
         });

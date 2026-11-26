@@ -60,8 +60,16 @@ spring:
           keycloak:
             token-uri: ${AUTH_TOKEN_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/token}
 
+  data:
+    redis:
+      # redis-core: noeviction e AOF. Reserva, fila virtual, mapa de assentos e stream de reservas.
+      url: ${REDIS_URL:redis://localhost:6380}
+      timeout: 2s
+
 lotou:
   inventory:
+    # Onde a reserva acontece: redis (fase 2) ou postgres (fase 1, linha de base do ADR 3).
+    engine: ${RESERVATION_ENGINE:redis}
     reservation:
       # A reserva dura 10 minutos e não é renovável.
       ttl: ${RESERVATION_TTL:10m}
@@ -72,6 +80,11 @@ lotou:
       base-url: ${EVENT_SERVICE_URL:http://localhost:3001}
       poll-interval: ${CATALOG_POLL_INTERVAL:2s}
       overlap: 5s
+    queue:
+      # Compradores admitidos por segundo em cada show de alta demanda.
+      admission-rate: ${QUEUE_ADMISSION_RATE:100}
+      admission-ttl: 5m
+      waiting-room-opens-before: 30m
     jobs:
       enabled: ${JOBS_ENABLED:true}
       lifecycle-interval: ${LIFECYCLE_INTERVAL:1s}

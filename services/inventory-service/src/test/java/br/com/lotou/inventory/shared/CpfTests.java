@@ -47,8 +47,10 @@ class CpfTests {
     }
 
     private static InventoryProperties properties(String key) {
-        return new InventoryProperties(new InventoryProperties.Reservation(java.time.Duration.ofMinutes(10), 4, key),
+        return new InventoryProperties(InventoryProperties.Engine.REDIS,
+                new InventoryProperties.Reservation(java.time.Duration.ofMinutes(10), 4, key),
                 new InventoryProperties.Catalog("http://localhost", java.time.Duration.ofSeconds(5)),
-                new InventoryProperties.Jobs(false));
+                new InventoryProperties.Jobs(false),
+                new InventoryProperties.Queue(100, java.time.Duration.ofMinutes(5), java.time.Duration.ofMinutes(30)));
     }
 }

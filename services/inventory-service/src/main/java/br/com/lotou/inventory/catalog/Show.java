@@ -53,6 +53,18 @@ public class Show {
         return this.status;
     }
 
+    public boolean isHighDemand() {
+        return this.highDemand;
+    }
+
+    public java.time.Instant getSalesStartAt() {
+        return this.salesStartAt;
+    }
+
+    public java.time.Instant getSalesEndAt() {
+        return this.salesEndAt;
+    }
+
     public boolean salesOpened() {
         return this.salesOpenedAt != null;
     }

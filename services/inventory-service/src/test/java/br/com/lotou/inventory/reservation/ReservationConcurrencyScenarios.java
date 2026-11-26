@@ -16,7 +16,6 @@ import br.com.lotou.inventory.support.Concurrently;
 import br.com.lotou.inventory.support.Concurrently.Result;
 import br.com.lotou.inventory.support.Cpfs;
 import br.com.lotou.inventory.support.Fixtures;
-import br.com.lotou.inventory.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,8 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * As invariantes do sistema sob disputa: nunca vender além da capacidade e nunca segurar a mesma
  * cadeira duas vezes. Cada teste dispara as reservas no mesmo instante, contra um Postgres real.
  */
-@IntegrationTest
-class ReservationConcurrencyTests {
+abstract class ReservationConcurrencyScenarios {
 
     @Autowired
     private ReservationService service;
@@ -34,7 +32,7 @@ class ReservationConcurrencyTests {
     @Autowired
     private Fixtures fixtures;
 
-    private Reservation reserve(CreateReservationRequest request) {
+    private ReservationView reserve(CreateReservationRequest request) {
         return this.service.reserve("comprador-" + UUID.randomUUID(), UUID.randomUUID().toString(), request)
                 .reservation();
     }
@@ -69,8 +67,8 @@ class ReservationConcurrencyTests {
 
         var results = Concurrently.run(120, i -> reserve(pistaRequest(show, 1 + i % 4, Cpfs.next())));
 
-        List<Reservation> reserved = results.stream().filter(Result::succeeded).map(Result::value).toList();
-        int tickets = reserved.stream().mapToInt(Reservation::getQuantity).sum();
+        List<ReservationView> reserved = results.stream().filter(Result::succeeded).map(Result::value).toList();
+        int tickets = reserved.stream().mapToInt(ReservationView::quantity).sum();
         assertThat(tickets).isLessThanOrEqualTo(50);
         assertThat(this.fixtures.reservedTickets(show.id())).isEqualTo(tickets);
         // O que foi reservado mais o que sobrou nos contadores é sempre a capacidade.
@@ -79,15 +77,15 @@ class ReservationConcurrencyTests {
         assertThat(problems(results)).isSubsetOf("sold-out", "insufficient-stock");
 
         // Cada reserva saiu de um lote só, ao preço dele.
-        for (Reservation reservation : reserved) {
-            long price = reservation.getItems().getFirst().getUnitPriceCents();
+        for (ReservationView reservation : reserved) {
+            long price = reservation.items().getFirst().unitPriceCents();
             assertThat(price).isIn(10_000L, 14_000L);
-            assertThat(reservation.getTotalCents()).isEqualTo(price * reservation.getQuantity());
-            assertThat(reservation.getItems()).allMatch(item -> item.getUnitPriceCents() == price);
+            assertThat(reservation.totalCents()).isEqualTo(price * reservation.quantity());
+            assertThat(reservation.items()).allMatch(item -> item.unitPriceCents() == price);
         }
         // O segundo lote só abre depois que o primeiro esgota.
         long doSegundo = reserved.stream()
-                .filter(r -> r.getItems().getFirst().getUnitPriceCents() == 14_000L).count();
+                .filter(r -> r.items().getFirst().unitPriceCents() == 14_000L).count();
         if (doSegundo > 0) {
             assertThat(this.fixtures.lotStatus(primeiro.id())).isEqualTo("SOLD_OUT");
         }
@@ -166,7 +164,7 @@ class ReservationConcurrencyTests {
         var results = Concurrently.run(20, i -> this.service.reserve(buyer, key, request));
 
         assertThat(problems(results)).isEmpty();
-        assertThat(results.stream().map(r -> r.value().reservation().getId()).distinct()).hasSize(1);
+        assertThat(results.stream().map(r -> r.value().reservation().id()).distinct()).hasSize(1);
         assertThat(results.stream().filter(r -> !r.value().replayed())).hasSize(1);
         assertThat(this.fixtures.available(lote.id())).isEqualTo(98);
         assertThat(this.fixtures.reservedTickets(show.id())).isEqualTo(2);

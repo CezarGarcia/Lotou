@@ -12,9 +12,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * De tempos em tempos, abre as vendas dos shows cujo horário chegou, vira os lotes com data
- * marcada e encerra as vendas. Não usa lock distribuído: cada passo trava a linha no Postgres e
- * confere a condição de novo, então várias instâncias podem rodar ao mesmo tempo.
+ * De tempos em tempos, abre as vendas dos shows cujo horário chegou, vira os lotes com data marcada
+ * e encerra as vendas, no motor configurado. Cada passo confere a condição de novo depois de travar
+ * o que altera, então várias instâncias podem rodar ao mesmo tempo.
  */
 @Component
 public class SalesLifecycleJob {
@@ -23,13 +23,13 @@ public class SalesLifecycleJob {
 
     private final ShowRepository shows;
     private final LotRepository lots;
-    private final SalesLifecycle lifecycle;
+    private final SalesEngine engine;
     private final Clock clock;
 
-    public SalesLifecycleJob(ShowRepository shows, LotRepository lots, SalesLifecycle lifecycle, Clock clock) {
+    public SalesLifecycleJob(ShowRepository shows, LotRepository lots, SalesEngine engine, Clock clock) {
         this.shows = shows;
         this.lots = lots;
-        this.lifecycle = lifecycle;
+        this.engine = engine;
         this.clock = clock;
     }
 
@@ -37,13 +37,14 @@ public class SalesLifecycleJob {
     public void run() {
         Instant now = this.clock.instant();
         for (UUID showId : this.shows.findIdsDueToOpen(now)) {
-            attempt(() -> this.lifecycle.openSales(showId, now), "abrir as vendas do show " + showId);
+            attempt(() -> this.engine.openSales(showId, now), "abrir as vendas do show " + showId);
         }
+        attempt(() -> this.engine.maintain(now), "conferir o estoque carregado");
         for (SectorRef sector : this.lots.findSectorsDueToTurn(now)) {
-            attempt(() -> this.lifecycle.turnByDate(sector, now), "virar o lote do setor " + sector);
+            attempt(() -> this.engine.turnByDate(sector, now), "virar o lote do setor " + sector);
         }
         for (UUID showId : this.shows.findIdsDueToClose(now)) {
-            attempt(() -> this.lifecycle.closeSales(showId, now), "encerrar as vendas do show " + showId);
+            attempt(() -> this.engine.closeSales(showId, now), "encerrar as vendas do show " + showId);
         }
     }
 

@@ -24,13 +24,12 @@ public record ReservationResponse(
     public record Item(UUID lotId, String lotName, String seat, long unitPriceCents) {
     }
 
-    static ReservationResponse of(Reservation reservation, String sectorName) {
-        return new ReservationResponse(reservation.getId(), reservation.getStatus(), reservation.getShowId(),
-                reservation.getSectorId(), sectorName, reservation.getQuantity(), reservation.getTotalCents(),
-                reservation.getExpiresAt(), reservation.getCreatedAt(),
-                reservation.getItems().stream()
-                        .map(item -> new Item(item.getLotId(), item.getLotName(), item.getSeatLabel(),
-                                item.getUnitPriceCents()))
+    static ReservationResponse of(ReservationView reservation, String sectorName) {
+        return new ReservationResponse(reservation.id(), reservation.status(), reservation.showId(),
+                reservation.sectorId(), sectorName, reservation.quantity(), reservation.totalCents(),
+                reservation.expiresAt(), reservation.createdAt(),
+                reservation.items().stream()
+                        .map(item -> new Item(item.lotId(), item.lotName(), item.seat(), item.unitPriceCents()))
                         .toList());
     }
 }

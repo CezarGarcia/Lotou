@@ -23,7 +23,7 @@ class InternalReservationController {
     record InternalReservation(String buyerId, ReservationResponse reservation) {
 
         static InternalReservation of(ReservationService.Outcome outcome) {
-            return new InternalReservation(outcome.reservation().getBuyerId(),
+            return new InternalReservation(outcome.reservation().buyerId(),
                     ReservationResponse.of(outcome.reservation(), outcome.sectorName()));
         }
     }

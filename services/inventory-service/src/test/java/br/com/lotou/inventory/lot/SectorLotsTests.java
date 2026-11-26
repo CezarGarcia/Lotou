@@ -168,6 +168,20 @@ class SectorLotsTests {
     }
 
     @Test
+    void encerramentoDeSetorEsgotadoFechaOUltimoLoteEUmaDevolucaoNaoOReabre() {
+        this.sector.openSales();
+        this.sector.reserve(3);
+        this.sector.reserve(2);
+
+        this.sector.closeSales();
+        this.sector.giveBack(1);
+
+        assertThat(this.second.getStatus()).isEqualTo(LotStatus.CLOSED);
+        assertThat(this.second.getAvailable()).isZero();
+        assertThat(this.sector.sale()).isEqualTo(SectorLots.Sale.CLOSED);
+    }
+
+    @Test
     void encerramentoFechaOLoteEmVendaENadaMaisVoltaAVenda() {
         this.sector.openSales();
         this.sector.reserve(1);

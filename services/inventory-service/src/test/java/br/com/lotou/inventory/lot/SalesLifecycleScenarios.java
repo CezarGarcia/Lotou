@@ -23,7 +23,6 @@ import br.com.lotou.inventory.shared.problem.ProblemException;
 import br.com.lotou.inventory.support.Concurrently;
 import br.com.lotou.inventory.support.Cpfs;
 import br.com.lotou.inventory.support.Fixtures;
-import br.com.lotou.inventory.support.IntegrationTest;
 import br.com.lotou.inventory.support.MutableClock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -33,8 +32,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Abertura das vendas, virada de lote por data, encerramento e pausa. */
-@IntegrationTest
-class SalesLifecycleTests {
+abstract class SalesLifecycleScenarios {
 
     @Autowired
     private SalesLifecycleJob job;

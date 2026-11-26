@@ -44,7 +44,7 @@ class ReservationController {
             String idempotencyKey,
             @Valid @RequestBody CreateReservationRequest request) {
         ReservationService.Outcome outcome = this.service.reserve(jwt.getSubject(), idempotencyKey, request);
-        var response = ResponseEntity.created(URI.create("/v1/reservations/" + outcome.reservation().getId()));
+        var response = ResponseEntity.created(URI.create("/v1/reservations/" + outcome.reservation().id()));
         if (outcome.replayed()) {
             response.header(REPLAYED, "true");
         }

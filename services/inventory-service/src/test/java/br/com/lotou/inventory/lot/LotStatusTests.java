@@ -19,7 +19,7 @@ class LotStatusTests {
             SCHEDULED, Set.of(ON_SALE),
             ON_SALE, Set.of(SOLD_OUT, PAUSED, CLOSED),
             PAUSED, Set.of(ON_SALE, CLOSED),
-            SOLD_OUT, Set.of(ON_SALE),
+            SOLD_OUT, Set.of(ON_SALE, CLOSED),
             CLOSED, Set.of());
 
     @Test

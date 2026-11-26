@@ -13,7 +13,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import br.com.lotou.inventory.catalog.CatalogShow.CatalogSector;
-import br.com.lotou.inventory.lot.SalesLifecycle;
+import br.com.lotou.inventory.lot.SalesEngine;
 import br.com.lotou.inventory.support.Fixtures;
 import br.com.lotou.inventory.support.HttpStub;
 import br.com.lotou.inventory.support.IntegrationTest;
@@ -48,7 +48,7 @@ class CatalogSyncTests {
     private CatalogSyncJob job;
 
     @Autowired
-    private SalesLifecycle lifecycle;
+    private SalesEngine lifecycle;
 
     @Autowired
     private Fixtures fixtures;

@@ -24,8 +24,8 @@ public enum LotStatus {
             case ON_SALE -> EnumSet.of(SOLD_OUT, PAUSED, CLOSED);
             case PAUSED -> EnumSet.of(ON_SALE, CLOSED);
             // Um ingresso devolvido reabre o último lote quando o setor não tem lote em venda
-            // (ADR 25).
-            case SOLD_OUT -> EnumSet.of(ON_SALE);
+            // (ADR 25). No encerramento, o último lote esgotado fecha.
+            case SOLD_OUT -> EnumSet.of(ON_SALE, CLOSED);
             case CLOSED -> EnumSet.noneOf(LotStatus.class);
         };
     }

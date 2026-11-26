@@ -6,10 +6,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import br.com.lotou.inventory.shared.problem.ProblemException;
+import br.com.lotou.inventory.shared.problem.InventoryProblems;
 import br.com.lotou.inventory.shared.problem.Problems;
-
-import org.springframework.http.HttpStatus;
 
 /**
  * Os lotes de um setor, em ordem de virada, e as regras que valem para o conjunto (seção "Lotes"
@@ -71,19 +69,13 @@ public final class SectorLots {
     public Lot reserve(int quantity) {
         Lot lot = switch (sale()) {
             case ON_SALE -> current().orElseThrow();
-            case NOT_OPEN -> throw new ProblemException(HttpStatus.CONFLICT, "sales-not-open",
-                    "Vendas ainda não abriram", "As vendas deste setor ainda não abriram.");
-            case PAUSED -> throw new ProblemException(HttpStatus.CONFLICT, "sales-paused", "Vendas pausadas",
-                    "As vendas deste setor estão pausadas no momento.");
-            case CLOSED -> throw new ProblemException(HttpStatus.CONFLICT, "sales-closed", "Vendas encerradas",
-                    "As vendas deste show foram encerradas.");
-            case SOLD_OUT -> throw new ProblemException(HttpStatus.CONFLICT, "sold-out", "Ingressos esgotados",
-                    "Os ingressos deste setor esgotaram.");
+            case NOT_OPEN -> throw InventoryProblems.salesNotOpen();
+            case PAUSED -> throw InventoryProblems.salesPaused();
+            case CLOSED -> throw InventoryProblems.salesClosed();
+            case SOLD_OUT -> throw InventoryProblems.soldOut();
         };
         if (lot.getAvailable() < quantity) {
-            throw new ProblemException(HttpStatus.CONFLICT, "insufficient-stock", "Ingressos insuficientes",
-                    "Restam %d ingressos neste lote.".formatted(lot.getAvailable()))
-                    .with("available", lot.getAvailable());
+            throw InventoryProblems.insufficientStock(lot.getAvailable());
         }
         lot.take(quantity);
         if (lot.getAvailable() == 0) {
@@ -147,9 +139,16 @@ public final class SectorLots {
         }
     }
 
-    /** Encerramento das vendas do show: o lote em venda ou pausado fecha. */
+    /**
+     * Encerramento das vendas do show: o lote em venda ou pausado fecha. Num setor esgotado, fecha
+     * o último lote, para que um ingresso devolvido depois do encerramento não o reabra.
+     */
     public void closeSales() {
-        current().ifPresent(lot -> lot.transitionTo(LotStatus.CLOSED));
+        Optional<Lot> closing = current().or(() -> sale() == Sale.SOLD_OUT
+                ? this.lots.stream().filter(lot -> lot.is(LotStatus.SOLD_OUT))
+                        .max(Comparator.comparingInt(Lot::getPosition))
+                : Optional.empty());
+        closing.ifPresent(lot -> lot.transitionTo(LotStatus.CLOSED));
     }
 
     public void pause(UUID lotId) {

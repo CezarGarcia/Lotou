@@ -14,28 +14,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/v1/lots")
 class LotController {
 
-    record LotResponse(UUID id, UUID showId, UUID sectorId, String name, long priceCents, int available,
-            LotStatus status) {
+    private final SalesEngine engine;
 
-        static LotResponse of(Lot lot) {
-            return new LotResponse(lot.getId(), lot.getShowId(), lot.getSectorId(), lot.getName(),
-                    lot.getPriceCents(), lot.getAvailable(), lot.getStatus());
-        }
-    }
-
-    private final SalesLifecycle lifecycle;
-
-    LotController(SalesLifecycle lifecycle) {
-        this.lifecycle = lifecycle;
+    LotController(SalesEngine engine) {
+        this.engine = engine;
     }
 
     @PostMapping("/{id}/pause")
-    LotResponse pause(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return LotResponse.of(this.lifecycle.pause(id, jwt.getSubject()));
+    SalesEngine.LotView pause(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return this.engine.pause(id, jwt.getSubject());
     }
 
     @PostMapping("/{id}/resume")
-    LotResponse resume(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return LotResponse.of(this.lifecycle.resume(id, jwt.getSubject()));
+    SalesEngine.LotView resume(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return this.engine.resume(id, jwt.getSubject());
     }
 }

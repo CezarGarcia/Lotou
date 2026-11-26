@@ -38,6 +38,7 @@ public class ReservationTelemetry {
                 RESULT, result));
     }
 
+    /** Duas pessoas tentaram a mesma cadeira; a segunda perdeu. */
     void seatConflict() {
         this.seatConflicts.add(1);
     }

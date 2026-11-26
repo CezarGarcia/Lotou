@@ -20,7 +20,6 @@ import java.util.UUID;
 import br.com.lotou.inventory.catalog.CatalogShow;
 import br.com.lotou.inventory.support.Cpfs;
 import br.com.lotou.inventory.support.Fixtures;
-import br.com.lotou.inventory.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,8 +30,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /** O contrato HTTP do inventory: reservas, disponibilidade, erros e regras de acesso. */
-@IntegrationTest
-class ReservationApiTests {
+abstract class ReservationApiScenarios {
 
     private static final MediaType PROBLEM = MediaType.APPLICATION_PROBLEM_JSON;
 

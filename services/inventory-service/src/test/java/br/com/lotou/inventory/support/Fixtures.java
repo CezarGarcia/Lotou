@@ -14,29 +14,59 @@ import br.com.lotou.inventory.catalog.CatalogShow.Row;
 import br.com.lotou.inventory.catalog.CatalogSynchronizer;
 import br.com.lotou.inventory.catalog.SectorKind;
 import br.com.lotou.inventory.catalog.ShowStatus;
-import br.com.lotou.inventory.lot.SalesLifecycle;
+import br.com.lotou.inventory.config.InventoryProperties;
+import br.com.lotou.inventory.lot.SalesEngine;
+import br.com.lotou.inventory.redis.RedisKeys;
+import br.com.lotou.inventory.redis.ReservationProjection;
 import br.com.lotou.inventory.reservation.CreateReservationRequest;
 import br.com.lotou.inventory.shared.UuidV7;
 
+import org.awaitility.Awaitility;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
-/** Monta shows no inventory pelo mesmo caminho da produção: catálogo e abertura de vendas. */
+/**
+ * Monta shows no inventory pelo mesmo caminho da produção (catálogo e abertura de vendas) e lê o
+ * estado de venda do motor em uso. No motor Redis, as leituras do Postgres esperam o stream de
+ * reservas chegar ao banco antes de consultar.
+ */
 @TestComponent
 public class Fixtures {
 
     public static final String PRODUCER = "produtor-1";
 
     private final CatalogSynchronizer synchronizer;
-    private final SalesLifecycle lifecycle;
+    private final SalesEngine lifecycle;
     private final JdbcClient jdbc;
     private final Clock clock;
+    private final StringRedisTemplate redis;
+    private final ReservationProjection projection;
+    private final boolean redisEngine;
 
-    public Fixtures(CatalogSynchronizer synchronizer, SalesLifecycle lifecycle, JdbcClient jdbc, Clock clock) {
+    public Fixtures(CatalogSynchronizer synchronizer, SalesEngine lifecycle, JdbcClient jdbc, Clock clock,
+            StringRedisTemplate redis, ObjectProvider<ReservationProjection> projection,
+            InventoryProperties properties) {
         this.synchronizer = synchronizer;
         this.lifecycle = lifecycle;
         this.jdbc = jdbc;
         this.clock = clock;
+        this.redis = redis;
+        this.projection = projection.getIfAvailable();
+        this.redisEngine = properties.engine() == InventoryProperties.Engine.REDIS;
+    }
+
+    public boolean redisEngine() {
+        return this.redisEngine;
+    }
+
+    /** No motor Redis, espera tudo o que entrou no stream de reservas chegar ao Postgres. */
+    public void settle() {
+        if (this.projection != null) {
+            Awaitility.await().atMost(java.time.Duration.ofSeconds(20)).pollInterval(java.time.Duration.ofMillis(20))
+                    .until(this.projection::caughtUp);
+        }
     }
 
     /** Um setor de pista com os lotes informados, na ordem de virada. */
@@ -95,23 +125,33 @@ public class Fixtures {
         return new CreateReservationRequest(show.id(), sectorId, null, List.of(seats), cpf);
     }
 
+    /** Ingressos restantes no lote, lidos de onde o motor guarda: o contador do Redis ou a tabela. */
     public int available(UUID lotId) {
+        if (this.redisEngine) {
+            String stock = this.redis.opsForValue().get(RedisKeys.lotStock(lotId));
+            if (stock != null) {
+                return Integer.parseInt(stock);
+            }
+        }
         return this.jdbc.sql("SELECT available FROM lots WHERE id = :id").param("id", lotId).query(Integer.class)
                 .single();
     }
 
     public String lotStatus(UUID lotId) {
+        settle();
         return this.jdbc.sql("SELECT status FROM lots WHERE id = :id").param("id", lotId).query(String.class)
                 .single();
     }
 
     public String seatStatus(UUID showId, String label) {
+        settle();
         return this.jdbc.sql("SELECT status FROM seats WHERE show_id = :showId AND label = :label")
                 .param("showId", showId).param("label", label).query(String.class).single();
     }
 
     /** Ingressos segurados ou vendidos no show: a soma das reservas HELD e CONFIRMED. */
     public int reservedTickets(UUID showId) {
+        settle();
         return this.jdbc.sql("""
                 SELECT COALESCE(SUM(quantity), 0) FROM reservations
                 WHERE show_id = :showId AND status IN ('HELD', 'CONFIRMED')
@@ -119,6 +159,7 @@ public class Fixtures {
     }
 
     public int count(String sql, UUID showId) {
+        settle();
         return this.jdbc.sql(sql).param("showId", showId).query(Integer.class).single();
     }
 }
