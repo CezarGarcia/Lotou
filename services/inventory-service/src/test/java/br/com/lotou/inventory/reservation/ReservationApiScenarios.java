@@ -232,7 +232,6 @@ abstract class ReservationApiScenarios {
 
         this.mvc.perform(get(internal)).andExpect(status().isUnauthorized());
         this.mvc.perform(get(internal).with(buyer("ana"))).andExpect(status().isForbidden());
-        this.mvc.perform(post(internal + "/confirm").with(buyer("ana"))).andExpect(status().isForbidden());
 
         var service = user("service-account-order-service", "service");
         this.mvc.perform(get(internal).with(service))
@@ -240,13 +239,8 @@ abstract class ReservationApiScenarios {
                 .andExpect(jsonPath("$.buyerId").value("ana"))
                 .andExpect(jsonPath("$.reservation.status").value("HELD"))
                 .andExpect(jsonPath("$.reservation.totalCents").value(24_000));
-        this.mvc.perform(post(internal + "/confirm").with(service))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reservation.status").value("CONFIRMED"));
-        this.mvc.perform(post(internal + "/release").with(service))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.type").value("urn:lotou:problem:reservation-not-held"))
-                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+        // Confirmar e liberar são comandos no Kafka desde a fase 3: não há rota HTTP para isso.
+        this.mvc.perform(post(internal + "/confirm").with(service)).andExpect(status().is4xxClientError());
     }
 
     @Test

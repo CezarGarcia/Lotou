@@ -22,7 +22,6 @@ import org.springframework.validation.annotation.Validated;
 public record InventoryProperties(
         @NotNull @DefaultValue("redis") Engine engine,
         @NotNull @Valid Reservation reservation,
-        @NotNull @Valid Catalog catalog,
         @NotNull @Valid Jobs jobs,
         @NotNull @Valid Queue queue) {
 
@@ -40,14 +39,6 @@ public record InventoryProperties(
             @NotNull @DefaultValue("10m") Duration ttl,
             @Min(1) @Max(4) @DefaultValue("4") int maxTicketsPerCpf,
             @NotBlank String cpfHashKey) {
-    }
-
-    /**
-     * @param baseUrl endereço do event-service
-     * @param overlap quanto a leitura recua a cada rodada, para não perder um show gravado fora de
-     *     ordem
-     */
-    public record Catalog(@NotBlank String baseUrl, @NotNull @DefaultValue("5s") Duration overlap) {
     }
 
     /** @param enabled liga os jobs agendados; os testes desligam e chamam os jobs direto */

@@ -5,8 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * O show como o event-service o publica para os outros serviços. É o contrato de {@code GET
- * /internal/v1/catalog/shows}.
+ * O show como o inventory o guarda na cópia local do catálogo. Chega pelo tópico
+ * {@code shows.catalog} ({@link CatalogListener}).
  */
 public record CatalogShow(
         UUID id,
@@ -29,9 +29,5 @@ public record CatalogShow(
     }
 
     public record CatalogLot(UUID id, String name, long priceCents, int quantity, Instant opensAt) {
-    }
-
-    /** Uma página do catálogo, paginada por cursor. */
-    public record Page(List<CatalogShow> items, String nextCursor) {
     }
 }

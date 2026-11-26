@@ -90,7 +90,8 @@ services:
       otel-collector:
         condition: service_started
 
-  # Lotes, disponibilidade e reservas. Lê o catálogo do event-service por polling.
+  # Lotes, disponibilidade, reservas e fila virtual. Lê o catálogo de shows.catalog, recebe os
+  # comandos da saga e publica os fatos de reservas e lotes em inventory.events.
   inventory-service:
     build:
       context: ../services/inventory-service
@@ -100,7 +101,7 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/inventory
       DATABASE_USERNAME: inventory
       DATABASE_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
-      EVENT_SERVICE_URL: http://event-service:3000
+      KAFKA_BROKERS: kafka:9092
       REDIS_URL: redis://redis-core:6379
       # redis (fase 2) ou postgres (fase 1): o teste de carga compara os dois (ADR 3).
       RESERVATION_ENGINE: ${RESERVATION_ENGINE:-redis}
@@ -112,14 +113,14 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      event-service:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       redis-core:
         condition: service_healthy
       otel-collector:
         condition: service_started
 
-  # Pedidos e ingressos. Confirma e libera reservas no inventory-service.
+  # Pedidos e ingressos. Orquestra a saga de compra pelo Kafka; lê a reserva no inventory-service.
   order-service:
     build:
       context: ../services/order-service
@@ -130,13 +131,14 @@ services:
       DATABASE_USERNAME: orders
       DATABASE_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
       INVENTORY_SERVICE_URL: http://inventory-service:8082
-      # Porcentagem de pagamentos recusados pelo simulador (0 a 100).
-      PAYMENT_DECLINE_RATE: ${PAYMENT_DECLINE_RATE:-0}
+      KAFKA_BROKERS: kafka:9092
     depends_on:
       postgres:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       inventory-service:
         condition: service_healthy
       otel-collector:

@@ -10,42 +10,26 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 
 import br.com.lotou.inventory.catalog.CatalogShow.CatalogSector;
 import br.com.lotou.inventory.lot.SalesEngine;
 import br.com.lotou.inventory.support.Fixtures;
-import br.com.lotou.inventory.support.HttpStub;
+import br.com.lotou.inventory.support.Contracts;
 import br.com.lotou.inventory.support.IntegrationTest;
 import br.com.lotou.inventory.support.MutableClock;
-import org.junit.jupiter.api.AfterAll;
+import br.com.lotou.inventory.support.TestKafka;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 /** A cópia local do catálogo: como um show do event-service vira lotes e cadeiras no inventory. */
 @IntegrationTest
 class CatalogSyncTests {
 
-    private static final String CATALOG = "/internal/v1/catalog/shows";
-    private static final String TOKEN = "/token";
-
-    /** O que o event-service de mentira devolve para cada página pedida. */
-    private static final AtomicReference<java.util.function.Function<HttpStub.Received, String>> catalog =
-            new AtomicReference<>(request -> "{\"items\": [], \"nextCursor\": null}");
-
-    private static final HttpStub stub = HttpStub.start()
-            .on(TOKEN, request -> "{\"access_token\": \"token-do-servico\", \"token_type\": \"Bearer\", \"expires_in\": 300}")
-            .on(CATALOG, request -> catalog.get().apply(request));
-
     @Autowired
     private CatalogSynchronizer synchronizer;
-
-    @Autowired
-    private CatalogSyncJob job;
 
     @Autowired
     private SalesEngine lifecycle;
@@ -58,17 +42,6 @@ class CatalogSyncTests {
 
     @Autowired
     private MutableClock clock;
-
-    @DynamicPropertySource
-    static void neighbours(DynamicPropertyRegistry registry) {
-        registry.add("EVENT_SERVICE_URL", stub::url);
-        registry.add("AUTH_TOKEN_URI", () -> stub.url() + TOKEN);
-    }
-
-    @AfterAll
-    static void stopStub() {
-        stub.close();
-    }
 
     private static CatalogShow version(CatalogShow show, int version, CatalogSector... sectors) {
         return new CatalogShow(show.id(), show.producerId(), show.status(), version, Instant.now(),
@@ -84,7 +57,8 @@ class CatalogSyncTests {
                 """).param("id", showId).query(String.class).list();
     }
 
-    private static String json(CatalogShow show) {
+    /** O show como o event-service o publica em shows.catalog (contracts/shows.catalog). */
+    private static String message(String type, CatalogShow show) {
         var sectors = new StringBuilder();
         for (CatalogSector sector : show.sectors()) {
             var lots = new StringBuilder();
@@ -98,11 +72,15 @@ class CatalogSyncTests {
                     """.formatted(sector.id(), sector.name(), sector.kind(), sector.capacity(), lots));
         }
         return """
-                {"id": "%s", "producerId": "%s", "status": "%s", "version": %d, "updatedAt": "%s",
-                 "startsAt": "%s", "salesStartAt": "%s", "salesEndAt": "%s", "highDemand": %s,
-                 "sectors": [%s], "campoNovoQueOInventoryNaoConhece": true}
-                """.formatted(show.id(), show.producerId(), show.status(), show.version(), show.updatedAt(),
-                show.startsAt(), show.salesStartAt(), show.salesEndAt(), show.highDemand(), sectors);
+                {"eventId": "%s", "type": "%s", "version": 1, "occurredAt": "%s", "payload": {
+                 "showId": "%s", "version": %d, "producerId": "%s", "status": "%s", "title": "Show de teste",
+                 "artist": "Artista de teste", "startsAt": "%s", "doorsOpenAt": null, "salesStartAt": "%s",
+                 "salesEndAt": "%s", "highDemand": %s,
+                 "venue": {"id": "%s", "name": "Local", "city": "Recife", "state": "PE", "timezone": "America/Recife"},
+                 "sectors": [%s], "updatedAt": "%s"}}
+                """.formatted(UUID.randomUUID(), type, show.updatedAt(), show.id(), show.version(),
+                show.producerId(), show.status(), show.startsAt(), show.salesStartAt(), show.salesEndAt(),
+                show.highDemand(), UUID.randomUUID(), sectors, show.updatedAt());
     }
 
     @Test
@@ -162,35 +140,34 @@ class CatalogSyncTests {
     }
 
     @Test
-    void leOCatalogoPaginadoComOTokenDaContaDeServicoEContinuaDeOndeParou() {
-        Instant base = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    void leOCatalogoDoTopicoEAplicaSoAVersaoMaisNova() {
         var sales = this.clock.instant().minusSeconds(60);
-        CatalogShow first = at(this.fixtures.show(sales, pista(lot("Lote A", 10_000, 10))), base.minusSeconds(30));
-        CatalogShow second = at(this.fixtures.show(sales, pista(lot("Lote B", 20_000, 20))), base.minusSeconds(20));
-        catalog.set(request -> request.query().contains("cursor=pagina-2")
-                ? "{\"items\": [%s], \"nextCursor\": null}".formatted(json(second))
-                : "{\"items\": [%s], \"nextCursor\": \"pagina-2\"}".formatted(json(first)));
-        stub.clear();
+        CatalogShow show = at(this.fixtures.show(sales, pista(lot("Lote A", 10_000, 10))), Instant.now());
+        // O show do fixture já está na cópia local; o tópico traz uma versão nova e uma antiga.
+        CatalogShow newer = version(show, show.version() + 1, pista(lot("Lote novo", 15_000, 20)));
+        CatalogShow older = version(show, show.version(), pista(lot("Lote velho", 1_000, 1)));
+        String published = message("ShowUpdated", newer);
+        Contracts.assertValid("shows.catalog", "ShowUpdated", published);
 
-        assertThat(this.job.sync()).isEqualTo(2);
+        TestKafka.send("shows.catalog", show.id().toString(), published);
+        TestKafka.send("shows.catalog", show.id().toString(), message("ShowUpdated", older));
 
-        assertThat(lotNames(first.id())).containsExactly("Lote A");
-        assertThat(lotNames(second.id())).containsExactly("Lote B");
-        assertThat(stub.requests(CATALOG)).hasSize(2)
-                .allSatisfy(request -> assertThat(request.authorization()).isEqualTo("Bearer token-do-servico"));
-        assertThat(stub.requests(CATALOG).get(1).query()).contains("cursor=pagina-2");
+        Awaitility.await().atMost(Duration.ofSeconds(15))
+                .until(() -> lotNames(show.id()).equals(List.of("Lote novo")));
+        // Com as vendas abertas pelo ciclo normal, o show lido do tópico vende.
+        assertThat(this.lifecycle.openSales(show.id(), this.clock.instant())).isTrue();
+    }
 
-        // A leitura seguinte pede só o que mudou depois do último show lido, com uma folga.
-        catalog.set(request -> "{\"items\": [], \"nextCursor\": null}");
-        stub.clear();
-        assertThat(this.job.sync()).isZero();
-        assertThat(stub.requests(CATALOG).getFirst().query())
-                .contains("updatedAfter=" + second.updatedAt().minusSeconds(5));
-        // O token foi buscado uma vez e reaproveitado.
-        assertThat(stub.requests(TOKEN)).hasSizeLessThanOrEqualTo(1);
-
-        // Com as vendas abertas pelo ciclo normal, o show lido pelo catálogo vende.
-        assertThat(this.lifecycle.openSales(first.id(), this.clock.instant())).isTrue();
+    @Test
+    void mensagemIlegivelNoCatalogoNaoParaALeitura() {
+        TestKafka.send("shows.catalog", UUID.randomUUID().toString(), "{ isto não é um show");
+        CatalogShow fresh = this.fixtures.show(this.clock.instant().plusSeconds(3600),
+                pista(lot("Lote depois do lixo", 10_000, 10)));
+        CatalogShow next = version(at(fresh, Instant.now()), fresh.version() + 1,
+                pista(lot("Lote seguinte", 11_000, 10)));
+        TestKafka.send("shows.catalog", fresh.id().toString(), message("ShowPublished", next));
+        Awaitility.await().atMost(Duration.ofSeconds(30))
+                .until(() -> lotNames(fresh.id()).equals(List.of("Lote seguinte")));
     }
 
     private static CatalogShow at(CatalogShow show, Instant updatedAt) {

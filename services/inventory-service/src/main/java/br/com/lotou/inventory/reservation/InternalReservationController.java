@@ -4,16 +4,15 @@ import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * API interna: o order-service lê, confirma e libera reservas. Não passa pelo gateway e exige o
- * papel {@code service}.
+ * API interna: o order-service lê a reserva ao criar o pedido, e quando o prazo de um passo da
+ * saga vence. Não passa pelo gateway e exige o papel {@code service}.
  *
- * <p>Na fase 1 estas chamadas são HTTP síncrono. Na fase 3 confirmar e liberar viram os comandos
- * {@code ConfirmReservation} e {@code ReleaseReservation} no Kafka (ADR 23).
+ * <p>Confirmar e liberar não estão aqui: desde a fase 3 são os comandos {@code ConfirmReservation}
+ * e {@code ReleaseReservation} no Kafka ({@link ReservationCommandListener}).
  */
 @RestController
 @RequestMapping("/internal/v1/reservations")
@@ -37,17 +36,5 @@ class InternalReservationController {
     @GetMapping("/{id}")
     InternalReservation get(@PathVariable UUID id) {
         return InternalReservation.of(this.service.get(id));
-    }
-
-    /** Pagamento aprovado. Idempotente: confirmar de novo devolve a mesma reserva. */
-    @PostMapping("/{id}/confirm")
-    InternalReservation confirm(@PathVariable UUID id) {
-        return InternalReservation.of(this.service.confirm(id));
-    }
-
-    /** Pagamento recusado: os ingressos voltam à venda. Idempotente. */
-    @PostMapping("/{id}/release")
-    InternalReservation release(@PathVariable UUID id) {
-        return InternalReservation.of(this.service.release(id));
     }
 }
