@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import br.com.lotou.inventory.catalog.Sector;
+import br.com.lotou.inventory.catalog.CatalogCache.SectorInfo;
 
 /**
  * Onde a reserva acontece. Existem dois motores, e o serviço usa um só, escolhido por configuração
@@ -25,7 +25,7 @@ public interface ReservationEngine {
      *
      * @param seats rótulos das cadeiras, em ordem e sem repetição; vazio na pista
      */
-    record HoldCommand(String buyerId, String idempotencyKey, Sector sector, int quantity, List<String> seats,
+    record HoldCommand(String buyerId, String idempotencyKey, SectorInfo sector, int quantity, List<String> seats,
             String cpfHash, String requestHash) {
     }
 

@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 INFRA   := postgres mongodb redis-cache redis-core keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
-.PHONY: help up infra down clean seed smoke logs ps test \
+.PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \
 	test-event-service test-api-gateway test-inventory-service test-order-service test-web
 
 help: ## Lista os comandos
@@ -34,6 +34,32 @@ seed: ## Carrega locais e shows fictícios (pode rodar mais de uma vez)
 
 smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
 	$(COMPOSE) run --rm smoke
+
+# Testes de carga (k6, dentro do Compose). ENGINE escolhe o motor de reserva do inventory.
+ENGINE ?= redis
+VUS ?=
+DURATION ?=
+
+load-opening: ## Carga: abertura de vendas (ENGINE=redis|postgres, VUS=2000)
+	RESERVATION_ENGINE=$(ENGINE) $(COMPOSE) up -d --wait inventory-service
+	-$(COMPOSE) run --rm -e VUS=$(VUS) -e DURATION=$(DURATION) k6 run --out experimental-prometheus-rw reservation-opening.js
+	@$(MAKE) --no-print-directory load-check
+
+load-contention: ## Carga: mil compradores pelas mesmas 50 cadeiras (ENGINE=redis|postgres)
+	RESERVATION_ENGINE=$(ENGINE) $(COMPOSE) up -d --wait inventory-service
+	-$(COMPOSE) run --rm -e VUS=$(VUS) k6 run --out experimental-prometheus-rw seat-contention.js
+	@$(MAKE) --no-print-directory load-check
+
+load-show-page: ## Carga: página do show com o cache ligado e desligado
+	SHOW_CACHE_ENABLED=true RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
+	$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	SHOW_CACHE_ENABLED=false RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
+	$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	$(COMPOSE) up -d --wait event-service
+
+load-check: ## Confere no Postgres as invariantes de venda (tudo deve dar zero)
+	@./scripts/wait-projection.sh "$(COMPOSE)"
+	$(COMPOSE) exec -T postgres psql -U lotou -d inventory -f /dev/stdin < load-tests/check-invariants.sql
 
 logs: ## Acompanha os logs de todos os serviços
 	$(COMPOSE) logs -f --tail=100

@@ -176,6 +176,22 @@ services:
       web:
         condition: service_healthy
 
+  # Testes de carga (k6). Não sobem com o ambiente: rodam com `make load-*`.
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: [load]
+    working_dir: /load-tests
+    volumes:
+      - ../load-tests:/load-tests:ro
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      EVENT_SERVICE_URL: http://event-service:3000
+      INVENTORY_URL: http://inventory-service:8082
+      GATEWAY_URL: http://api-gateway:8080
+      # Métricas do k6 no Prometheus do Grafana, junto com as dos serviços.
+      K6_PROMETHEUS_RW_SERVER_URL: http://lgtm:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(50),p(95),p(99),max
+
   # ---------------------------------------------------------------- dados
   postgres:
     image: postgres:18-alpine

@@ -189,6 +189,24 @@ public class ReservationProjection implements SmartLifecycle {
             this.redis.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> connection
                     .execute("XTRIM", bytes(RedisKeys.RESERVATION_STREAM), bytes("MINID"), bytes(keepFrom)));
         }
+        forgetStoppedConsumers();
+    }
+
+    /**
+     * Cada instância entra no grupo com um nome próprio, e uma instância que parou deixa o nome lá.
+     * Sem nada pendente e parado há uma hora, o nome sai do grupo: o que ele tinha pendente já foi
+     * assumido por outra instância.
+     */
+    private void forgetStoppedConsumers() {
+        if (!Boolean.TRUE.equals(this.redis.hasKey(RedisKeys.RESERVATION_STREAM))) {
+            return;
+        }
+        this.streams.consumers(RedisKeys.RESERVATION_STREAM, GROUP).stream()
+                .filter(consumer -> consumer.pendingCount() == 0)
+                .filter(consumer -> consumer.idleTime().compareTo(Duration.ofHours(1)) > 0)
+                .filter(consumer -> !consumer.consumerName().equals(this.consumerName))
+                .forEach(consumer -> this.streams.deleteConsumer(RedisKeys.RESERVATION_STREAM,
+                        Consumer.from(GROUP, consumer.consumerName())));
     }
 
     /** Se tudo o que já entrou no stream foi gravado no Postgres (os testes esperam por isso). */

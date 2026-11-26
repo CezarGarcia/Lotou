@@ -7,9 +7,9 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
-import br.com.lotou.inventory.catalog.Sector;
+import br.com.lotou.inventory.catalog.CatalogCache;
+import br.com.lotou.inventory.catalog.CatalogCache.SectorInfo;
 import br.com.lotou.inventory.catalog.SectorKind;
-import br.com.lotou.inventory.catalog.SectorRepository;
 import br.com.lotou.inventory.shared.Cpf;
 import br.com.lotou.inventory.shared.CpfHasher;
 import br.com.lotou.inventory.shared.problem.ProblemException;
@@ -35,14 +35,14 @@ public class ReservationService {
     }
 
     private final ReservationEngine engine;
-    private final SectorRepository sectors;
+    private final CatalogCache catalog;
     private final CpfHasher cpfHasher;
     private final ReservationTelemetry telemetry;
 
-    public ReservationService(ReservationEngine engine, SectorRepository sectors, CpfHasher cpfHasher,
+    public ReservationService(ReservationEngine engine, CatalogCache catalog, CpfHasher cpfHasher,
             ReservationTelemetry telemetry) {
         this.engine = engine;
-        this.sectors = sectors;
+        this.catalog = catalog;
         this.cpfHasher = cpfHasher;
         this.telemetry = telemetry;
     }
@@ -55,9 +55,9 @@ public class ReservationService {
         if (!Cpf.isValid(request.cpf())) {
             throw invalid("cpf", "CPF inválido");
         }
-        Sector sector = this.sectors.findById(new Sector.Key(request.showId(), request.sectorId()))
+        SectorInfo sector = this.catalog.sector(request.showId(), request.sectorId())
                 .orElseThrow(() -> Problems.notFound("Setor"));
-        Selection selection = Selection.of(request, sector.getKind());
+        Selection selection = Selection.of(request, sector.kind());
         String cpfHash = this.cpfHasher.hash(request.cpf());
         String requestHash = sha256(String.join("|", request.showId().toString(), request.sectorId().toString(),
                 String.valueOf(selection.quantity()), String.join(",", selection.seats()), cpfHash));
@@ -71,12 +71,12 @@ public class ReservationService {
             ReservationEngine.Held held = this.engine.hold(new ReservationEngine.HoldCommand(buyerId,
                     idempotencyKey, sector, selection.quantity(), selection.seats(), cpfHash, requestHash));
             if (!held.replayed()) {
-                this.telemetry.reservation(sector.getKind(), "reserved");
+                this.telemetry.reservation(sector.kind(), "reserved");
             }
-            return new Outcome(held.reservation(), sector.getName(), held.replayed());
+            return new Outcome(held.reservation(), sector.name(), held.replayed());
         }
         catch (ProblemException ex) {
-            this.telemetry.reservation(sector.getKind(), ex.slug());
+            this.telemetry.reservation(sector.kind(), ex.slug());
             if (ex.slug().equals("seat-unavailable")) {
                 this.telemetry.seatConflict();
             }
@@ -117,8 +117,8 @@ public class ReservationService {
     }
 
     private Outcome describe(ReservationView reservation) {
-        String sectorName = this.sectors.findById(new Sector.Key(reservation.showId(), reservation.sectorId()))
-                .map(Sector::getName)
+        String sectorName = this.catalog.sector(reservation.showId(), reservation.sectorId())
+                .map(SectorInfo::name)
                 .orElse("");
         return new Outcome(reservation, sectorName, false);
     }

@@ -81,8 +81,8 @@ public class PostgresReservationEngine implements ReservationEngine {
     }
 
     private ReservationView holdLocked(HoldCommand command) {
-        UUID showId = command.sector().getShowId();
-        UUID sectorId = command.sector().getId();
+        UUID showId = command.sector().showId();
+        UUID sectorId = command.sector().id();
         int quantity = command.quantity();
 
         // 1. Cota do CPF: máximo de ingressos por CPF em cada show.

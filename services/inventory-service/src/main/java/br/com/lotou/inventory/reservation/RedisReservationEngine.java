@@ -75,8 +75,8 @@ public class RedisReservationEngine implements ReservationEngine {
 
     @Override
     public Held hold(HoldCommand command) {
-        UUID showId = command.sector().getShowId();
-        UUID sectorId = command.sector().getId();
+        UUID showId = command.sector().showId();
+        UUID sectorId = command.sector().id();
         List<SeatInfo> seats = resolveSeats(showId, sectorId, command.seats());
 
         UUID reservationId = UuidV7.generate();
@@ -142,8 +142,8 @@ public class RedisReservationEngine implements ReservationEngine {
             Instant createdAt, Instant expiresAt) {
         LotInfo lot = this.catalog.lot(lotId);
         List<String> labels = seats.stream().map(SeatInfo::label).toList();
-        return new ReservationView(id, ReservationStatus.HELD, command.sector().getShowId(),
-                command.sector().getId(), command.buyerId(), command.quantity(),
+        return new ReservationView(id, ReservationStatus.HELD, command.sector().showId(),
+                command.sector().id(), command.buyerId(), command.quantity(),
                 Math.multiplyExact(lot.priceCents(), command.quantity()), expiresAt, createdAt,
                 items(lot, command.quantity(), labels));
     }

@@ -17,14 +17,19 @@ import org.springframework.stereotype.Component;
  * Dados de referência que não mudam depois que as vendas abrem, guardados em memória para o caminho
  * quente da reserva não ir ao Postgres: nome e preço dos lotes, e o ID e a posição de cada cadeira.
  *
- * <p>Antes da abertura o catálogo ainda pode trocar lotes e cadeiras (com IDs novos), então quem
- * usa só pede dados de shows com as vendas abertas, e a carga do estoque recarrega o setor.
+ * <p>Antes da abertura o catálogo ainda pode trocar lotes e cadeiras (com IDs novos). O tipo e o
+ * nome de um setor vêm do local e não mudam; as cadeiras só são lidas com as vendas abertas, e a
+ * carga do estoque descarta o que estiver em memória sobre o show.
  */
 @Component
 public class CatalogCache {
 
     /** @param priceCents preço em centavos, congelado no lote */
     public record LotInfo(UUID id, String name, long priceCents) {
+    }
+
+    /** O que a reserva precisa saber do setor. */
+    public record SectorInfo(UUID showId, UUID id, String name, SectorKind kind) {
     }
 
     /** @param position posição da cadeira no setor, que é o bit dela no bitmap */
@@ -36,6 +41,7 @@ public class CatalogCache {
 
     private final JdbcClient jdbc;
     private final Map<UUID, LotInfo> lots = new ConcurrentHashMap<>();
+    private final Map<SectorKey, SectorInfo> sectors = new ConcurrentHashMap<>();
     private final Map<SectorKey, Map<String, SeatInfo>> seats = new ConcurrentHashMap<>();
 
     public CatalogCache(JdbcClient jdbc) {
@@ -62,6 +68,28 @@ public class CatalogCache {
         return raced != null ? raced : loaded;
     }
 
+    /**
+     * O setor, sem ir ao banco depois da primeira vez. É a primeira coisa que toda reserva consulta;
+     * na abertura das vendas, milhares de reservas ao mesmo tempo fariam fila no pool de conexões.
+     */
+    public Optional<SectorInfo> sector(UUID showId, UUID sectorId) {
+        SectorKey key = new SectorKey(showId, sectorId);
+        SectorInfo cached = this.sectors.get(key);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+        Optional<SectorInfo> loaded = this.jdbc.sql("""
+                SELECT name, kind FROM sectors WHERE show_id = :showId AND id = :sectorId
+                """)
+                .param("showId", showId)
+                .param("sectorId", sectorId)
+                .query((rs, row) -> new SectorInfo(showId, sectorId, rs.getString("name"),
+                        SectorKind.valueOf(rs.getString("kind"))))
+                .optional();
+        loaded.ifPresent(sector -> this.sectors.putIfAbsent(key, sector));
+        return loaded;
+    }
+
     /** As cadeiras do setor, por rótulo, na ordem do mapa. */
     public Map<String, SeatInfo> seats(UUID showId, UUID sectorId) {
         SectorKey key = new SectorKey(showId, sectorId);
@@ -81,6 +109,7 @@ public class CatalogCache {
     /** Descarta o que estiver em memória sobre o show (a carga do estoque chama antes de carregar). */
     public void forget(UUID showId) {
         this.seats.keySet().removeIf(key -> key.showId().equals(showId));
+        this.sectors.keySet().removeIf(key -> key.showId().equals(showId));
     }
 
     private Map<String, SeatInfo> load(UUID showId, UUID sectorId) {
