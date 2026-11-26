@@ -1,7 +1,7 @@
 name: smoke
 
 # O ambiente inteiro numa máquina limpa: sobe o Compose, roda o seed e confere
-# que uma requisição gera um trace do gateway até o MongoDB, visível no Tempo.
+# que uma compra de ponta a ponta funciona e que os traces chegam completos ao Tempo.
 # Roda quando muda algo que entra no ambiente.
 on:
   push:
@@ -26,7 +26,7 @@ permissions:
 jobs:
   compose:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Sobe o ambiente
