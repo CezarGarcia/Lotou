@@ -10,10 +10,14 @@ Faz duas coisas: **roteia** para os serviços e **valida o JWT** emitido pelo Ke
 | --- | --- | --- |
 | `GET /api/v1/shows/**`, `GET /api/v1/venues/**` | event-service | público |
 | demais métodos em `/api/v1/shows/**` e `/api/v1/venues/**` | event-service | papel `producer` |
+| `GET /api/v1/availability/**` | inventory-service | público |
+| `/api/v1/reservations/**` | inventory-service | papel `buyer` |
+| `/api/v1/lots/**` | inventory-service | papel `producer` |
+| `/api/v1/orders/**` | order-service | papel `buyer` |
 | `/actuator/health/**` | o próprio gateway | público |
 | qualquer outra | — | exige autenticação (fechado por padrão) |
 
-O prefixo `/api` é removido antes de repassar (`/api/v1/shows` vira `/v1/shows`) e o cabeçalho `Authorization` segue intacto, porque cada serviço valida o token de novo ([ADR 21](../../docs/adr/0021-servicos-revalidam-o-jwt.md)).
+As APIs internas dos serviços (`/internal/**`) não têm rota no gateway. O prefixo `/api` é removido antes de repassar (`/api/v1/shows` vira `/v1/shows`) e o cabeçalho `Authorization` segue intacto, porque cada serviço valida o token de novo ([ADR 21](../../docs/adr/0021-servicos-revalidam-o-jwt.md)).
 
 As rotas ficam em [`application.yml`](src/main/resources/application.yml) e as regras de acesso em [`SecurityConfig`](src/main/java/br/com/lotou/gateway/security/SecurityConfig.java).
 
@@ -48,6 +52,8 @@ A imagem Docker roda com o Java agent do OpenTelemetry: traces, métricas e logs
 | --- | --- | --- |
 | `PORT` | `8080` | porta HTTP |
 | `EVENT_SERVICE_URL` | `http://localhost:3001` | endereço do event-service |
+| `INVENTORY_SERVICE_URL` | `http://localhost:8082` | endereço do inventory-service |
+| `ORDER_SERVICE_URL` | `http://localhost:8083` | endereço do order-service |
 | `AUTH_ISSUER` | `http://localhost:8180/realms/lotou` | emissor esperado no JWT |
 | `AUTH_JWKS_URI` | `<emissor>/protocol/openid-connect/certs` | de onde baixar as chaves públicas |
 | `AUTH_AUDIENCE` | `lotou-api` | audiência esperada no JWT |

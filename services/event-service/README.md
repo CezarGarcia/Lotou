@@ -2,7 +2,9 @@
 
 Shows, locais, setores e busca. Node, NestJS 12 e MongoDB.
 
-É o dono do catálogo: o produtor cadastra locais e shows, publica, e a loja busca e exibe. Preço e estoque de verdade ficam com o inventory-service (fase 1); aqui os lotes são a configuração que a página do show exibe.
+É o dono do catálogo: o produtor cadastra locais e shows, publica, e a loja busca e exibe. Os lotes daqui são a configuração do produtor; o que está à venda agora, o preço e o estoque ficam com o inventory-service, que lê o catálogo por uma API interna.
+
+Um job avança o show pelo horário: `PUBLISHED` vira `ON_SALE` na abertura das vendas e `SALES_CLOSED` no encerramento. Sem datas agendadas, as vendas abrem na publicação e fecham no início do show.
 
 ## API
 
@@ -19,6 +21,7 @@ Atrás do gateway, as rotas ganham o prefixo `/api` (`/api/v1/shows`).
 | `GET` | `/v1/venues/:id` | público | detalhe do local |
 | `POST` | `/v1/venues` | produtor | cadastra o local (exige `Idempotency-Key`) |
 | `PATCH` | `/v1/venues/:id` | quem cadastrou | altera nome, endereço ou setores |
+| `GET` | `/internal/v1/catalog/shows` | conta de serviço | catálogo para os outros serviços, incremental por `updatedAfter` e cursor |
 | `GET` | `/health/live`, `/health/ready` | público | health check |
 
 Erros saem em Problem Details (RFC 9457), com `type` no formato `urn:lotou:problem:<tipo>` e o `traceId` da requisição:
@@ -87,5 +90,6 @@ npm run build && npm run start:prod
 | `AUTH_ISSUER` | — | emissor esperado no JWT (URL pública do realm) |
 | `AUTH_JWKS_URI` | — | de onde baixar as chaves públicas do realm |
 | `AUTH_AUDIENCE` | `lotou-api` | audiência esperada no JWT |
+| `SHOW_LIFECYCLE_INTERVAL_MS` | `1000` | intervalo do job de abertura e encerramento das vendas (0 desliga) |
 | `LOG_LEVEL` | `info` | nível do log |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | endereço do OTel Collector |

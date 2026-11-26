@@ -94,6 +94,8 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 - Um show só pode ser publicado com local, ao menos um setor e ao menos um lote configurados.
 - Depois que as vendas abrem, o produtor não pode reduzir a capacidade de um setor abaixo do que já foi vendido.
 - O produtor define o horário de abertura dos portões; o check-in só é aceito a partir dele.
+- Num setor de cadeira numerada, o local define as fileiras e as cadeiras, e o show vende o setor inteiro: a capacidade do setor no show é a do local.
+- Sem data de abertura agendada, as vendas abrem na publicação; sem data de encerramento, fecham no início do show.
 
 ### Compra
 
@@ -102,12 +104,16 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 - Na cadeira numerada, o comprador escolhe até 4 assentos e a reserva é tudo ou nada.
 - A reserva dura 10 minutos, não é renovável e o cronômetro aparece no checkout.
 - O preço é o do lote no momento da reserva e fica congelado no pedido, mesmo que o lote vire durante o pagamento.
+- Uma reserva é de um único setor e sai de um lote só. Se o lote em venda tem menos ingressos que o pedido, a reserva é recusada e o comprador vê quantos restam (ADR 25).
+- O comprador informa o CPF ao reservar. O CPF é validado pelos dígitos verificadores e gravado só como HMAC (ADR 24).
 
 ### Lotes
 
 - Cada setor tem uma ordem de lotes. O próximo lote abre quando o atual esgota ou na data definida pelo produtor, o que vier primeiro.
 - Ingressos devolvidos (reserva expirada, pagamento recusado ou reembolso) voltam para o **lote em venda** no setor, ao preço dele. Reabrir um lote mais barato confundiria o comprador.
 - O produtor pode pausar e retomar um lote; um lote pausado não aceita reservas.
+- Se um ingresso é devolvido e o setor não tem lote em venda (todos esgotaram), o último lote reabre com ele (ADR 25).
+- Na virada por data, o que sobrou do lote anterior passa para o lote novo, ao preço novo. Um lote pausado não vira sozinho.
 
 ### Taxa de serviço
 
@@ -174,7 +180,7 @@ stateDiagram-v2
     PAUSED --> ON_SALE: produtor retoma
     ON_SALE --> CLOSED: vendas encerradas
     PAUSED --> CLOSED: vendas encerradas
-    SOLD_OUT --> [*]
+    SOLD_OUT --> ON_SALE: ingresso devolvido
     CLOSED --> [*]
 ```
 *Lote*
@@ -218,7 +224,7 @@ stateDiagram-v2
 ```
 *Ingresso*
 
-Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não é final, porque pode ser reprocessado pelo painel.
+Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não é final, porque pode ser reprocessado pelo painel. O lote em SOLD\_OUT também não é: ele reabre se um ingresso for devolvido e o setor não tiver outro lote em venda.
 
 ### Transições
 
@@ -230,7 +236,8 @@ Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não 
 | Show | SALES\_CLOSED | FINISHED | fim do show; o relatório financeiro fica final | job |
 | Show | PUBLISHED ou ON\_SALE | CANCELLED | produtor cancela; todos os pedidos confirmados vão para reembolso | produtor |
 | Lote | SCHEDULED | ON\_SALE | abertura das vendas, virada do lote anterior ou data do lote | inventory |
-| Lote | ON\_SALE | SOLD\_OUT | contador chega a zero (`LotSoldOut`) | inventory |
+| Lote | ON\_SALE | SOLD\_OUT | contador chega a zero (`LotSoldOut`), ou virada por data | inventory |
+| Lote | SOLD\_OUT | ON\_SALE | ingresso devolvido e o setor sem lote em venda: reabre o último lote | inventory |
 | Lote | ON\_SALE | PAUSED | produtor pausa | produtor |
 | Lote | PAUSED | ON\_SALE | produtor retoma | produtor |
 | Lote | ON\_SALE ou PAUSED | CLOSED | vendas do show encerradas | inventory |
@@ -294,6 +301,8 @@ Todos os serviços exportam traces, métricas e logs via OTLP para o OTel Collec
 
 O gateway também leva o SSE e o WebSocket até o analytics-service, que é o hub de tempo real, e as leituras de QR até o checkin-service. O producer-assistant não usa o Kafka: só lê os read models.
 
+**Até a fase 3 não há broker.** Nas fases 1 e 2 os serviços se falam por HTTP: o inventory lê o catálogo do event-service por polling, o order-service confirma e libera reservas por uma API interna do inventory, e o pagamento é simulado dentro do order-service. Essas ligações são provisórias e viram eventos e comandos no Kafka na fase 3 (ADR 23). As APIs internas (`/internal/**`) não têm rota no gateway e exigem o token de uma conta de serviço.
+
 ### Serviços
 
 | Serviço | Stack | Responsabilidade | Dados |
@@ -349,11 +358,14 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 
 | Serviço | Tabela | Para quê |
 | --- | --- | --- |
-| inventory | `lots` | lotes por setor: preço, quantidade, ordem de virada e status |
-| inventory | `seats` | uma linha por cadeira numerada, com status e versão |
-| inventory | `reservations` | reservas persistidas a partir do Redis Stream, com status e `expires_at` |
-| order | `orders`, `order_items` | pedido, status, cupom aplicado e `idempotency_key` única |
-| order | `tickets` | ingresso emitido, status (VALID, USED ou CANCELLED) e código do QR; constraint única em (show, assento) como última defesa contra venda dupla |
+| inventory | `shows`, `sectors` | cópia local do catálogo: janela de vendas, estado do show e capacidade de cada setor |
+| inventory | `lots` | lotes por setor: preço, quantidade, contador de ingressos restantes, ordem de virada e status |
+| inventory | `seats` | uma linha por cadeira numerada, com status e a reserva que a segura |
+| inventory | `reservations`, `reservation_items` | reserva com status e `expires_at`; um item por ingresso, com o preço congelado. Na fase 1 é gravada direto; na fase 2 passa a vir do Redis Stream |
+| inventory | `purchase_limits` | ingressos por CPF em cada show; a chave usa o HMAC do CPF |
+| inventory | `catalog_sync` | até onde a leitura do catálogo já chegou (fases 1 e 2) |
+| order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; o cupom aplicado entra na fase 6 |
+| order | `tickets` | ingresso emitido e status (VALID, USED ou CANCELLED); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla. O código do QR entra na fase 4 |
 | order | `coupons` | código, desconto, limite de uso, validade e show |
 | order | `refunds` | pedido de reembolso, valor, status e tentativas |
 | order | `outbox` | eventos a publicar no Kafka, gravados na mesma transação do pedido |
@@ -368,7 +380,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | Coleção | Conteúdo | Por que documento |
 | --- | --- | --- |
 | `events` | show, artista, data, local, setores, lotes, descrição e flag de alta demanda | campos variam por tipo de show e de local |
-| `venues` | layout do local: setores, fileiras e assentos com coordenadas para desenhar o mapa | um estádio e um teatro têm estruturas bem diferentes |
+| `venues` | layout do local: setores e fileiras com a quantidade de cadeiras; as coordenadas para desenhar o mapa entram na fase 2 | um estádio e um teatro têm estruturas bem diferentes |
 | `sales_by_sector` | vendas, receita e ocupação por show, setor e hora | read model desnormalizado, montado a partir de eventos |
 | `producer_statements` | por show: vendas brutas, descontos, cancelamentos, reembolsos, taxa da plataforma e valor a receber | read model financeiro, recalculável por replay |
 | `order_view` | pedido completo para o painel e o agente | evita joins entre serviços na leitura |
@@ -710,6 +722,9 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 20 | Monorepo com pastas simples: ferramenta nativa por serviço, Makefile na raiz e filtros de caminho no CI | Nx | com três linguagens, o Nx acrescenta uma camada sem relação com os objetivos; cada serviço fica como seria numa empresa |
 | 21 | Cada serviço revalida o JWT que o gateway já validou | confiar em cabeçalhos de identidade montados pelo gateway | defesa em profundidade: um serviço alcançado pela rede interna não aceita requisição sem token válido |
 | 22 | `Idempotency-Key` do event-service guardada no MongoDB, com índice único e TTL de 24 h | `redis-core` (dependência nova só para isso) ou `redis-cache` (pode descartar a chave) | a idempotência fica na mesma base dos dados que protege; o `POST /orders` continua no Redis |
+| 23 | Fase 1 sem broker: catálogo por polling, reserva por API interna e pagamento simulado no order-service | antecipar o Kafka e o payment-mock | a fase 1 entrega o checkout completo como linha de base; a fase 3 troca as ligações por eventos e mostra a diferença |
+| 24 | CPF gravado como HMAC-SHA-256 com chave secreta; limite por CPF conferido num único comando no banco | SHA puro do CPF; ler o total e somar na aplicação | só existem 10^11 CPFs, então um hash sem chave se reverte por força bruta; o comando único evita a corrida entre reservas do mesmo CPF |
+| 25 | Devolução de ingresso reabre o último lote esgotado; uma reserva sai de um lote só | `SOLD_OUT` final; dividir a reserva entre dois lotes | sem isso, ingressos de reservas expiradas no último lote sairiam de venda para sempre; um lote por reserva mantém um preço só |
 
 ## Testes, carga e caos
 
@@ -786,6 +801,26 @@ Duas decisões saíram da fase e viraram ADR: os serviços revalidam o JWT que o
 
 Na fase 0 os lotes ficam no documento do show só como configuração exibida na loja. O inventory-service assume preço e estoque na fase 1.
 
+### Fase 1 (pedidos e estoque)
+
+Fase concluída em 26/11/2026. Critério de pronto atingido: o checkout de ponta a ponta está coberto por testes com Testcontainers, com o order-service conversando com o inventory-service de verdade num Postgres real.
+
+- [x] inventory-service: cópia do catálogo, lotes com tabela de estados, cadeiras numeradas e reserva com lock no Postgres (`SELECT ... FOR UPDATE`)
+- [x] Limite de 4 ingressos por CPF, reserva de 10 minutos com expiração por varredura no banco e virada de lote por esgotamento e por data
+- [x] order-service: pedido, pagamento simulado, confirmação da reserva, emissão de ingressos e compensação quando o pagamento é recusado
+- [x] Retomada de pedidos pendentes, `Idempotency-Key` em reservas e pedidos e índice único de (show, setor, cadeira) nos ingressos
+- [x] event-service: fileiras de cadeiras nos locais, abertura e encerramento das vendas pelo horário e API interna de catálogo
+- [x] Rotas no gateway, os dois serviços no Compose, contas de serviço no Keycloak e CI
+- [x] Testes de concorrência: 200 compradores para 50 ingressos, 100 compradores para as mesmas cadeiras e 40 compradores fechando a compra de 15 ingressos
+
+Decisões da fase que viraram ADR: constraint única nos ingressos (4), um banco por serviço (18), integração síncrona provisória (23), CPF como HMAC (24) e regras de devolução e virada de lote (25).
+
+O que ficou para as fases seguintes, de propósito:
+
+- A tela de checkout na loja. A fase 1 entrega a compra pela API; a tela precisa de login no Angular, e a biblioteca de OIDC ainda não foi escolhida (veja as questões em aberto).
+- A taxa de serviço de 10% e os cupons, que entram com o lado financeiro na fase 6. Hoje o total do pedido é a soma dos ingressos.
+- O cancelamento pelo comprador e o reembolso (fase 6). As tabelas de estado do pedido e do ingresso já têm essas transições.
+
 ## Questões em aberto
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br
@@ -797,5 +832,7 @@ Na fase 0 os lotes ficam no documento do show só como configuração exibida na
 - [ ] Contratos: JSON Schema ou Avro com Schema Registry?
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: medido na fase 0, o ambiente usa cerca de 2,2 GB com dez containers (Keycloak 670 MB, `grafana/otel-lgtm` 580 MB e api-gateway 415 MB são os maiores). Medir de novo quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
+- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0 e passou a 3,5 GB na fase 1, com doze containers (cada serviço Java ocupa de 400 a 600 MB; Keycloak e `grafana/otel-lgtm`, cerca de 600 MB cada). Medir de novo quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
+- [ ] Login no Angular: qual biblioteca de OIDC usar para o fluxo com PKCE (`keycloak-js`, `angular-auth-oidc-client` ou outra)? A tela de checkout depende disso
+- [ ] CPF do comprador: hoje ele é informado na reserva. Num produto real viria do cadastro, validado; vale levar o CPF para o cadastro no Keycloak?
 - [ ] Reconciliação após perda do Redis: definir o algoritmo exato para reconstruir o estoque dos lotes e o bitmap de assentos a partir do Postgres

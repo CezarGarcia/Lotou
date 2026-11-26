@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fase 1 (Pedidos e estoque): inventory-service e order-service no Postgres, com reserva por lock no banco. A fase 0 (Fundação) está concluída. O roadmap está em `docs/projeto.md`, seção "Roadmap".
+Fases 0 (Fundação) e 1 (Pedidos e estoque) concluídas. A próxima é a fase 2 (Redis e abertura de vendas). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 
@@ -29,12 +29,15 @@ Na raiz (`make help` lista todos):
 - `make infra`: sobe só a infraestrutura, para rodar um serviço fora do Compose
 - `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
 - `make test`: roda os testes de todos os serviços
-- `make smoke`: confere o ambiente no ar, incluindo o trace até o MongoDB no Tempo
+- `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
+
+Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
 
 Por serviço:
 
 - `services/event-service`: `npm test` (unitários), `npm run test:e2e` (integração com Testcontainers), `npm run lint`, `npm run format:check`
-- `services/api-gateway`: `./mvnw test`
+- `services/api-gateway`, `services/inventory-service`: `./mvnw test`
+- `services/order-service`: `make test-order-service` na raiz (constrói a imagem do inventory, que os testes de ponta a ponta usam) ou `./mvnw test` se a imagem já existe
 - `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
 
 ## Convenções obrigatórias
