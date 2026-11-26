@@ -45,13 +45,11 @@ export class ShowSearchStore {
         filter((request) => request !== null),
         switchMap(({ filters }) =>
           this.api.search(filters).pipe(
-            map(
-              (page): SearchState => ({
-                status: 'ready',
-                items: page.items,
-                nextCursor: page.nextCursor,
-              }),
-            ),
+            map((page): SearchState => ({
+              status: 'ready',
+              items: page.items,
+              nextCursor: page.nextCursor,
+            })),
             catchError((error: unknown) =>
               of<SearchState>({ ...LOADING, status: 'error', error: toApiError(error) }),
             ),

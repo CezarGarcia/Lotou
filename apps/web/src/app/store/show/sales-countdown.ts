@@ -22,9 +22,15 @@ import { countdownParts } from './countdown';
         <div class="unit">
           <strong>{{ parts.days }}</strong><span>{{ parts.days === 1 ? 'dia' : 'dias' }}</span>
         </div>
-        <div class="unit"><strong>{{ pad(parts.hours) }}</strong><span>horas</span></div>
-        <div class="unit"><strong>{{ pad(parts.minutes) }}</strong><span>min</span></div>
-        <div class="unit"><strong>{{ pad(parts.seconds) }}</strong><span>seg</span></div>
+        <div class="unit">
+          <strong>{{ pad(parts.hours) }}</strong><span>horas</span>
+        </div>
+        <div class="unit">
+          <strong>{{ pad(parts.minutes) }}</strong><span>min</span>
+        </div>
+        <div class="unit">
+          <strong>{{ pad(parts.seconds) }}</strong><span>seg</span>
+        </div>
       </div>
     }
   `,

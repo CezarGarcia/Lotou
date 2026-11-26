@@ -118,10 +118,12 @@ describe('ShowSearchStore', () => {
   it('expõe o erro em Problem Details e refaz a busca no retry', () => {
     store.search(EMPTY_FILTERS);
     flush();
-    http.expectOne(() => true).flush(
-      { type: 'about:blank', title: 'Service Unavailable', status: 503, traceId: 't1' },
-      { status: 503, statusText: 'Service Unavailable' },
-    );
+    http
+      .expectOne(() => true)
+      .flush(
+        { type: 'about:blank', title: 'Service Unavailable', status: 503, traceId: 't1' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
 
     expect(store.error()).toEqual({
       status: 503,

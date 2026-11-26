@@ -1,0 +1,39 @@
+name: event-service
+
+# Só roda quando o serviço (ou este workflow) muda.
+on:
+  push:
+    paths:
+      - services/event-service/**
+      - .github/workflows/event-service.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/event-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/event-service/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      - name: Testes unitários
+        run: npm test
+      # O Testcontainers sobe um MongoDB real no Docker do runner.
+      - name: Testes de integração
+        run: npm run test:e2e
