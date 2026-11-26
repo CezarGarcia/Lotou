@@ -152,12 +152,21 @@ if (reservation.status !== 'HELD' || reservation.totalCents !== sector.lot.price
 console.log(`   reserva ${reservation.id} segurada até ${reservation.expiresAt}`);
 
 const orderTrace = newTrace();
-const order = await api('POST', '/orders', {
+const created = await api('POST', '/orders', {
   token,
   idempotent: true,
   trace: orderTrace,
   body: { reservationId: reservation.id },
 });
+if (created.status !== 'PENDING') fail(`o pedido deveria nascer PENDING: ${JSON.stringify(created)}`);
+console.log(`   pedido ${created.id} criado; a saga segue pelo Kafka`);
+
+// Pagamento, confirmação da reserva e emissão dos ingressos acontecem pela saga: acompanha o pedido.
+let order = created;
+for (let attempt = 0; attempt < 60 && order.status === 'PENDING'; attempt++) {
+  await sleep(500);
+  order = await api('GET', `/orders/${created.id}`, { token });
+}
 if (order.status !== 'CONFIRMED' || order.tickets.length !== 1 || order.tickets[0].status !== 'VALID') {
   fail(`o pedido não foi confirmado com um ingresso válido: ${JSON.stringify(order)}`);
 }
@@ -172,6 +181,7 @@ console.log(`   estoque do lote: ${sector.available} -> ${after.available}`);
 console.log('3. Traces no Tempo');
 await expectTrace(searchTrace, ['api-gateway', 'event-service'], 'mongodb');
 await expectTrace(purchaseTrace, ['api-gateway', 'inventory-service'], 'postgresql');
-await expectTrace(orderTrace, ['api-gateway', 'order-service', 'inventory-service'], 'postgresql');
+// O trace do pedido atravessa o Kafka: do gateway ao order-service, dele ao payment-mock e ao inventory.
+await expectTrace(orderTrace, ['api-gateway', 'order-service', 'payment-mock', 'inventory-service'], 'postgresql');
 
 console.log(`OK. Veja os traces em http://localhost:3000/explore (Tempo), por exemplo ${orderTrace.traceId}`);
