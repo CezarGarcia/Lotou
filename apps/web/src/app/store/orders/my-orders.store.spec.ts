@@ -10,7 +10,7 @@ const order = (id: string, showId = 's1'): OrderSummary => ({
   status: 'CONFIRMED',
   showId,
   totalCents: 10_000,
-  tickets: [],
+  tickets: 2,
   createdAt: '2031-01-01T00:00:00Z',
 });
 

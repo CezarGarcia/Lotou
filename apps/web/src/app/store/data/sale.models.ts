@@ -138,6 +138,7 @@ export interface OrderSummary {
   status: OrderStatus;
   showId: string;
   totalCents: number;
-  tickets: Ticket[];
+  /** Quantos ingressos o pedido tem (já emitidos ou não); a lista vem só no detalhe. */
+  tickets: number;
   createdAt: string;
 }

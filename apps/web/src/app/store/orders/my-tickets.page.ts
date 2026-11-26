@@ -69,11 +69,7 @@ import { ORDER_STATUS_LABELS } from './order.store';
                       </span>
                     }
                     <span>
-                      {{
-                        order.tickets.length === 1
-                          ? '1 ingresso'
-                          : order.tickets.length + ' ingressos'
-                      }}
+                      {{ order.tickets === 1 ? '1 ingresso' : order.tickets + ' ingressos' }}
                       · {{ order.totalCents | brl }}
                     </span>
                   </div>
