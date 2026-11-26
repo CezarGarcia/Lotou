@@ -25,6 +25,22 @@ x-auth-env: &auth-env
 
 services:
   # ------------------------------------------------------------- aplicação
+  # Porta de entrada da API: roteia para os serviços e valida o JWT.
+  api-gateway:
+    build:
+      context: ../services/api-gateway
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: api-gateway
+      EVENT_SERVICE_URL: http://event-service:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      event-service:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
   # Sem porta publicada: só o api-gateway fala com ele.
   event-service:
     build:

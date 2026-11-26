@@ -1,0 +1,47 @@
+server:
+  port: ${PORT:8080}
+  # Ao receber SIGTERM, termina as requisições em andamento antes de sair.
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000 # ms
+            response-timeout: 10s
+          routes:
+            # Catálogo: shows e locais. /api/v1/shows -> event-service /v1/shows
+            - id: event-service
+              uri: ${EVENT_SERVICE_URL:http://localhost:3001}
+              predicates:
+                - Path=/api/v1/shows/**,/api/v1/venues/**
+              filters:
+                - StripPrefix=1
+                # O serviço devolve Location sem o prefixo do gateway.
+                - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Emissor esperado no token: a URL pública do realm no Keycloak.
+          issuer-uri: ${AUTH_ISSUER:http://localhost:8180/realms/lotou}
+          # De onde baixar as chaves públicas. Com esta propriedade o gateway não
+          # depende do Keycloak para subir: as chaves são buscadas no primeiro token.
+          jwk-set-uri: ${AUTH_JWKS_URI:http://localhost:8180/realms/lotou/protocol/openid-connect/certs}
+          audiences: ${AUTH_AUDIENCE:lotou-api}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
