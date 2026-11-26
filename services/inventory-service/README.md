@@ -135,9 +135,7 @@ Os testes de carga ficam em [`load-tests/`](../../load-tests) e rodam pela raiz 
 | `REDIS_URL` | `redis://localhost:6380` | conexão com o `redis-core` |
 | `RESERVATION_ENGINE` | `redis` | motor de reserva: `redis` ou `postgres` |
 | `QUEUE_ADMISSION_RATE` | `100` | compradores admitidos por segundo em cada show de alta demanda |
-| `EVENT_SERVICE_URL` | `http://localhost:3001` | de onde ler o catálogo |
 | `AUTH_ISSUER`, `AUTH_JWKS_URI`, `AUTH_AUDIENCE` | realm local | validação do JWT |
-| `AUTH_TOKEN_URI`, `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET` | realm local | token da conta de serviço |
 | `CPF_HASH_KEY` | chave de desenvolvimento | chave do HMAC do CPF |
 | `RESERVATION_TTL` | `10m` | duração da reserva |
 | `JOBS_ENABLED` | `true` | liga os jobs agendados |

@@ -225,25 +225,6 @@
       "optionalClientScopes": []
     },
     {
-      "clientId": "inventory-service",
-      "name": "Lotou inventory-service",
-      "description": "Conta de serviço do inventory-service: lê o catálogo no event-service",
-      "enabled": true,
-      "protocol": "openid-connect",
-      "publicClient": false,
-      "secret": "inventory-service-dev-secret",
-      "standardFlowEnabled": false,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": true,
-      "fullScopeAllowed": false,
-      "defaultClientScopes": [
-        "basic",
-        "lotou-api"
-      ],
-      "optionalClientScopes": []
-    },
-    {
       "clientId": "order-service",
       "name": "Lotou order-service",
       "description": "Conta de serviço do order-service: confirma e libera reservas no inventory-service",
@@ -300,14 +281,6 @@
       "serviceAccountClientId": "lotou-seed",
       "realmRoles": [
         "producer"
-      ]
-    },
-    {
-      "username": "service-account-inventory-service",
-      "enabled": true,
-      "serviceAccountClientId": "inventory-service",
-      "realmRoles": [
-        "service"
       ]
     },
     {
