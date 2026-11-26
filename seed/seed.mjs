@@ -16,6 +16,9 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:8080';
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost:8180';
 const CLIENT_ID = process.env.SEED_CLIENT_ID ?? 'lotou-seed';
 const CLIENT_SECRET = process.env.SEED_CLIENT_SECRET ?? 'lotou-seed-dev-secret';
+// Os shows são criados em nome do produtor de demonstração, para aparecerem no painel dele.
+const PRODUCER_USERNAME = process.env.SEED_PRODUCER_USERNAME ?? 'produtor';
+const PRODUCER_PASSWORD = process.env.SEED_PRODUCER_PASSWORD ?? 'lotou123';
 
 const API = `${GATEWAY_URL}/api/v1`;
 const today = new Date().toISOString().slice(0, 10);
@@ -44,10 +47,15 @@ async function getToken() {
     `${KEYCLOAK_URL}/realms/lotou/protocol/openid-connect/token`,
     {
       method: 'POST',
+      // Fluxo de senha, liberado só neste cliente de desenvolvimento: o seed age como o produtor
+      // de demonstração, e o painel dele mostra os shows criados aqui.
       body: new URLSearchParams({
-        grant_type: 'client_credentials',
+        grant_type: 'password',
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
+        username: PRODUCER_USERNAME,
+        password: PRODUCER_PASSWORD,
+        scope: 'openid',
       }),
     },
   );

@@ -208,14 +208,14 @@
     {
       "clientId": "lotou-seed",
       "name": "Lotou seed",
-      "description": "Carga de dados fictícios. Cliente confidencial com conta de serviço (client credentials)",
+      "description": "Carga de dados fictícios, só para desenvolvimento. Cliente confidencial: o seed entra como o produtor de demonstração (fluxo de senha) e os testes de carga usam a conta de serviço (client credentials)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
       "secret": "lotou-seed-dev-secret",
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": false,
       "defaultClientScopes": [
