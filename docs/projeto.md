@@ -387,8 +387,11 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | `sales_by_sector` | vendas, receita e ocupação por show, setor e hora | read model desnormalizado, montado a partir de eventos |
 | `producer_statements` | por show: vendas brutas, descontos, cancelamentos, reembolsos, taxa da plataforma e valor a receber | read model financeiro, recalculável por replay |
 | `order_view` | pedido completo para o painel e o agente | evita joins entre serviços na leitura |
+| `shows`, `lot_timeline` | cópia do catálogo que o analytics usa e a linha do tempo dos lotes (abertura e esgotamento) | apoio dos read models acima |
 | `agent_conversations` | histórico do chat e chamadas de ferramenta | estrutura aninhada e variável |
 | `idempotency_keys` | `Idempotency-Key` já vista nos POSTs do event-service, com a resposta original; TTL de 24 h | o índice único do `_id` decide a corrida entre requisições iguais (ADR 22) |
+
+Os read models do analytics ficam no banco `analytics`, em coleções por geração (`order_view_g3`); uma view com o nome simples (`order_view`) aponta sempre para a geração ativa, e é ela que leitores de fora, como o producer-assistant, usam. Cada geração tem o próprio consumer group (`analytics-service.gen-<N>`), o que permite o replay sem parada (ADR 30).
 
 ### Redis
 
@@ -749,6 +752,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 27 | Login na loja com `angular-auth-oidc-client`; SSE lido com `fetch` e o token no cabeçalho | `keycloak-js`; `EventSource` com o token na URL | biblioteca certificada e independente do provedor; token na URL vaza em logs, histórico e traces |
 | 28 | Contratos dos eventos em JSON Schema autocontido, com um exemplo por mensagem conferido no CI | Avro com Schema Registry | mensagens legíveis no Kafka UI e nos logs, sem serviço a mais nem geração de código em três linguagens; o Schema Registry é o passo seguinte |
 | 29 | Outbox do event-service no MongoDB, na mesma transação do show (replica set), publicado em transações Kafka com um `transactional.id` só | gravar e publicar separadamente; change streams | sem escrita dupla; o broker corta um relay que perdeu a vez, então uma versão antiga do show nunca sai depois de uma nova |
+| 30 | Replay dos read models em gerações: cada geração tem coleções e consumer group próprios, e uma troca atômica de ponteiro a torna ativa | apagar e reconstruir no lugar | o painel segue respondendo durante o replay; se ele falha, a geração anterior continua ativa |
 
 ## Testes, carga e caos
 
@@ -883,6 +887,29 @@ O que ficou para as fases seguintes, de propósito:
 - O cache do layout do local e o `POST /orders` com a `Idempotency-Key` no Redis: a idempotência do pedido continua no Postgres do order-service, que já resolve a corrida.
 - Trocar de motor de reserva com vendas abertas não é suportado (ADR 26).
 
+### Fase 3 (Kafka e saga)
+
+Fase concluída em 26/11/2026. Critérios de pronto atingidos: o replay reconstrói os read models (o teste compara a geração nova com a anterior, documento a documento, com o painel respondendo durante a reconstrução) e a saga compensa com 30% de recusa (teste de ponta a ponta com o inventory de verdade e, no ambiente do Compose, 30 compras com o payment-mock recusando 30%: 19 pagas, 11 compensadas, estoque devolvido exatamente).
+
+- [x] Kafka 4.2 em KRaft no Compose, com Kafka UI e tópicos criados por um job, com retenção por papel do tópico (ADR 1)
+- [x] Contratos dos 18 tipos de mensagem em JSON Schema, com exemplos conferidos no CI e nos testes dos produtores e consumidores (ADR 28)
+- [x] order-service: saga de compra orquestrada, com `saga_state`, outbox, `processed_events`, DLT e prazos que repetem o comando ou consultam a reserva (ADRs 6, 7 e 8); `POST /orders` responde PENDING
+- [x] payment-mock: NestJS e Postgres, com recusa, falha de estorno e latência configuráveis, resposta igual a comando repetido e outbox
+- [x] inventory: catálogo lido de `shows.catalog` (sai o polling), comandos da saga e fatos de reservas e lotes gravados por trigger no outbox
+- [x] event-service: catálogo publicado por outbox no MongoDB (replica set) em transações Kafka, e cache do show apagado quando um lote esgota ou abre (ADR 29)
+- [x] analytics-service: FastAPI, read models no MongoDB (vendas por setor e hora, relatório do produtor, pedidos, linha do tempo dos lotes) e replay sem parada (ADR 30); rota no gateway só para o produtor dono do show
+- [x] Trace atravessando o Kafka: o trace de um pedido vai do gateway ao order-service, ao payment-mock e ao inventory
+
+Decisões da fase que viraram ADR: Kafka para fatos de domínio e comandos (1), reserva síncrona e pagamento assíncrono (6), saga orquestrada (7), outbox transacional (8), contratos em JSON Schema (28), outbox do event-service no MongoDB (29) e replay em gerações (30).
+
+O que ficou para as fases seguintes, de propósito:
+
+- notification-service e a emissão do ingresso com QR code (fase 4), que vão consumir `order.events`.
+- `ReturnTickets`, o reembolso e a saga de cancelamento (fase 6). `RefundPayment` já existe, usado quando a reserva expira depois do pagamento.
+- Limpeza das mensagens publicadas do outbox e de `processed_events` antigos.
+- No inventory, o trace dos fatos começa no relay: a transação ainda não informa o `traceparent` nos caminhos do motor Redis (ADR 8).
+- O SSE da fila e do mapa continua no inventory até o analytics virar o hub de tempo real (fase 4).
+
 ## Questões em aberto
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br
@@ -894,7 +921,7 @@ O que ficou para as fases seguintes, de propósito:
 - [x] Contratos: JSON Schema autocontido, com exemplos conferidos no CI (ADR 28)
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1 e 3,8 GB na fase 2 em repouso, com doze containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container quando Kafka e RabbitMQ entrarem e, se preciso, criar um perfil "lite" no Compose
+- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1, 3,8 GB na fase 2 e 4,6 GB na fase 3 em repouso, com dezessete containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container quando o RabbitMQ entrar e, se preciso, criar um perfil "lite" no Compose
 - [x] Login no Angular: `angular-auth-oidc-client`, com Authorization Code e PKCE (ADR 27)
 - [ ] CPF do comprador: hoje ele é informado na reserva. Num produto real viria do cadastro, validado; vale levar o CPF para o cadastro no Keycloak?
 - [x] Reconciliação após perda do Redis: a marca `show:{id}` é gravada por último na carga; sem ela, o job recarrega o show inteiro a partir do Postgres (ADR 26)

@@ -1,6 +1,6 @@
 # inventory-service
 
-Lotes, disponibilidade, reservas de pista e de cadeira numerada, fila virtual e mapa de assentos ao vivo. Java 21, Spring Boot 4, Redis (`redis-core`), Spring Data JPA e Postgres (Flyway).
+Lotes, disponibilidade, reservas de pista e de cadeira numerada, fila virtual e mapa de assentos ao vivo. Java 21, Spring Boot 4, Redis (`redis-core`), Spring Kafka, Spring Data JPA e Postgres (Flyway).
 
 É o dono do estoque: decide o que está à venda, a que preço, e garante as duas invariantes do projeto do lado da reserva: **nunca reservar além da capacidade** e **nunca segurar a mesma cadeira duas vezes**.
 
@@ -59,7 +59,6 @@ Atrás do gateway, as rotas ganham o prefixo `/api`.
 | `GET` | `/v1/queue/{showId}/events` | comprador | SSE: a situação na fila a cada segundo, até a admissão |
 | `POST` | `/v1/lots/{id}/pause`, `/resume` | produtor dono do show | pausa e retoma um lote |
 | `GET` | `/internal/v1/reservations/{id}` | conta de serviço | reserva com o dono, para o order-service |
-| `POST` | `/internal/v1/reservations/{id}/confirm`, `/release` | conta de serviço | pagamento aprovado ou recusado (idempotentes) |
 
 As rotas `/internal` não passam pelo gateway e exigem o papel `service`.
 
@@ -80,11 +79,19 @@ Erros em Problem Details (RFC 9457), com `type` em `urn:lotou:problem:<tipo>`:
 | `idempotency-key-reused` | 422 | mesma `Idempotency-Key` com outro pedido |
 | `inventory-loading` | 503 | o estoque do show ainda está sendo carregado no Redis; tente de novo em instantes |
 
-## De onde vêm os shows
+## Kafka
 
-O inventory não cadastra shows: ele mantém uma cópia do catálogo do event-service (shows, setores, lotes e uma linha por cadeira). Até a fase 2 essa cópia é lida por polling ([`CatalogSyncJob`](src/main/java/br/com/lotou/inventory/catalog/CatalogSyncJob.java)), com o token da conta de serviço do inventory; na fase 3 vira o tópico `shows.catalog` no Kafka ([ADR 23](../../docs/adr/0023-fase-1-sem-broker-integracao-sincrona.md)).
+| Direção | Tópico | Mensagens |
+| --- | --- | --- |
+| consome | `shows.catalog` | ShowPublished, ShowUpdated: a cópia local do catálogo (shows, setores, lotes e uma linha por cadeira) |
+| consome | `inventory.commands` | ConfirmReservation, ReleaseReservation, enviados pela saga de compra do order-service |
+| publica | `inventory.events` | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened |
 
-Os jobs, todos seguros para várias instâncias: leitura do catálogo, ciclo das vendas (abre e carrega o Redis, vira lote por data, encerra e recarrega um show que o Redis perdeu), expiração de reservas e admissão da fila.
+- **Catálogo** ([`CatalogListener`](src/main/java/br/com/lotou/inventory/catalog/CatalogListener.java)): cada mensagem traz o show inteiro com a versão; só uma versão mais nova muda a cópia local. Um consumer group novo relê o tópico compactado desde o começo e monta o catálogo inteiro. Lê só transações confirmadas (`read_committed`), porque o event-service publica em transações Kafka.
+- **Comandos** ([`ReservationCommandListener`](src/main/java/br/com/lotou/inventory/reservation/ReservationCommandListener.java)): confirmam ou devolvem a reserva pelo motor configurado. Não há resposta direta: a saga espera os fatos.
+- **Fatos:** toda mudança de status de reserva e de lote é gravada no outbox por um trigger do Postgres, na mesma transação, venha de qual motor ou job vier ([`V3__outbox_and_events.sql`](src/main/resources/db/migration/V3__outbox_and_events.sql)). Um relay publica em ordem, uma instância por vez ([ADR 8](../../docs/adr/0008-outbox-transacional.md)). Repetir um comando, ou recebê-lo tarde, não gera fato novo.
+
+Os jobs, todos seguros para várias instâncias: ciclo das vendas (abre e carrega o Redis, vira lote por data, encerra e recarrega um show que o Redis perdeu), expiração de reservas, admissão da fila e o relay do outbox.
 
 ## Observabilidade
 
@@ -101,13 +108,14 @@ Além do que o Java agent do OpenTelemetry cobre (HTTP, JDBC), cada script Lua g
 
 ```
 src/main/java/br/com/lotou/inventory/
-├── catalog/        # cópia do catálogo e cache em memória de setores, lotes e cadeiras
+├── catalog/        # cópia do catálogo (lida de shows.catalog) e cache em memória de setores, lotes e cadeiras
 ├── lot/            # lotes, tabela de estados, regras de virada e os dois motores do ciclo das vendas
 ├── seat/           # cadeiras numeradas
 ├── reservation/    # os dois motores de reserva, limite por CPF, expiração e API
 ├── redis/          # scripts Lua, carga e reconstrução, stream para o Postgres e lock
 ├── queue/          # fila virtual, admissão e SSE da posição
 ├── seatmap/        # SSE do mapa de assentos, alimentado pelo pub/sub
+├── messaging/      # relay do outbox, leitura das mensagens e DLT
 ├── availability/   # leitura pública do que está à venda
 ├── shared/         # Problem Details, segurança, CPF e UUID v7
 └── config/
@@ -135,6 +143,7 @@ Os testes de carga ficam em [`load-tests/`](../../load-tests) e rodam pela raiz 
 | `REDIS_URL` | `redis://localhost:6380` | conexão com o `redis-core` |
 | `RESERVATION_ENGINE` | `redis` | motor de reserva: `redis` ou `postgres` |
 | `QUEUE_ADMISSION_RATE` | `100` | compradores admitidos por segundo em cada show de alta demanda |
+| `KAFKA_BROKERS` | `localhost:9094` | o Kafka |
 | `AUTH_ISSUER`, `AUTH_JWKS_URI`, `AUTH_AUDIENCE` | realm local | validação do JWT |
 | `CPF_HASH_KEY` | chave de desenvolvimento | chave do HMAC do CPF |
 | `RESERVATION_TTL` | `10m` | duração da reserva |

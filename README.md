@@ -8,22 +8,24 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 
 ## Onde o projeto está
 
-**Fases 0, 1 e 2 concluídas.** O que já funciona:
+**Fases 0 a 3 concluídas.** O que já funciona:
 
 - o ambiente inteiro sobe com um comando;
 - o produtor cadastra e publica shows pela API, e a loja busca e exibe;
 - **a compra funciona de ponta a ponta na loja:** login, escolha das cadeiras num mapa que se atualiza sozinho, reserva de 10 minutos, pagamento simulado e ingresso emitido;
 - **a abertura de vendas aguenta disputa:** reserva atômica num script Lua no Redis, fila virtual com sorteio nos shows de alta demanda, rate limit no gateway e cache da página do show, tudo medido com k6;
 - a autenticação é de verdade (Keycloak, OAuth 2.0 e JWT validado no gateway e em cada serviço);
-- cada requisição gera um trace que atravessa os serviços até o banco e o Redis.
+- **o pagamento é uma saga pelo Kafka:** pedido, pagamento e confirmação da reserva trocam comandos e eventos com outbox, e um pagamento recusado ou uma reserva expirada são compensados sem deixar ingresso preso;
+- o produtor vê as vendas e o relatório de cada show em read models que se reconstroem do zero, sem parar, a partir do Kafka;
+- cada requisição gera um trace que atravessa os serviços, o Kafka, o banco e o Redis.
 
 | Fase | Entrega | Estado |
 | --- | --- | --- |
 | 0. Fundação | Compose, CI, OpenTelemetry, gateway, shows e loja Angular | concluída |
 | 1. Pedidos e estoque | inventory e order no Postgres, reserva com lock no banco | concluída |
 | 2. Redis e abertura de vendas | cache, fila virtual, reserva em Lua e mapa de assentos | concluída |
-| 3. Kafka e saga | outbox, saga com pagamento simulado e read models | próxima |
-| 4. RabbitMQ e tempo real | ingresso com QR code, DLQ e painel ao vivo | |
+| 3. Kafka e saga | outbox, saga com pagamento simulado e read models | concluída |
+| 4. RabbitMQ e tempo real | ingresso com QR code, DLQ e painel ao vivo | próxima |
 | 5. Agente de IA | assistente do produtor com LangGraph | |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | |
 | 7. Vitrine | testes de carga e caos, SLOs e vídeo | |
@@ -32,7 +34,7 @@ A fase 1 reservou com lock no Postgres de propósito: ela é a linha de base que
 
 ## Como rodar
 
-Você precisa de Docker (com Compose) e `make`. O ambiente usa cerca de 4 GB de memória.
+Você precisa de Docker (com Compose) e `make`. O ambiente usa cerca de 5 GB de memória.
 
 ```bash
 make up     # sobe tudo e espera ficar saudável (a primeira vez constrói as imagens)
@@ -46,6 +48,7 @@ make smoke  # compra um ingresso de ponta a ponta e confere os traces
 | API (pelo gateway) | http://localhost:8080/api/v1/shows |
 | Grafana (Tempo, Prometheus e Loki) | http://localhost:3000 |
 | Keycloak | http://localhost:8180 (`admin` / `admin`) |
+| Kafka UI (tópicos, mensagens e lag) | http://localhost:8090 |
 
 O realm do Keycloak já vem com três usuários de teste, um por papel: `comprador`, `produtor` e `portaria`, todos com a senha `lotou123`.
 
@@ -93,12 +96,12 @@ Os números vêm de uma máquina só, de 4 CPUs, com os doze containers e o k6 d
 
 1. consulta a disponibilidade de um show em venda (`GET /api/v1/availability/{showId}`);
 2. reserva um ingresso de pista (`POST /api/v1/reservations`), que fica segurado por 10 minutos;
-3. fecha a compra (`POST /api/v1/orders`): o order-service autoriza o pagamento, confirma a reserva no inventory-service e emite o ingresso;
-4. confere que o estoque baixou e que os traces chegaram completos ao Tempo.
+3. fecha a compra (`POST /api/v1/orders`): o pedido nasce PENDING, e a saga segue pelo Kafka: o payment-mock autoriza o pagamento, o inventory confirma a reserva e o order-service emite o ingresso;
+4. acompanha o pedido até CONFIRMED, confere que o estoque baixou e que os traces chegaram completos ao Tempo.
 
-O trace do pedido atravessa três serviços e termina no Postgres de cada um:
+O trace do pedido atravessa o Kafka: do gateway ao order-service, dele ao payment-mock e ao inventory pelos comandos da saga, e ao analytics pelos eventos do pedido. São 5 serviços e 67 spans em 250 ms, do clique em pagar ao pedido confirmado:
 
-![Trace da compra no Tempo: api-gateway, order-service e inventory-service](docs/img/trace-compra.png)
+![Trace da saga de compra no Tempo: api-gateway, order-service, payment-mock, inventory-service e analytics-service](docs/img/trace-saga.png)
 
 O que garante que a compra é correta sob disputa está nos testes, que rodam contra bancos reais:
 
@@ -135,24 +138,31 @@ O que existe hoje:
 ```mermaid
 flowchart LR
     browser["Navegador<br/>Angular + OTel Web SDK"] --> web["web (nginx)<br/>estáticos e proxy"]
-    web -- "/api" --> gw["api-gateway<br/>Spring Cloud Gateway<br/>valida o JWT"]
-    gw --> ev["event-service<br/>NestJS<br/>shows, locais e busca"]
-    gw --> inv["inventory-service<br/>Spring Boot<br/>lotes, cadeiras e reservas"]
-    gw --> ord["order-service<br/>Spring Boot<br/>pedidos e ingressos"]
-    gw -- "rate limit" --> core
+    web -- "/api" --> gw["api-gateway<br/>Spring Cloud Gateway<br/>JWT e rate limit"]
+    gw --> ev["event-service<br/>NestJS<br/>shows e busca"]
+    gw --> inv["inventory-service<br/>Spring Boot<br/>lotes, fila e reservas"]
+    gw --> ord["order-service<br/>Spring Boot<br/>pedidos e saga"]
+    gw --> an["analytics-service<br/>FastAPI<br/>read models do produtor"]
+    ord -. "lê a reserva" .-> inv
+    ev -- "shows.catalog" --> K[("Kafka")]
+    K -- "shows.catalog<br/>inventory.commands" --> inv
+    inv -- "inventory.events" --> K
+    ord <-- "order.events, comandos<br/>e respostas da saga" --> K
+    K <-- "payment.commands<br/>payment.events" --> pay["payment-mock<br/>NestJS"]
+    K -- "catálogo, pedidos<br/>e lotes" --> an
     ev --> mongo[("MongoDB")]
-    ev -- "página e busca" --> cache[("redis-cache<br/>LRU, descartável")]
-    inv -- "reserva em Lua, fila,<br/>mapa e stream" --> core[("redis-core<br/>noeviction, AOF")]
-    inv -- "stream de reservas" --> pg[("Postgres<br/>um banco por serviço")]
+    an --> mongo
+    ev --> cache[("redis-cache")]
+    inv --> core[("redis-core")]
+    gw --> core
+    inv --> pg[("Postgres<br/>um banco por serviço")]
     ord --> pg
-    inv -. "lê o catálogo (polling)" .-> ev
-    ord -. "confirma e libera reservas" .-> inv
-    kc["Keycloak<br/>OAuth 2.0 e OIDC"] -. "chaves públicas e<br/>tokens de serviço" .-> gw
+    pay --> pg
 ```
 
 Todos os serviços validam o JWT com as chaves públicas do Keycloak e exportam traces, métricas e logs por OTLP para o OTel Collector, que mascara CPF e e-mail antes de repassar ao Tempo, ao Prometheus e ao Loki.
 
-As linhas pontilhadas entre serviços são HTTP síncrono, com token de conta de serviço. Elas são provisórias: na fase 3 viram eventos e comandos no Kafka ([ADR 23](docs/adr/0023-fase-1-sem-broker-integracao-sincrona.md)).
+Fora o caminho do usuário, os serviços se falam pelo Kafka: **fatos de domínio** (`OrderConfirmed`, `LotSoldOut`) e **comandos da saga** (`AuthorizePayment`, `ConfirmReservation`), sempre gravados num outbox na mesma transação da mudança ([ADR 1](docs/adr/0001-kafka-para-eventos-de-dominio.md), [ADR 8](docs/adr/0008-outbox-transacional.md)). Os contratos de todas as mensagens estão em JSON Schema em [`contracts/`](contracts/). A única chamada síncrona entre serviços (pontilhada) é a leitura da reserva ao criar o pedido: o comprador precisa saber na hora se ela ainda vale ([ADR 6](docs/adr/0006-reserva-sincrona-pagamento-assincrono.md)).
 
 Durante a venda, o `redis-core` decide a reserva, e o Postgres recebe o resultado por um Redis Stream escrito no mesmo script ([ADR 26](docs/adr/0026-redis-como-fonte-da-verdade-durante-a-venda.md)). Os dois Redis têm políticas de memória opostas: o cache pode descartar chaves, o estoque não ([ADR 10](docs/adr/0010-duas-instancias-de-redis.md)). A arquitetura completa, com os nove serviços, Kafka e RabbitMQ, está em [`docs/projeto.md`](docs/projeto.md#arquitetura).
 
@@ -162,9 +172,11 @@ Durante a venda, o `redis-core` decide a reserva, e o Postgres recebe o resultad
 | --- | --- | --- |
 | [`apps/web`](apps/web) | Angular 22 | loja: busca, página do show, login, fila, checkout com mapa de cadeiras e meus ingressos |
 | [`services/api-gateway`](services/api-gateway) | Java 21, Spring Cloud Gateway, Redis | roteamento, validação do JWT e rate limit da compra |
-| [`services/event-service`](services/event-service) | Node, NestJS 12, MongoDB, Redis | shows, locais, setores e busca, com cache e rate limit |
-| [`services/inventory-service`](services/inventory-service) | Java 21, Spring Boot 4, Redis, Postgres | lotes, disponibilidade, reservas, fila virtual e mapa de assentos ao vivo |
-| [`services/order-service`](services/order-service) | Java 21, Spring Boot 4, Postgres | pedidos, ingressos e orquestração do checkout |
+| [`services/event-service`](services/event-service) | Node, NestJS 12, MongoDB, Redis, Kafka | shows, locais, setores e busca, com cache e rate limit; publica o catálogo |
+| [`services/inventory-service`](services/inventory-service) | Java 21, Spring Boot 4, Redis, Kafka, Postgres | lotes, disponibilidade, reservas, fila virtual e mapa de assentos ao vivo |
+| [`services/order-service`](services/order-service) | Java 21, Spring Boot 4, Kafka, Postgres | pedidos, ingressos e a saga de compra |
+| [`services/payment-mock`](services/payment-mock) | Node, NestJS 12, Kafka, Postgres | gateway de pagamento simulado: recusa, estorno e latência configuráveis |
+| [`services/analytics-service`](services/analytics-service) | Python 3.13, FastAPI, Kafka, MongoDB | vendas, relatório e pedidos de cada show para o produtor, com replay |
 
 Cada pasta tem seu README, com a API, a estrutura e os comandos.
 
@@ -177,7 +189,10 @@ lotou/
 │   ├── api-gateway/         # Java
 │   ├── event-service/       # Node
 │   ├── inventory-service/   # Java
-│   └── order-service/       # Java
+│   ├── order-service/       # Java
+│   ├── payment-mock/        # Node
+│   └── analytics-service/   # Python
+├── contracts/               # JSON Schema de cada mensagem do Kafka, com exemplos
 ├── infra/
 │   ├── docker-compose.yml   # o ambiente inteiro
 │   ├── otel-collector.yaml  # pipeline de telemetria e máscara de dados pessoais
@@ -204,7 +219,9 @@ lotou/
 - **Cache que não derruba a leitura.** Dois níveis, proteção contra stampede, cache negativo e jitter; se o Redis cair, a leitura vai ao MongoDB.
 - **Regras de negócio isoladas e testadas sem banco.** Virada de lote por esgotamento ou por data, devolução ao lote em venda e pausa ([`SectorLots`](services/inventory-service/src/main/java/br/com/lotou/inventory/lot/SectorLots.java)); capacidade e publicação de show ([`show-rules.ts`](services/event-service/src/shows/show-rules.ts)).
 - **Transições de estado numa tabela única por entidade.** Show, lote, reserva, pedido e ingresso: o que não está na tabela é recusado e registrado em log.
-- **Checkout que aguenta falha no meio.** Cada passo grava o que decidiu e é idempotente; um pedido que ficou pendente é retomado por um job, sem cobrar de novo ([`CheckoutService`](services/order-service/src/main/java/br/com/lotou/order/order/CheckoutService.java)).
+- **Saga com compensação.** O order-service guarda o passo de cada pedido e reage às respostas e aos fatos do inventory em qualquer ordem; pagamento recusado devolve os ingressos, reserva expirada depois do pagamento estorna, e um passo sem resposta é repetido ou conferido no inventory ([`PurchaseSaga`](services/order-service/src/main/java/br/com/lotou/order/saga/PurchaseSaga.java)).
+- **Outbox em três bancos.** No Postgres do order-service e do payment-mock, gravado com a mudança; no inventory, por trigger, para nenhum dos dois motores de reserva esquecer de publicar; no MongoDB do event-service, com transações Kafka para um relay atrasado não publicar uma versão velha ([ADR 8](docs/adr/0008-outbox-transacional.md), [ADR 29](docs/adr/0029-outbox-do-event-service-no-mongodb.md)).
+- **Read models que se reconstroem sem parar.** O replay monta uma geração nova a partir do começo dos tópicos e troca o ponteiro de uma vez; o painel responde o tempo todo ([ADR 30](docs/adr/0030-replay-dos-read-models.md)).
 - **Última defesa no banco.** Um `CHECK` impede contador de estoque negativo, e um índice único parcial impede dois ingressos ativos para a mesma cadeira ([ADR 4](docs/adr/0004-constraint-unica-de-show-e-assento.md)).
 - **Idempotência.** Todo POST que cria recurso exige `Idempotency-Key`; requisições simultâneas com a mesma chave criam um único recurso.
 - **Defesa em profundidade.** O gateway valida o JWT e cada serviço valida de novo; as rotas são fechadas por padrão, e as chamadas entre serviços usam contas de serviço ([ADR 21](docs/adr/0021-servicos-revalidam-o-jwt.md)).
@@ -224,9 +241,12 @@ make test
 | event-service | testes unitários das regras de domínio e testes de integração da aplicação inteira contra MongoDB e Redis reais (Testcontainers) |
 | api-gateway | regras de acesso e roteamento, rate limit num Redis real e um teste com um Keycloak real (Testcontainers) usando o mesmo realm do Compose |
 | inventory-service | regras de lote sem banco; testes de concorrência, de ciclo das vendas, de API, da fila e da reconstrução do Redis num Postgres e num Redis reais (Testcontainers), cada cenário contra os dois motores de reserva |
-| order-service | checkout de ponta a ponta com o inventory-service de verdade (a imagem Docker dele) e Postgres real; falhas no meio do checkout provocadas com um inventory de teste |
+| order-service | a saga passo a passo com Kafka e Postgres reais e dublês dos outros participantes, e o checkout de ponta a ponta com o inventory-service de verdade (a imagem Docker dele), incluindo 30% de pagamentos recusados |
+| payment-mock | decisões, estornos, idempotência e DLT, contra Postgres e Kafka reais |
+| analytics-service | read models, idempotência, chegada fora de ordem e o replay comparando a geração nova com a anterior, contra MongoDB e Kafka reais |
+| contratos | cada mensagem publicada é conferida contra o JSON Schema de `contracts/`, e o CI confere os exemplos |
 | web | testes unitários de estado, componentes, login, leitor de SSE e mapa de cadeiras |
-| ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta e os traces no Tempo |
+| ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta pela saga e os traces no Tempo |
 
 Os testes de integração usam as dependências reais, não mocks de banco. No GitHub Actions cada serviço tem seu workflow, que só roda quando a pasta dele muda; um workflow à parte sobe o ambiente inteiro numa máquina limpa.
 

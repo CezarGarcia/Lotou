@@ -48,3 +48,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0027](0027-oidc-e-sse-na-loja.md) | Login com angular-auth-oidc-client e SSE lido com fetch na loja | aceita |
 | [0028](0028-contratos-em-json-schema.md) | Contratos dos eventos em JSON Schema, com exemplos | aceita |
 | [0029](0029-outbox-do-event-service-no-mongodb.md) | Outbox do event-service no MongoDB | aceita |
+| [0030](0030-replay-dos-read-models.md) | Replay dos read models em gerações, com troca atômica do ponteiro | aceita |

@@ -180,7 +180,8 @@ console.log(`   estoque do lote: ${sector.available} -> ${after.available}`);
 
 console.log('3. Traces no Tempo');
 await expectTrace(searchTrace, ['api-gateway', 'event-service'], 'mongodb');
-await expectTrace(purchaseTrace, ['api-gateway', 'inventory-service'], 'postgresql');
+// A reserva acontece num script Lua no redis-core (motor padrão): o trace termina no Redis.
+await expectTrace(purchaseTrace, ['api-gateway', 'inventory-service'], 'redis');
 // O trace do pedido atravessa o Kafka: do gateway ao order-service, dele ao payment-mock e ao inventory.
 await expectTrace(orderTrace, ['api-gateway', 'order-service', 'payment-mock', 'inventory-service'], 'postgresql');
 

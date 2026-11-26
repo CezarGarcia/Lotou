@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fases 0 (Fundação), 1 (Pedidos e estoque) e 2 (Redis e abertura de vendas) concluídas. A próxima é a fase 3 (Kafka e saga). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
+Fases 0 (Fundação), 1 (Pedidos e estoque), 2 (Redis e abertura de vendas) e 3 (Kafka e saga) concluídas. A próxima é a fase 4 (RabbitMQ e tempo real). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 
@@ -29,7 +29,8 @@ Na raiz (`make help` lista todos):
 - `make infra`: sobe só a infraestrutura, para rodar um serviço fora do Compose
 - `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
 - `make test`: roda os testes de todos os serviços
-- `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
+- `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta pela saga e confere os traces no Tempo
+- `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
 
 Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
@@ -39,7 +40,10 @@ Por serviço:
 - `services/event-service`: `npm test` (unitários), `npm run test:e2e` (integração com Testcontainers), `npm run lint`, `npm run format:check`
 - `services/api-gateway`, `services/inventory-service`: `./mvnw test`
 - `services/order-service`: `make test-order-service` na raiz (constrói a imagem do inventory, que os testes de ponta a ponta usam) ou `./mvnw test` se a imagem já existe
+- `services/payment-mock`: `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format:check`
+- `services/analytics-service`: `uv run pytest`, `uv run ruff check`, `uv run mypy` (ou `make test-analytics-service` na raiz)
 - `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
+- `contracts/`: `python contracts/check.py` confere os JSON Schemas das mensagens e os exemplos
 
 ## Convenções obrigatórias
 
@@ -48,7 +52,7 @@ Por serviço:
 - IDs em UUID v7.
 - CPF e e-mail nunca aparecem em logs, traces ou chaves do Redis (use hash do CPF).
 - Transições de estado validadas por uma tabela única por entidade (veja "Estados" no documento). Transição fora da tabela é recusada.
-- Eventos no passado (`OrderConfirmed`), comandos no imperativo (`AuthorizePayment`), com envelope versionado.
+- Eventos no passado (`OrderConfirmed`), comandos no imperativo (`AuthorizePayment`), com envelope versionado. Toda mensagem nova ou alterada tem JSON Schema e exemplo em `contracts/`, e é publicada por outbox.
 - APIs REST com erros em Problem Details (RFC 9457), paginação por cursor e `Idempotency-Key` em POST que cria recurso.
 - Commits no padrão Conventional Commits.
 

@@ -62,6 +62,8 @@ services:
         condition: service_healthy
       order-service:
         condition: service_healthy
+      analytics-service:
+        condition: service_healthy
       redis-core:
         condition: service_healthy
       otel-collector:

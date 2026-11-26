@@ -1,30 +1,41 @@
 # order-service
 
-Pedidos, emissão de ingressos e orquestração do checkout. Java 21, Spring Boot 4, Spring Data JPA e Postgres (Flyway).
+Pedidos, emissão de ingressos e a saga de compra. Java 21, Spring Boot 4, Spring Data JPA, Spring Kafka e Postgres (Flyway).
 
 ## Como o checkout funciona
 
-O comprador reserva os ingressos no inventory-service e depois fecha a compra aqui, com `POST /v1/orders`:
+O comprador reserva os ingressos no inventory-service e depois fecha a compra aqui, com `POST /v1/orders`. A resposta volta na hora com o pedido `PENDING` ([ADR 6](../../docs/adr/0006-reserva-sincrona-pagamento-assincrono.md)); o resto é a **saga de compra**, orquestrada por este serviço pelo Kafka ([ADR 7](../../docs/adr/0007-saga-orquestrada-pelo-order-service.md)):
 
 ```mermaid
 flowchart LR
-    A["POST /v1/orders<br/>com a reserva"] --> B["Pedido PENDING<br/>preço congelado da reserva"]
-    B --> C{"Pagamento<br/>(simulado)"}
-    C -- aprovado --> D["Confirma a reserva<br/>no inventory"]
-    D --> E["Pedido CONFIRMED<br/>ingressos emitidos"]
-    C -- recusado --> F["Libera a reserva<br/>no inventory"]
-    F --> G["Pedido CANCELLED"]
-    D -- "reserva expirou" --> G
+    A["POST /v1/orders<br/>lê a reserva (HTTP)"] --> B["Pedido PENDING<br/>+ OrderCreated + AuthorizePayment<br/>numa transação"]
+    B --> C{"payment-mock"}
+    C -- PaymentAuthorized --> D["ConfirmReservation"]
+    D -- ReservationConfirmed --> E["Pedido CONFIRMED<br/>ingressos emitidos<br/>OrderConfirmed + TicketsIssued"]
+    C -- PaymentDeclined --> F["ReleaseReservation"]
+    F -- ReservationReleased --> G["Pedido CANCELLED"]
+    D -- "reserva expirou" --> R["RefundPayment"]
+    R -- PaymentRefunded --> G
 ```
 
-Os passos conversam com outros serviços, então não cabem numa transação só. O que mantém o pedido íntegro ([`CheckoutService`](src/main/java/br/com/lotou/order/order/CheckoutService.java)):
+O que mantém cada pedido íntegro sem transação distribuída ([`PurchaseSaga`](src/main/java/br/com/lotou/order/saga/PurchaseSaga.java)):
 
-- **Cada passo grava o que decidiu** antes do passo seguinte, em transações curtas. O resultado do pagamento, por exemplo, é gravado antes de confirmar a reserva.
-- **Cada passo é idempotente**, do lado de cá e do lado do inventory.
-- **Um pedido pendente é retomado.** Se o serviço cai no meio, ou o inventory não responde, o pedido fica `PENDING` e um job o conclui depois, de onde parou, sem cobrar de novo. Vários jobs podem rodar juntos: cada pedido é assumido com um update condicional.
-- **Última defesa no banco.** Um índice único parcial em `(show, setor, cadeira)` nos ingressos impede dois ingressos ativos para a mesma cadeira, aconteça o que acontecer com a reserva ([ADR 4](../../docs/adr/0004-constraint-unica-de-show-e-assento.md)).
+- **Um passo por vez, com tabela de transições.** O passo atual de cada pedido fica em `saga_state` ([`SagaStep`](src/main/java/br/com/lotou/order/saga/SagaStep.java)); uma resposta que chega fora do passo em que faria sentido não muda nada.
+- **Outbox.** O pedido, o passo da saga e as mensagens que eles geram são gravados na mesma transação; um relay publica no Kafka em ordem, uma instância por vez (advisory lock), continuando o trace de quem causou cada mensagem ([ADR 8](../../docs/adr/0008-outbox-transacional.md)).
+- **Consumidor idempotente.** Cada resposta processada entra em `processed_events` na mesma transação do efeito; uma mensagem repetida é ignorada. A que falha depois das tentativas vai para `<tópico>.dlt`.
+- **O inventory publica fatos, não respostas.** A saga reage a `ReservationConfirmed` e `ReservationReleased` em qualquer passo: se a reserva expira enquanto o pagamento é autorizado, o pagamento aprovado é estornado.
+- **Prazos.** Se a resposta de um passo não chega (15 s, dobrando a cada tentativa até 8 vezes), o [`SagaDeadlineJob`](src/main/java/br/com/lotou/order/saga/SagaDeadlineJob.java) repete o comando ou consulta a reserva no inventory e age pelo estado dela.
+- **Última defesa no banco.** Um índice único parcial em `(show, setor, cadeira)` nos ingressos impede dois ingressos ativos para a mesma cadeira ([ADR 4](../../docs/adr/0004-constraint-unica-de-show-e-assento.md)); se ele barra a emissão, o pagamento é estornado e o pedido cancelado.
 
-Na fase 1 isso tudo é síncrono e o pagamento é simulado dentro do serviço. Na fase 3 vira a saga de compra, com Kafka e o payment-mock ([ADR 23](../../docs/adr/0023-fase-1-sem-broker-integracao-sincrona.md)). O contrato do `POST /v1/orders` já prevê isso: a resposta traz o pedido no estado em que ficou, e o cliente lê o `status`.
+## Mensagens
+
+| Publica | Tópico | Quando |
+| --- | --- | --- |
+| `OrderCreated`, `OrderConfirmed`, `OrderCancelled`, `TicketsIssued` | `order.events` | pedido criado, pago, cancelado; ingressos emitidos |
+| `AuthorizePayment`, `RefundPayment` | `payment.commands` | início da saga; reserva perdida depois do pagamento |
+| `ConfirmReservation`, `ReleaseReservation` | `inventory.commands` | pagamento aprovado; pagamento recusado |
+
+Consome `payment.events` e `inventory.events` no consumer group `order-service`. Os contratos estão em [`contracts/`](../../contracts/).
 
 ## API
 
@@ -48,13 +59,16 @@ Erros em Problem Details (RFC 9457), com `type` em `urn:lotou:problem:<tipo>`:
 | `idempotency-key-reused` | 422 | mesma `Idempotency-Key` com outra reserva |
 | `upstream-unavailable` | 503 | o inventory não respondeu ao ler a reserva |
 
+O `GET /v1/orders/{id}` mostra o pedido como a saga o deixou: `PENDING` enquanto o pagamento e a confirmação acontecem (em geral menos de um segundo), depois `CONFIRMED` com os ingressos ou `CANCELLED` com o motivo (`PAYMENT_DECLINED`, `RESERVATION_EXPIRED` ou `TICKET_CONFLICT`).
+
 ## Estrutura
 
 ```
 src/main/java/br/com/lotou/order/
-├── order/        # pedido, itens, ingressos, tabelas de estado, checkout e recuperação
-├── inventory/    # cliente da API interna de reservas
-├── payment/      # porta do pagamento e o simulador da fase 1
+├── order/        # pedido, itens, ingressos, tabela de estados e checkout
+├── saga/         # saga de compra: passos, estado, consumidor e prazos
+├── messaging/    # outbox, relay, mensagens processadas e DLT
+├── inventory/    # leitura da reserva na API interna
 ├── shared/       # Problem Details, segurança e UUID v7
 └── config/
 src/main/resources/db/migration/   # esquema (Flyway)
@@ -67,7 +81,10 @@ make test-order-service   # na raiz: constrói a imagem do inventory e roda os t
 ./mvnw test               # direto, se a imagem lotou-inventory-service:latest já existe
 ```
 
-Os testes de integração ([`CheckoutEndToEndTests`](src/test/java/br/com/lotou/order/order/CheckoutEndToEndTests.java)) rodam o order-service contra o **inventory-service de verdade** (a imagem Docker dele) e um Postgres real, via Testcontainers. Os tokens são assinados por um emissor de teste e validados de verdade pelos dois serviços. As falhas (inventory fora do ar, resposta perdida, reserva que expira no meio) são provocadas com um inventory de teste em [`CheckoutRecoveryTests`](src/test/java/br/com/lotou/order/order/CheckoutRecoveryTests.java).
+Dois conjuntos de testes de integração, com Postgres e Kafka reais via Testcontainers:
+
+- [`PurchaseSagaTests`](src/test/java/br/com/lotou/order/saga/PurchaseSagaTests.java): a saga passo a passo, com dublês do payment-mock e do inventory falando pelo Kafka. Cobre recusa, reserva que expira em cada passo, conflito de cadeira, mensagens repetidas e malformadas e prazos vencidos. Cada mensagem trocada é conferida contra o JSON Schema de `contracts/`.
+- [`CheckoutEndToEndTests`](src/test/java/br/com/lotou/order/order/CheckoutEndToEndTests.java): o order-service contra o **inventory-service de verdade** (a imagem Docker dele) pelo Kafka, com um dublê do pagamento. Inclui o critério da fase 3: com 30% dos pagamentos recusados, todo pedido termina pago ou compensado, e os ingressos dos recusados voltam à venda.
 
 ## Variáveis de ambiente
 
@@ -78,6 +95,7 @@ Os testes de integração ([`CheckoutEndToEndTests`](src/test/java/br/com/lotou/
 | `INVENTORY_SERVICE_URL` | `http://localhost:8082` | endereço do inventory-service |
 | `AUTH_ISSUER`, `AUTH_JWKS_URI`, `AUTH_AUDIENCE` | realm local | validação do JWT |
 | `AUTH_TOKEN_URI`, `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET` | realm local | token da conta de serviço |
-| `PAYMENT_DECLINE_RATE` | `0` | porcentagem de pagamentos recusados pelo simulador |
-| `ORDER_PROCESSING_LEASE` | `30s` | prazo de quem processa um pedido pendente, antes de o job assumir |
-| `JOBS_ENABLED` | `true` | liga o job de recuperação |
+| `KAFKA_BROKERS` | `localhost:9094` | o Kafka |
+| `SAGA_STEP_TIMEOUT` | `15s` | quanto a saga espera a resposta de um passo antes de repetir |
+| `OUTBOX_INTERVAL`, `SAGA_DEADLINE_INTERVAL` | `100ms`, `2s` | ritmo do relay do outbox e do job de prazos |
+| `JOBS_ENABLED` | `true` | liga o relay e o job de prazos |
