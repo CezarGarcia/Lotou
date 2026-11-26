@@ -21,7 +21,6 @@ Atrás do gateway, as rotas ganham o prefixo `/api` (`/api/v1/shows`).
 | `GET` | `/v1/venues/:id` | público | detalhe do local |
 | `POST` | `/v1/venues` | produtor | cadastra o local (exige `Idempotency-Key`) |
 | `PATCH` | `/v1/venues/:id` | quem cadastrou | altera nome, endereço ou setores |
-| `GET` | `/internal/v1/catalog/shows` | conta de serviço | catálogo para os outros serviços, incremental por `updatedAfter` e cursor (sai quando o inventory passar a ler `shows.catalog`) |
 | `GET` | `/health/live`, `/health/ready` | público | health check |
 
 Erros saem em Problem Details (RFC 9457), com `type` no formato `urn:lotou:problem:<tipo>` e o `traceId` da requisição:

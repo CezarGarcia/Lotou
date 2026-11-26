@@ -152,5 +152,3 @@ ShowSchema.index({ status: 1, startsAt: 1, _id: 1 });
 ShowSchema.index({ 'venue.citySearch': 1, status: 1, startsAt: 1, _id: 1 });
 // Shows de um local (propagação de nome e trava de edição dos setores).
 ShowSchema.index({ 'venue.id': 1 });
-// Leitura incremental do catálogo pelos outros serviços.
-ShowSchema.index({ updatedAt: 1, _id: 1 });

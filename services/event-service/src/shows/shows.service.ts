@@ -27,7 +27,6 @@ import {
 import { type ShowSummaryResponse, toShowSummary } from './show.response.js';
 import { Show, type ShowSector, type ShowVenue } from './show.schema.js';
 import type {
-  CatalogQuery,
   CreateShowDto,
   SearchShowsQuery,
   UpdateShowDto,
@@ -386,46 +385,6 @@ export class ShowsService {
           span.end();
         }
       },
-    );
-  }
-
-  /**
-   * Catálogo para os outros serviços: os shows que já saíram do rascunho, em
-   * ordem de alteração. Quem consome guarda o `updatedAt` do último show lido
-   * e pede só o que mudou depois dele.
-   */
-  async listCatalog({
-    updatedAfter,
-    limit,
-    cursor,
-  }: CatalogQuery): Promise<Page<Show>> {
-    const filter: QueryFilter<Show> = { status: { $ne: 'DRAFT' } };
-    const and: QueryFilter<Show>[] = [];
-    if (updatedAfter) {
-      and.push({ updatedAt: { $gt: updatedAfter } });
-    }
-    if (cursor) {
-      const updatedAt = new Date(cursor.sortValue);
-      and.push({
-        $or: [
-          { updatedAt: { $gt: updatedAt } },
-          { updatedAt, _id: { $gt: cursor.id } },
-        ],
-      });
-    }
-    if (and.length > 0) {
-      filter.$and = and;
-    }
-    const found = await this.shows
-      .find(filter)
-      .sort({ updatedAt: 1, _id: 1 })
-      .limit(limit + 1)
-      .lean();
-    return toPage(
-      found,
-      limit,
-      (show) => ({ sortValue: show.updatedAt.getTime(), id: show._id }),
-      (show) => show,
     );
   }
 
