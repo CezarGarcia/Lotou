@@ -185,6 +185,11 @@
   }
 }
 
+.pay {
+  // O campo de cupom não alarga a coluna de 340 px.
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .coupon-form {
   display: flex;
   align-items: flex-start;
@@ -192,6 +197,7 @@
 
   mat-form-field {
     flex: 1;
+    min-width: 0;
   }
 
   button {

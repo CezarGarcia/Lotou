@@ -716,7 +716,7 @@ Um único app Angular com duas áreas carregadas sob demanda: a loja e o painel 
 
 **SSE ou WebSocket:** SSE onde o servidor só empurra dados ao cliente (fila, assentos, pedido, chat), porque é mais simples e passa pelo gateway como HTTP comum. A loja lê o SSE com `fetch`, e não com `EventSource`, para mandar o token no cabeçalho e nunca na URL (ADR 27). WebSocket no painel, onde o cliente também envia mensagens (trocar filtros e assinaturas). Usar os dois é proposital e vira um ADR.
 
-**Bibliotecas e testes:** Angular Material para componentes, `angular-auth-oidc-client` para o login (ADR 27), `qrcode` para desenhar o QR dos ingressos (carregado só na página do pedido), barras em CSS no painel (ngx-echarts só se um gráfico pedir mais que isso), OTel Web SDK para tracing, testes unitários com o runner padrão da versão (Vitest) e Playwright para o fluxo de compra ponta a ponta.
+**Bibliotecas e testes:** Angular Material para componentes, `angular-auth-oidc-client` para o login (ADR 27), `qrcode` para desenhar o QR dos ingressos (carregado só na página do pedido), o `BarcodeDetector` do navegador para ler o QR na portaria, com o `jsqr` como alternativa nos navegadores sem ele (carregado só nesse caso), barras em CSS no painel (ngx-echarts só se um gráfico pedir mais que isso), OTel Web SDK para tracing, testes unitários com o runner padrão da versão (Vitest) e Playwright para o fluxo de compra ponta a ponta.
 
 ## Decisões de arquitetura (ADRs)
 

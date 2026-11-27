@@ -35,9 +35,12 @@ export class FinancePage {
     });
   }
 
-  /** Os 8 primeiros caracteres do ID: o bastante para achar o pedido no suporte. */
+  /**
+   * Os 8 últimos caracteres do ID, para achar o pedido no suporte. Os primeiros
+   * não servem: num UUID v7 eles são o horário, iguais em pedidos do mesmo dia.
+   */
   protected shortId(id: string): string {
-    return id.slice(0, 8);
+    return id.slice(-8);
   }
 
   protected requestPdf(): void {

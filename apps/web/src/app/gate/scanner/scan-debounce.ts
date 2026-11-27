@@ -6,8 +6,9 @@ export const SAME_CODE_WINDOW_MS = 5_000;
  * celular na frente dela. Sem isto, o segundo quadro já voltaria "já
  * utilizado" (amarelo) para quem acabou de entrar.
  *
- * Guarda quando cada código foi aceito pela última vez e recusa o mesmo
- * código dentro da janela. Códigos diferentes passam na hora.
+ * A janela é deslizante: cada vez que a câmera vê o código, ela recomeça.
+ * Então o código fica ignorado enquanto continua na frente da câmera e por
+ * 5 s depois que sai dela. Códigos diferentes passam na hora.
  */
 export class ScanDebouncer {
   private readonly seen = new Map<string, number>();
@@ -26,6 +27,7 @@ export class ScanDebouncer {
       }
     }
     if (this.seen.has(code)) {
+      this.seen.set(code, now);
       return false;
     }
     this.seen.set(code, now);

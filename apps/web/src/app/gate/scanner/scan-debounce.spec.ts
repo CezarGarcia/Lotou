@@ -29,11 +29,14 @@ describe('ScanDebouncer', () => {
     expect(debouncer.accept('A')).toBe(false);
   });
 
-  it('a janela conta da leitura aceita, não das repetições ignoradas', () => {
+  it('enquanto o código continua na frente da câmera, a janela recomeça', () => {
     debouncer.accept('A');
     now += 3_000;
-    debouncer.accept('A');
-    now += 2_000;
+    expect(debouncer.accept('A')).toBe(false);
+    now += 3_000;
+    // 6 s depois da primeira leitura, mas só 3 s depois da última vez que foi visto.
+    expect(debouncer.accept('A')).toBe(false);
+    now += SAME_CODE_WINDOW_MS;
     expect(debouncer.accept('A')).toBe(true);
   });
 

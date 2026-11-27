@@ -145,7 +145,7 @@ describe('FinancePage', () => {
         },
       ],
     });
-    expect(text()).toContain('Pedido 0193aaaa');
+    expect(text()).toContain('Pedido ffff0000');
     expect(text()).toContain('R$ 330,00 · 2 ingressos · comprado em 10/12/2030');
     button('Tentar reembolso de novo').click();
     http
@@ -153,7 +153,7 @@ describe('FinancePage', () => {
       .flush(null, { status: 202, statusText: 'Accepted' });
     await settle();
     expect(text()).toContain('Nenhum reembolso travado.');
-    expect(snack).toHaveBeenCalledWith('Reembolso do pedido 0193aaaa enviado de novo.', 'OK', {
+    expect(snack).toHaveBeenCalledWith('Reembolso do pedido ffff0000 enviado de novo.', 'OK', {
       duration: 6_000,
     });
   });
