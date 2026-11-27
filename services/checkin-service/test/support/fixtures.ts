@@ -1,11 +1,21 @@
 import { randomBytes } from 'node:crypto';
-import { signTicketCode } from '../../src/checkin/ticket-code.js';
+import {
+  signLegacyTicketCode,
+  signTicketCode,
+} from '../../src/checkin/ticket-code.js';
 import { newId } from '../../src/common/ids.js';
 import { contractExample } from './contracts.js';
 
-/** A chave do QR dos testes (vitest.config.e2e.ts), a mesma do "order-service". */
+/**
+ * O QR `LOTOU2` do ingresso, como o order-service o emite, assinado com a
+ * chave privada gerada para os testes (setup-env.ts).
+ */
 export const codeOf = (ticketId: string) =>
-  signTicketCode(process.env.TICKET_QR_KEY!, ticketId);
+  signTicketCode(process.env.TEST_TICKET_PRIVATE_KEY!, ticketId);
+
+/** O QR `LOTOU1` (HMAC) de um ingresso emitido antes do `LOTOU2`. */
+export const legacyCodeOf = (ticketId: string) =>
+  signLegacyTicketCode(process.env.TICKET_QR_KEY!, ticketId);
 
 const HOUR = 60 * 60 * 1000;
 

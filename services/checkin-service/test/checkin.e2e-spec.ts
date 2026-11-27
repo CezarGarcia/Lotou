@@ -10,6 +10,7 @@ import {
 import { contractErrors } from './support/contracts.js';
 import {
   codeOf,
+  legacyCodeOf,
   newTraceparent,
   showMessage,
   ticketsIssued,
@@ -129,6 +130,35 @@ describe('Leitura do QR na portaria', () => {
     });
   });
 
+  it('o QR do order-service é LOTOU2 (Ed25519) e entra', async () => {
+    const { showId, tickets } = await showWithTickets();
+    expect(tickets[0].code).toMatch(/^LOTOU2\./);
+    expect((await scan(showId, tickets[0].code)).body.result).toBe('ACCEPTED');
+  });
+
+  it('o QR antigo LOTOU1 (HMAC), de ingresso já emitido, continua entrando uma vez só', async () => {
+    const { showId, tickets } = await showWithTickets();
+    const legacy = legacyCodeOf(tickets[0].ticketId);
+
+    expect((await scan(showId, legacy)).body).toMatchObject({
+      result: 'ACCEPTED',
+      ticket: { ticketId: tickets[0].ticketId },
+    });
+    // O mesmo ingresso pelo código novo: é a mesma entrada.
+    expect(
+      (await scan(showId, tickets[0].code, 'Portão C')).body,
+    ).toMatchObject({
+      result: 'ALREADY_USED',
+      firstEntry: { gate: 'Portão A' },
+    });
+    // Assinatura HMAC que não confere: recusada.
+    const forged = legacyCodeOf(tickets[0].ticketId).replace(
+      /\.[^.]+$/,
+      `.${'A'.repeat(43)}`,
+    );
+    expect((await scan(showId, forged)).body.result).toBe('INVALID_CODE');
+  });
+
   it('o leitor que manda um Enter no fim do código também é aceito', async () => {
     const { showId, tickets } = await showWithTickets();
     const response = await scan(showId, `${tickets[0].code}\r\n`);
@@ -137,7 +167,11 @@ describe('Leitura do QR na portaria', () => {
 
   it('QR falsificado é INVALID_CODE sem nenhuma consulta ao banco', async () => {
     const { showId, tickets } = await showWithTickets();
-    const forged = tickets[0].code.slice(0, -2) + 'AA';
+    // Um caractere do meio da assinatura trocado: outra assinatura, mesmo formato.
+    const code = tickets[0].code;
+    const at = code.length - 20;
+    const forged =
+      code.slice(0, at) + (code[at] === 'A' ? 'B' : 'A') + code.slice(at + 1);
 
     // Enquanto a leitura acontece, o banco "não existe": qualquer consulta
     // falha. O relay e a gravação das recusas, que rodam em segundo plano,

@@ -1,8 +1,8 @@
 # Alertas do Lotou (docs/projeto.md, "Alertas"), provisionados no Grafana. Chegam
 # por e-mail ao Mailpit (http://localhost:8025), para plantao@lotou.test.
 #
-# As invariantes (venda além da capacidade, entrada dupla, saga presa, reembolso
-# que falhou) consultam os bancos, só leitura; os SLOs (disponibilidade e latência do checkout) e a mensageria, o Prometheus.
+# As invariantes (venda além da capacidade, entrada dupla, entrada indevida pela
+# portaria offline, saga presa, reembolso que falhou) consultam os bancos, só leitura; os SLOs (disponibilidade e latência do checkout) e a mensageria, o Prometheus.
 # Um alerta sem dados fica OK: sem tráfego, não há erro a contar.
 apiVersion: 1
 contactPoints:
@@ -180,6 +180,75 @@ groups:
       dashboard: http://localhost:3000/d/lotou-portaria
     labels:
       severidade: critica
+    isPaused: false
+  - uid: entrada-offline-indevida
+    title: Entrada indevida pela portaria offline
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: pg-checkin
+      model:
+        refId: A
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: pg-checkin
+        rawSql: SELECT count(*) AS conflitos FROM offline_conflicts WHERE detected_at > now() - interval '15 minutes'
+        rawQuery: true
+        editorMode: code
+        format: table
+        intervalMs: 60000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Alguém entrou sem internet com um ingresso que não valia
+      description: 'Uma leitura feita sem internet chegou e o ingresso já tinha entrado (por outro aparelho ou online), estava
+        cancelado, era desconhecido ou de outro show (ADR 38). A pessoa já está lá dentro: veja `offline_conflicts` (portão,
+        aparelho e a entrada que valeu) e confira se o aparelho está baixando o pacote do show.'
+      dashboard: http://localhost:3000/d/lotou-portaria
+    labels:
+      severidade: alta
     isPaused: false
   - uid: saga-presa
     title: Saga presa
