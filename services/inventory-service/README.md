@@ -24,13 +24,35 @@ Durante a venda, o Redis é a fonte da verdade ([ADR 26](../../docs/adr/0026-red
 3. **Stream.** O mesmo script grava o estado final do que mudou em `stream:reservations` e publica as cadeiras em `seatmap.{showId}`.
 4. **Projeção** ([`ReservationProjection`](src/main/java/br/com/lotou/inventory/redis/ReservationProjection.java)). Um consumer group lê o stream e grava no Postgres numa transação por lote, e só então confirma (`XACK`). Cada linha guarda a posição da entrada (`redis_seq`), e uma entrada mais antiga nunca sobrescreve uma mais nova: reaplicar não muda nada. Entradas de uma instância que caiu são assumidas por outra (`XPENDING` + `XCLAIM`), e o stream é aparado só até o que já chegou ao banco.
 
-Confirmar, liberar, expirar, virar o lote por data, pausar, retomar e encerrar também são scripts, na pasta [`src/main/resources/redis/`](src/main/resources/redis/). Nada do estado da venda expira por TTL: a reserva vencida é encontrada pelo job que varre o Postgres e devolvida pelo script, que solta cadeiras, estoque e cota juntos.
+Confirmar, liberar, expirar, devolver ingressos vendidos, virar o lote por data, pausar, retomar e encerrar também são scripts, na pasta [`src/main/resources/redis/`](src/main/resources/redis/). Nada do estado da venda expira por TTL: a reserva vencida é encontrada pelo job que varre o Postgres e devolvida pelo script, que solta cadeiras, estoque e cota juntos.
 
 ### No Postgres
 
 Uma transação só, que trava as linhas sempre na mesma ordem (para não haver deadlock): a cota do CPF (`INSERT ... ON CONFLICT DO UPDATE ... WHERE quantidade + n <= 4`), os lotes do setor e as cadeiras, em ordem de ID. Se qualquer passo recusa, a transação inteira é desfeita.
 
 Nos dois motores, o CPF só é gravado como HMAC ([ADR 24](../../docs/adr/0024-cpf-como-hmac-e-limite-por-cpf-no-banco.md)), e a reserva dura 10 minutos.
+
+## Estados da reserva
+
+A tabela única de transições fica em [`ReservationStatus`](src/main/java/br/com/lotou/inventory/reservation/ReservationStatus.java); transição fora dela é recusada.
+
+| De | Para | Gatilho |
+| --- | --- | --- |
+| HELD | CONFIRMED | pagamento aprovado (`ConfirmReservation`) |
+| HELD | RELEASED | pagamento recusado (`ReleaseReservation`) |
+| HELD | EXPIRED | 10 minutos sem pagamento (job de expiração) |
+| CONFIRMED | RETURNED | pedido cancelado e reembolsado (`ReturnTickets`) |
+
+RELEASED, EXPIRED e RETURNED são finais.
+
+### Devolução de ingressos vendidos
+
+`ReturnTickets` devolve à venda os ingressos de uma reserva confirmada ([`return.lua`](src/main/resources/redis/return.lua) no Redis, uma transação no Postgres), pelas mesmas regras da liberação: o estoque volta para o lote em venda do setor, ao preço dele, e, se o setor esgotou, o último lote reabre (ADR 25); as cadeiras voltam a AVAILABLE (e saem do bitmap) e a cota do CPF é devolvida. A cadeira devolvida pode ser vendida de novo: o ingresso cancelado fica no order-service, fora da regra de ingresso único.
+
+- **Vendas encerradas:** os ingressos não voltam à venda, porque não há lote para recebê-los. Mesmo assim a reserva vira RETURNED, as cadeiras ficam livres e a cota é devolvida, e o fato sai normalmente.
+- **Idempotente:** devolver uma reserva já devolvida não muda nada nem gera fato novo. Reserva que não está confirmada (HELD, RELEASED, EXPIRED) é recusada (`reservation-not-confirmed`) sem mudar nada.
+- **Reserva fora do Redis:** a reserva concluída fica no Redis só por um dia, e o cancelamento pode chegar até 7 dias depois da compra. Sem o hash, o script roda com a reserva lida do Postgres; um hash que exista ainda vale mais que essa cópia.
+- **Show fora do Redis** (o Redis perdeu os dados): com as vendas abertas, a resposta é `inventory-loading` e o consumidor repete o comando enquanto o job recarrega o show; com as vendas encerradas, o show não volta para o Redis, e a devolução é gravada direto no Postgres.
 
 ## Fila virtual
 
@@ -84,12 +106,12 @@ Erros em Problem Details (RFC 9457), com `type` em `urn:lotou:problem:<tipo>`:
 | Direção | Tópico | Mensagens |
 | --- | --- | --- |
 | consome | `shows.catalog` | ShowPublished, ShowUpdated: a cópia local do catálogo (shows, setores, lotes e uma linha por cadeira) |
-| consome | `inventory.commands` | ConfirmReservation, ReleaseReservation, enviados pela saga de compra do order-service |
-| publica | `inventory.events` | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened |
+| consome | `inventory.commands` | ConfirmReservation, ReleaseReservation (saga de compra) e ReturnTickets (saga de cancelamento), enviados pelo order-service |
+| publica | `inventory.events` | ReservationConfirmed, ReservationReleased, ReservationReturned, LotSoldOut, LotOpened |
 
 - **Catálogo** ([`CatalogListener`](src/main/java/br/com/lotou/inventory/catalog/CatalogListener.java)): cada mensagem traz o show inteiro com a versão; só uma versão mais nova muda a cópia local. Um consumer group novo relê o tópico compactado desde o começo e monta o catálogo inteiro. Lê só transações confirmadas (`read_committed`), porque o event-service publica em transações Kafka.
-- **Comandos** ([`ReservationCommandListener`](src/main/java/br/com/lotou/inventory/reservation/ReservationCommandListener.java)): confirmam ou devolvem a reserva pelo motor configurado. Não há resposta direta: a saga espera os fatos.
-- **Fatos:** toda mudança de status de reserva e de lote é gravada no outbox por um trigger do Postgres, na mesma transação, venha de qual motor ou job vier ([`V3__outbox_and_events.sql`](src/main/resources/db/migration/V3__outbox_and_events.sql)). Um relay publica em ordem, uma instância por vez ([ADR 8](../../docs/adr/0008-outbox-transacional.md)). Repetir um comando, ou recebê-lo tarde, não gera fato novo.
+- **Comandos** ([`ReservationCommandListener`](src/main/java/br/com/lotou/inventory/reservation/ReservationCommandListener.java)): confirmam ou liberam a reserva, ou devolvem à venda os ingressos de uma reserva confirmada, pelo motor configurado. Não há resposta direta: a saga espera os fatos. Um comando para uma reserva que não existe ou não está no estado esperado é registrado em log e ignorado; uma falha passageira (o estoque do show sendo recarregado no Redis) é repetida com espera crescente e, se passar de 30 segundos, vai para a DLT.
+- **Fatos:** toda mudança de status de reserva e de lote é gravada no outbox por um trigger do Postgres, na mesma transação, venha de qual motor ou job vier ([`V3__outbox_and_events.sql`](src/main/resources/db/migration/V3__outbox_and_events.sql); o ramo de RETURNED veio na [`V4__reservation_returned.sql`](src/main/resources/db/migration/V4__reservation_returned.sql)). Um relay publica em ordem, uma instância por vez ([ADR 8](../../docs/adr/0008-outbox-transacional.md)). Repetir um comando, ou recebê-lo tarde, não gera fato novo.
 
 Os jobs, todos seguros para várias instâncias: ciclo das vendas (abre e carrega o Redis, vira lote por data, encerra e recarrega um show que o Redis perdeu), expiração de reservas, admissão da fila e o relay do outbox.
 

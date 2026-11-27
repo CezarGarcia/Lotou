@@ -116,6 +116,11 @@ public class ReservationService {
         return this.engine.expire(id);
     }
 
+    /** Pedido cancelado e reembolsado: os ingressos da reserva confirmada voltam à venda. */
+    public Outcome returnTickets(UUID id) {
+        return describe(this.engine.returnTickets(id));
+    }
+
     private Outcome describe(ReservationView reservation) {
         String sectorName = this.catalog.sector(reservation.showId(), reservation.sectorId())
                 .map(SectorInfo::name)

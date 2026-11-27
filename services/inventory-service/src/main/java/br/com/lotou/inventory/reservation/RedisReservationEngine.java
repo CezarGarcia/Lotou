@@ -14,11 +14,14 @@ import java.util.UUID;
 import br.com.lotou.inventory.catalog.CatalogCache;
 import br.com.lotou.inventory.catalog.CatalogCache.LotInfo;
 import br.com.lotou.inventory.catalog.CatalogCache.SeatInfo;
+import br.com.lotou.inventory.catalog.Show;
 import br.com.lotou.inventory.catalog.ShowRepository;
 import br.com.lotou.inventory.config.InventoryProperties;
 import br.com.lotou.inventory.redis.InventoryLoader;
 import br.com.lotou.inventory.redis.LuaScripts;
 import br.com.lotou.inventory.redis.RedisKeys;
+import br.com.lotou.inventory.seat.Seat;
+import br.com.lotou.inventory.seat.SeatRepository;
 import br.com.lotou.inventory.shared.UuidV7;
 import br.com.lotou.inventory.shared.problem.InventoryProblems;
 import br.com.lotou.inventory.shared.problem.Problems;
@@ -27,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -55,18 +59,27 @@ public class RedisReservationEngine implements ReservationEngine {
     private final CatalogCache catalog;
     private final ReservationRepository reservations;
     private final ShowRepository shows;
+    private final SeatRepository seats;
+    private final PurchaseLimits limits;
+    private final JdbcClient jdbc;
+    private final TransactionTemplate transaction;
     private final TransactionTemplate readOnly;
     private final InventoryProperties.Reservation config;
     private final Clock clock;
 
     public RedisReservationEngine(LuaScripts scripts, StringRedisTemplate redis, CatalogCache catalog,
-            ReservationRepository reservations, ShowRepository shows, PlatformTransactionManager transactionManager,
-            InventoryProperties properties, Clock clock) {
+            ReservationRepository reservations, ShowRepository shows, SeatRepository seats, PurchaseLimits limits,
+            JdbcClient jdbc, PlatformTransactionManager transactionManager, InventoryProperties properties,
+            Clock clock) {
         this.scripts = scripts;
         this.redis = redis;
         this.catalog = catalog;
         this.reservations = reservations;
         this.shows = shows;
+        this.seats = seats;
+        this.limits = limits;
+        this.jdbc = jdbc;
+        this.transaction = new TransactionTemplate(transactionManager);
         this.readOnly = new TransactionTemplate(transactionManager);
         this.readOnly.setReadOnly(true);
         this.config = properties.reservation();
@@ -206,6 +219,84 @@ public class RedisReservationEngine implements ReservationEngine {
             log.warn("Reserva {} vencida no Postgres não existe no Redis; a carga do estoque reconcilia", id);
         }
         return result.is("OK");
+    }
+
+    /**
+     * Devolve à venda os ingressos de uma reserva confirmada ({@code return.lua}).
+     *
+     * <p>O cancelamento pode chegar dias depois da compra, quando o hash da reserva já saiu do Redis
+     * (fica um dia depois de concluída). Nesse caso o script roda de novo com a reserva lida do
+     * Postgres; dentro do script, um hash que tenha aparecido nesse meio tempo ainda vale mais.
+     */
+    @Override
+    public ReservationView returnTickets(UUID id) {
+        LuaScripts.Result result = this.scripts.run("return", id, this.clock.millis());
+        if (result.is("NOT_FOUND")) {
+            List<Object> stored = this.readOnly.execute(status -> storedReservation(id))
+                    .orElseThrow(() -> Problems.notFound("Reserva"));
+            List<Object> args = new ArrayList<>(List.of(id, this.clock.millis()));
+            args.addAll(stored);
+            result = this.scripts.run("return", args.toArray());
+        }
+        return switch (result.code()) {
+            case "OK", "ALREADY" -> find(id).orElseThrow(() -> Problems.notFound("Reserva"));
+            case "NOT_CONFIRMED" -> throw InventoryProblems.reservationNotConfirmed(
+                    ReservationStatus.valueOf(result.value(1)));
+            case "NOT_LOADED" -> returnWithoutRedis(id);
+            default -> throw new IllegalStateException("Resultado inesperado do return.lua: " + result.values());
+        };
+    }
+
+    /** A reserva como está no Postgres, nos argumentos 3 a 17 do {@code return.lua}. */
+    private Optional<List<Object>> storedReservation(UUID id) {
+        return this.jdbc.sql("""
+                SELECT r.status, r.buyer_id, r.show_id, r.sector_id, r.cpf_hash, r.quantity, r.expires_at,
+                       r.created_at, r.updated_at, r.idempotency_key, r.request_hash,
+                       (SELECT i.lot_id FROM reservation_items i WHERE i.reservation_id = r.id
+                        ORDER BY i.position LIMIT 1) AS lot_id,
+                       coalesce(string_agg(s.id::text, ',' ORDER BY i.position), '') AS seat_ids,
+                       coalesce(string_agg(s.position::text, ',' ORDER BY i.position), '') AS positions,
+                       coalesce(string_agg(s.label, ',' ORDER BY i.position), '') AS labels
+                FROM reservations r
+                LEFT JOIN reservation_items i ON i.reservation_id = r.id
+                LEFT JOIN seats s ON s.id = i.seat_id
+                WHERE r.id = :id
+                GROUP BY r.id
+                """)
+                .param("id", id)
+                .query((rs, row) -> List.<Object>of(rs.getString("status"), rs.getString("buyer_id"),
+                        rs.getObject("show_id", UUID.class), rs.getObject("sector_id", UUID.class),
+                        rs.getString("cpf_hash"), rs.getInt("quantity"), rs.getObject("lot_id", UUID.class),
+                        rs.getString("seat_ids"), rs.getString("positions"), rs.getString("labels"),
+                        rs.getTimestamp("expires_at").getTime(), rs.getTimestamp("created_at").getTime(),
+                        rs.getTimestamp("updated_at").getTime(), rs.getString("idempotency_key"),
+                        rs.getString("request_hash")))
+                .optional();
+    }
+
+    /**
+     * O Redis não tem o show (perdeu os dados). Com as vendas abertas, a carga está para acontecer:
+     * o comando é repetido. Com as vendas encerradas, o show não volta para o Redis, e o Postgres é a
+     * fonte da verdade: a devolução é gravada direto nele, sem estoque para devolver.
+     */
+    private ReservationView returnWithoutRedis(UUID id) {
+        return this.transaction.execute(status -> {
+            Reservation reservation = this.reservations.lockById(id).orElseThrow(() -> Problems.notFound("Reserva"));
+            reservation.getItems().size();
+            boolean closed = this.shows.findById(reservation.getShowId()).map(Show::salesClosed).orElse(false);
+            if (!closed) {
+                throw InventoryProblems.inventoryLoading();
+            }
+            if (!reservation.is(ReservationStatus.RETURNED)) {
+                if (!reservation.is(ReservationStatus.CONFIRMED)) {
+                    throw InventoryProblems.reservationNotConfirmed(reservation.getStatus());
+                }
+                reservation.transitionTo(ReservationStatus.RETURNED, this.clock.instant());
+                this.limits.giveBack(reservation.getShowId(), reservation.getCpfHash(), reservation.getQuantity());
+                this.seats.lockByReservation(id).forEach(Seat::release);
+            }
+            return ReservationView.of(reservation);
+        });
     }
 
     /** Traduz o resultado de confirmar ou liberar: idempotente quando a reserva já está no estado pedido. */

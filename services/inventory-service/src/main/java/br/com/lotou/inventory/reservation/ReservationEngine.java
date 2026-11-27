@@ -51,4 +51,15 @@ public interface ReservationEngine {
      * @return se a reserva expirou agora
      */
     boolean expire(UUID id);
+
+    /**
+     * CONFIRMED -> RETURNED: o pedido foi cancelado e reembolsado, e os ingressos vendidos voltam à
+     * venda pelas mesmas regras da liberação (lote em venda do setor, ou o último lote reabre). Com
+     * as vendas encerradas, os ingressos não voltam à venda, mas a reserva vira RETURNED, as cadeiras
+     * ficam livres e a cota do CPF é devolvida. Devolver de novo não muda nada.
+     *
+     * @throws br.com.lotou.inventory.shared.problem.ProblemException {@code reservation-not-confirmed}
+     *     se a reserva não está confirmada nem devolvida; {@code not-found} se não existe
+     */
+    ReservationView returnTickets(UUID id);
 }

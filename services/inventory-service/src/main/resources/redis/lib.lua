@@ -63,3 +63,53 @@ local function publish_seats(show, sector, labels, available)
       cjson.encode({ sectorId = sector, seats = labels, available = available }))
   end
 end
+
+-- Devolve à venda o que a reserva tinha, segurado ou vendido, de uma vez: cota do CPF, cadeiras e
+-- estoque. É o mesmo caminho para a reserva liberada, a expirada e a devolvida depois do
+-- reembolso. Preenche na entrada do stream o estado final do que mudou e devolve os rótulos das
+-- cadeiras soltas, para o aviso do mapa.
+local function give_back(res, r, entry)
+  local show, sector, qty = r.show, r.sector, tonumber(r.qty)
+
+  -- Cota do CPF.
+  local limit_key = k_limit(show, r.cpf)
+  local limit_now = redis.call('DECRBY', limit_key, qty)
+  if limit_now < 0 then
+    redis.call('SET', limit_key, 0, 'KEEPTTL')
+    limit_now = 0
+  end
+  entry.limit = limit_now
+
+  -- Cadeiras: só solta as que ainda são desta reserva.
+  local seat_ids, positions, labels = split(r.seats), split(r.positions), split(r.labels)
+  local freed, freed_labels = {}, {}
+  local seatmap = k_seatmap(show, sector)
+  for i = 1, #seat_ids do
+    local seat_key = k_seat(show, seat_ids[i])
+    if redis.call('GET', seat_key) == res then
+      redis.call('DEL', seat_key)
+      redis.call('SETBIT', seatmap, tonumber(positions[i]), 0)
+      table.insert(freed, seat_ids[i])
+      table.insert(freed_labels, labels[i])
+    end
+  end
+  if #freed > 0 then
+    entry.seats = table.concat(freed, ',')
+    entry.seatStatus = 'AVAILABLE'
+  end
+
+  -- Estoque: volta para o lote em venda, ao preço dele. Se o setor esgotou, o último lote reabre
+  -- (ADR 25). Depois do encerramento das vendas, não há para onde devolver.
+  local sector_key = k_sector(show, sector)
+  local sector_status = redis.call('HGET', sector_key, 'status')
+  if sector_status and sector_status ~= 'CLOSED' and sector_status ~= 'NOT_OPEN' then
+    local current = redis.call('HGET', sector_key, 'lot')
+    redis.call('INCRBY', k_stock(current), qty)
+    if sector_status == 'SOLD_OUT' then
+      sector_status = 'ON_SALE'
+      redis.call('HSET', sector_key, 'status', sector_status)
+    end
+    entry.lots = { lot_state(current, LOT_STATUS[sector_status]) }
+  end
+  return freed_labels
+end

@@ -9,6 +9,7 @@ import br.com.lotou.inventory.catalog.CatalogShow.CatalogLot;
 import br.com.lotou.inventory.catalog.CatalogShow.CatalogSector;
 import br.com.lotou.inventory.reservation.ReservationExpiryJob;
 import br.com.lotou.inventory.reservation.ReservationService;
+import br.com.lotou.inventory.reservation.ReservationStatus;
 import br.com.lotou.inventory.reservation.ReservationView;
 import br.com.lotou.inventory.support.Contracts;
 import br.com.lotou.inventory.support.Cpfs;
@@ -125,6 +126,40 @@ abstract class InventoryEventsScenarios {
     }
 
     @Test
+    void devolverPeloComandoPublicaReservationReturnedEDevolveOEstoque() {
+        var lote = lot("Lote único", 10_000, 10);
+        CatalogShow show = this.fixtures.onSale(pista(lote));
+        ReservationView reservation = reserve(pistaRequest(show, 3, Cpfs.next()));
+        this.service.confirm(reservation.id());
+
+        command("ReturnTickets", reservation.id(), "ORDER_CANCELLED");
+
+        JsonNode fact = awaitFact(reservation.id(), "ReservationReturned");
+        assertThat(fact.get("payload").get("quantity").asInt()).isEqualTo(3);
+        assertThat(fact.get("payload").get("lotId").asString()).isEqualTo(lote.id().toString());
+        assertThat(fact.get("payload").has("returnedAt")).isTrue();
+        assertThat(this.fixtures.available(lote.id())).isEqualTo(10);
+    }
+
+    @Test
+    void returnTicketsDeReservaNaoConfirmadaEhIgnoradoEOConsumidorSegue() {
+        CatalogShow show = this.fixtures.onSale(pista(lot("Lote único", 10_000, 10)));
+        ReservationView reservation = reserve(pistaRequest(show, 1, Cpfs.next()));
+        UUID orderId = UUID.randomUUID();
+
+        // Reserva ainda segurada e reserva que não existe: sem efeito, registrados e ignorados.
+        command(orderId, "ReturnTickets", reservation.id(), "ORDER_CANCELLED");
+        command("ReturnTickets", UUID.randomUUID(), "ORDER_CANCELLED");
+        // O comando seguinte do mesmo pedido (mesma partição) é processado normalmente.
+        command(orderId, "ConfirmReservation", reservation.id(), null);
+
+        awaitFact(reservation.id(), "ReservationConfirmed");
+        assertThat(factsAbout(reservation.id())).containsExactly("ReservationConfirmed");
+        assertThat(this.service.get(reservation.id()).reservation().status())
+                .isEqualTo(ReservationStatus.CONFIRMED);
+    }
+
+    @Test
     void loteQueEsgotaPublicaLotSoldOutEOProximoLotOpened() {
         CatalogLot primeiro = lot("1º lote", 10_000, 2);
         CatalogLot segundo = lot("2º lote", 14_000, 5);
@@ -171,7 +206,10 @@ abstract class InventoryEventsScenarios {
 
     /** Publica um comando da saga, como o order-service publicaria. */
     private void command(String type, UUID reservationId, String reason) {
-        UUID orderId = UUID.randomUUID();
+        command(UUID.randomUUID(), type, reservationId, reason);
+    }
+
+    private void command(UUID orderId, String type, UUID reservationId, String reason) {
         String payload = reason == null
                 ? "{\"orderId\": \"%s\", \"reservationId\": \"%s\"}".formatted(orderId, reservationId)
                 : "{\"orderId\": \"%s\", \"reservationId\": \"%s\", \"reason\": \"%s\"}".formatted(orderId,
