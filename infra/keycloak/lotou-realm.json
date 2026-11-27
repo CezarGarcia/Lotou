@@ -266,7 +266,7 @@
     {
       "clientId": "lotou-smoke",
       "name": "Lotou smoke",
-      "description": "Verificação do ambiente: faz uma compra de ponta a ponta como comprador",
+      "description": "Verificação do ambiente: faz uma compra de ponta a ponta como comprador, cancela um pedido e lê o ingresso na portaria",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -360,7 +360,8 @@
       "enabled": true,
       "serviceAccountClientId": "lotou-smoke",
       "realmRoles": [
-        "buyer"
+        "buyer",
+        "gate-staff"
       ]
     },
     {

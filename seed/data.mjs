@@ -15,6 +15,20 @@ export function at(days, time) {
   return `${date.toISOString().slice(0, 10)}T${time}:00${OFFSET}`;
 }
 
+/** Daqui a `hours` horas, na hora cheia (o seed repetido na mesma hora manda o mesmo corpo). */
+function inHours(hours) {
+  const date = new Date();
+  date.setUTCMinutes(0, 0, 0);
+  date.setUTCHours(date.getUTCHours() + hours);
+  return date.toISOString();
+}
+
+/** A data de hoje no fuso dos locais (UTC-3), como DD/MM. */
+function todayLabel() {
+  const local = new Date(Date.now() - 3 * 3_600_000).toISOString();
+  return `${local.slice(8, 10)}/${local.slice(5, 7)}`;
+}
+
 const pista = (capacity, name = 'Pista') => ({
   name,
   kind: 'GENERAL_ADMISSION',
@@ -157,6 +171,24 @@ export const shows = [
     sectors: {
       Pista: [lot('1º lote', 50, 2_500), lot('2º lote', 70, 2_500)],
       Camarote: [lot('Lote único', 180, 600)],
+    },
+  },
+  // Um show acontecendo hoje, com os portões já abertos: é o que a portaria lê.
+  // O título leva a data, para cada dia de seed ter o seu.
+  {
+    venue: 'Hangar Ver-o-Rio',
+    title: `Ensaio Aberto ${todayLabel()}`,
+    artist: 'Coletivo Pé de Serra',
+    description:
+      'Ensaio aberto do Coletivo Pé de Serra, com forró, xote e baião. Portões já abertos: o show da demonstração da portaria.',
+    startsAt: inHours(3),
+    doorsOpenAt: inHours(-1),
+    salesStartAt: inHours(-48),
+    salesEndAt: inHours(2),
+    highDemand: false,
+    sectors: {
+      Pista: [lot('Lote único', 40, 2_000)],
+      Camarote: [lot('Lote único', 120, 200)],
     },
   },
   {

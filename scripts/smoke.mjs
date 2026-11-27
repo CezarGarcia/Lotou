@@ -4,11 +4,16 @@
  *   1. a loja responde e a busca devolve os shows do seed;
  *   2. uma compra de ponta a ponta funciona: reserva no inventory-service,
  *      pedido no order-service, ingresso emitido e estoque baixado;
- *   3. as duas requisições geram traces completos no Tempo: a busca até o
- *      MongoDB e a compra até o Postgres, atravessando os serviços.
+ *   3. o comprador cancela o pedido: o pagamento é estornado, o ingresso é
+ *      cancelado e volta à venda;
+ *   4. a portaria lê o ingresso de um show de hoje: a primeira leitura entra,
+ *      a segunda é barrada, e o ingresso cancelado também;
+ *   5. as requisições geram traces completos no Tempo: a busca até o MongoDB
+ *      e a compra até o Postgres, atravessando os serviços.
  *
- * Uso: `make smoke` na raiz (roda dentro do Compose). O script compra um
- * ingresso de verdade a cada execução, como a conta de serviço `lotou-smoke`.
+ * Uso: `make smoke` na raiz (roda dentro do Compose). O script compra
+ * ingressos de verdade a cada execução, como a conta de serviço `lotou-smoke`
+ * (papéis de comprador e de portaria).
  */
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
@@ -58,6 +63,69 @@ async function api(method, path, { token, body, trace, idempotent } = {}) {
     fail(`${method} ${path} -> ${response.status} ${payload.title ?? ''}: ${payload.detail ?? ''}`);
   }
   return payload;
+}
+
+/** Reserva e compra um ingresso de pista e espera o pedido ser confirmado pela saga. */
+async function buyOne(token, show, sector, trace = {}) {
+  const reservation = await api('POST', '/reservations', {
+    token,
+    idempotent: true,
+    trace: trace.reservation,
+    body: { showId: show.id, sectorId: sector.id, quantity: 1, cpf: randomCpf() },
+  });
+  if (reservation.status !== 'HELD' || reservation.totalCents !== sector.lot.priceCents) {
+    fail(`reserva inesperada: ${JSON.stringify(reservation)}`);
+  }
+  const created = await api('POST', '/orders', {
+    token,
+    idempotent: true,
+    trace: trace.order,
+    body: { reservationId: reservation.id },
+  });
+  if (created.status !== 'PENDING') fail(`o pedido deveria nascer PENDING: ${JSON.stringify(created)}`);
+  const order = await waitOrder(token, created.id, (current) => current.status !== 'PENDING');
+  if (order.status !== 'CONFIRMED' || order.tickets.length !== 1 || order.tickets[0].status !== 'VALID') {
+    fail(`o pedido não foi confirmado com um ingresso válido: ${JSON.stringify(order)}`);
+  }
+  // Total = ingresso + taxa de 10% (se o comprador paga a taxa).
+  const fee = Math.round(sector.lot.priceCents / 10);
+  const expected = sector.lot.priceCents + (order.serviceFeePaidBy === 'BUYER' ? fee : 0);
+  if (order.subtotalCents !== sector.lot.priceCents || order.serviceFeeCents !== fee || order.totalCents !== expected) {
+    fail(`valores inesperados no pedido: ${JSON.stringify(order)}`);
+  }
+  return { reservation, order };
+}
+
+/** Acompanha o pedido até a condição valer (a saga anda pelo Kafka). */
+async function waitOrder(token, id, done, attempts = 60) {
+  let order = await api('GET', `/orders/${id}`, { token });
+  for (let attempt = 0; attempt < attempts && !done(order); attempt++) {
+    await sleep(500);
+    order = await api('GET', `/orders/${id}`, { token });
+  }
+  return order;
+}
+
+/** Um setor de pista à venda num show comum (sem fila) que satisfaz `accept`. */
+async function findPista(shows, accept) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    // Shows de alta demanda pedem a fila virtual; a compra direta usa um show comum.
+    for (const show of shows.filter((item) => !item.highDemand && accept(item))) {
+      const response = await fetch(`${API}/availability/${show.id}`);
+      if (!response.ok) continue;
+      const sector = (await response.json()).sectors.find(
+        (item) => item.kind === 'GENERAL_ADMISSION' && item.sale === 'ON_SALE' && item.available > 0,
+      );
+      if (sector) return { show, sector };
+    }
+    // Logo depois do seed, o inventory ainda pode estar lendo o catálogo e abrindo as vendas.
+    await sleep(2_000);
+  }
+  return undefined;
+}
+
+async function scan(token, showId, code, gate) {
+  return api('POST', '/checkins', { token, body: { showId, gate, code } });
 }
 
 async function buyerToken() {
@@ -116,61 +184,18 @@ if (shows.length < 3) fail(`esperava ao menos 3 shows, vieram ${shows.length}. R
 console.log(`   ${shows.length} shows na busca`);
 
 console.log('2. Compra de ponta a ponta');
-// Um setor de pista com vendas abertas. Logo depois do seed, o inventory ainda
-// pode estar lendo o catálogo e abrindo as vendas: espera um pouco.
-let target;
-for (let attempt = 0; attempt < 30 && !target; attempt++) {
-  // Shows de alta demanda pedem a fila virtual; a compra direta usa um show comum.
-  for (const show of shows.filter((item) => !item.highDemand)) {
-    const response = await fetch(`${API}/availability/${show.id}`);
-    if (!response.ok) continue;
-    const sector = (await response.json()).sectors.find(
-      (item) => item.kind === 'GENERAL_ADMISSION' && item.sale === 'ON_SALE' && item.available > 0,
-    );
-    if (sector) {
-      target = { show, sector };
-      break;
-    }
-  }
-  if (!target) await sleep(2_000);
-}
+// Um show a mais de 48 h, que ainda pode ser cancelado.
+const target = await findPista(shows, (item) => Date.parse(item.startsAt) - Date.now() > 3 * 86_400_000);
 if (!target) fail('nenhum show com pista à venda. As vendas de algum show do seed já deveriam ter aberto.');
 const { show, sector } = target;
 console.log(`   ${show.artist}, ${sector.name}, ${sector.lot.name} a R$ ${(sector.lot.priceCents / 100).toFixed(2)}`);
 
 const token = await buyerToken();
 const purchaseTrace = newTrace();
-const reservation = await api('POST', '/reservations', {
-  token,
-  idempotent: true,
-  trace: purchaseTrace,
-  body: { showId: show.id, sectorId: sector.id, quantity: 1, cpf: randomCpf() },
-});
-if (reservation.status !== 'HELD' || reservation.totalCents !== sector.lot.priceCents) {
-  fail(`reserva inesperada: ${JSON.stringify(reservation)}`);
-}
-console.log(`   reserva ${reservation.id} segurada até ${reservation.expiresAt}`);
-
 const orderTrace = newTrace();
-const created = await api('POST', '/orders', {
-  token,
-  idempotent: true,
-  trace: orderTrace,
-  body: { reservationId: reservation.id },
-});
-if (created.status !== 'PENDING') fail(`o pedido deveria nascer PENDING: ${JSON.stringify(created)}`);
-console.log(`   pedido ${created.id} criado; a saga segue pelo Kafka`);
-
-// Pagamento, confirmação da reserva e emissão dos ingressos acontecem pela saga: acompanha o pedido.
-let order = created;
-for (let attempt = 0; attempt < 60 && order.status === 'PENDING'; attempt++) {
-  await sleep(500);
-  order = await api('GET', `/orders/${created.id}`, { token });
-}
-if (order.status !== 'CONFIRMED' || order.tickets.length !== 1 || order.tickets[0].status !== 'VALID') {
-  fail(`o pedido não foi confirmado com um ingresso válido: ${JSON.stringify(order)}`);
-}
-console.log(`   pedido ${order.id} confirmado, ingresso ${order.tickets[0].id}`);
+const { reservation, order } = await buyOne(token, show, sector, { reservation: purchaseTrace, order: orderTrace });
+console.log(`   reserva ${reservation.id}; pedido ${order.id} confirmado pela saga, ingresso ${order.tickets[0].id}`);
+console.log(`   total R$ ${(order.totalCents / 100).toFixed(2)} (taxa de R$ ${(order.serviceFeeCents / 100).toFixed(2)}, paga por ${order.serviceFeePaidBy})`);
 
 const after = (await api('GET', `/availability/${show.id}`)).sectors.find((item) => item.id === sector.id);
 if (after.sale === 'ON_SALE' && after.available >= sector.available) {
@@ -178,7 +203,65 @@ if (after.sale === 'ON_SALE' && after.available >= sector.available) {
 }
 console.log(`   estoque do lote: ${sector.available} -> ${after.available}`);
 
-console.log('3. Traces no Tempo');
+console.log('3. Cancelamento e reembolso');
+if (!order.cancellation?.allowed) fail(`o pedido deveria poder ser cancelado: ${JSON.stringify(order.cancellation)}`);
+const cancelling = await api('POST', `/orders/${order.id}/cancel`, { token });
+if (cancelling.status !== 'REFUNDING' || cancelling.tickets[0].status !== 'CANCELLED') {
+  fail(`o cancelamento deveria pôr o pedido em REFUNDING com o ingresso cancelado: ${JSON.stringify(cancelling)}`);
+}
+const refunded = await waitOrder(token, order.id, (current) => current.status !== 'REFUNDING');
+if (refunded.status !== 'REFUNDED' || refunded.refundedCents !== order.totalCents) {
+  fail(`o pedido não foi reembolsado: ${JSON.stringify(refunded)}`);
+}
+console.log(`   pedido ${order.id} reembolsado: R$ ${(refunded.refundedCents / 100).toFixed(2)}`);
+let returned;
+for (let attempt = 0; attempt < 30; attempt++) {
+  returned = (await api('GET', `/availability/${show.id}`)).sectors.find((item) => item.id === sector.id);
+  if (returned.available > after.available || returned.sale !== 'ON_SALE') break;
+  await sleep(500);
+}
+if (returned.sale === 'ON_SALE' && returned.available <= after.available) {
+  fail(`o ingresso não voltou à venda: ${after.available} -> ${returned.available}`);
+}
+console.log(`   ingresso de volta à venda: ${after.available} -> ${returned.available}`);
+
+console.log('4. Portaria');
+const now = Date.now();
+// O show de hoje do seed: começa nas próximas horas, com os portões já abertos.
+const tonight = await findPista(
+  shows,
+  (item) => Date.parse(item.startsAt) > now && Date.parse(item.startsAt) - now < 12 * 3_600_000,
+);
+if (!tonight) fail("nenhum show de hoje com os portões abertos. Rode 'make seed' hoje.");
+const { order: ticketOrder } = await buyOne(token, tonight.show, tonight.sector);
+const ticket = ticketOrder.tickets[0];
+// O checkin-service recebe o ingresso pelo Kafka (TicketsIssued): espera a cópia local chegar.
+let first;
+for (let attempt = 0; attempt < 30; attempt++) {
+  first = await scan(token, tonight.show.id, ticket.code, 'Portão A');
+  if (first.result !== 'UNKNOWN_TICKET') break;
+  await sleep(500);
+}
+if (first.result !== 'ACCEPTED') fail(`a primeira leitura deveria entrar: ${JSON.stringify(first)}`);
+const second = await scan(token, tonight.show.id, ticket.code, 'Portão B');
+if (second.result !== 'ALREADY_USED' || second.firstEntry?.gate !== 'Portão A') {
+  fail(`a segunda leitura deveria ser barrada como já usada no Portão A: ${JSON.stringify(second)}`);
+}
+console.log(`   ${tonight.show.artist}: 1ª leitura ${first.result}, 2ª leitura ${second.result} (entrou no ${second.firstEntry.gate})`);
+const forged = await scan(token, tonight.show.id, `${ticket.code.slice(0, -2)}xx`, 'Portão A');
+if (forged.result !== 'INVALID_CODE') fail(`código adulterado deveria ser INVALID_CODE: ${JSON.stringify(forged)}`);
+const cancelledScan = await scan(token, show.id, refunded.tickets[0].code, 'Portão A');
+if (cancelledScan.result !== 'CANCELLED') {
+  fail(`o ingresso reembolsado deveria ser barrado como cancelado: ${JSON.stringify(cancelledScan)}`);
+}
+console.log(`   código adulterado: ${forged.result}; ingresso reembolsado: ${cancelledScan.result}`);
+const used = await waitOrder(token, ticketOrder.id, (current) => current.tickets[0].status === 'USED', 20);
+if (used.tickets[0].status !== 'USED' || used.tickets[0].gate !== 'Portão A') {
+  fail(`o pedido deveria mostrar o ingresso usado no Portão A: ${JSON.stringify(used.tickets[0])}`);
+}
+console.log('   o pedido mostra o ingresso como usado no Portão A');
+
+console.log('5. Traces no Tempo');
 await expectTrace(searchTrace, ['api-gateway', 'event-service'], 'mongodb');
 // A reserva acontece num script Lua no redis-core (motor padrão): o trace termina no Redis.
 await expectTrace(purchaseTrace, ['api-gateway', 'inventory-service'], 'redis');
