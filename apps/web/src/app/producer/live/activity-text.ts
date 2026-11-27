@@ -18,14 +18,14 @@ const tickets = (quantity: number) => (quantity === 1 ? '1 ingresso' : `${quanti
 const lotIn = (lotName: string | null, sectorName: string | null) =>
   `${lotName ?? 'Lote'} em ${sectorName ?? 'um setor'}`;
 
-/** Ícone e tom de cada tipo de entrada no feed. */
+/** Ícone (Lucide) de cada tipo de entrada no feed. */
 export const ACTIVITY_ICONS: Record<ActivityEntry['type'], string> = {
-  OrderConfirmed: 'shopping_bag',
-  OrderCancelled: 'remove_shopping_cart',
-  LotOpened: 'lock_open',
-  LotSoldOut: 'block',
-  TicketCheckedIn: 'how_to_reg',
-  OrderRefunded: 'currency_exchange',
+  OrderConfirmed: 'lucideShoppingBag',
+  OrderCancelled: 'lucideCircleX',
+  LotOpened: 'lucideLockOpen',
+  LotSoldOut: 'lucideBan',
+  TicketCheckedIn: 'lucideScanLine',
+  OrderRefunded: 'lucideRotateCcw',
 };
 
 /** Por que um pedido foi reembolsado. */

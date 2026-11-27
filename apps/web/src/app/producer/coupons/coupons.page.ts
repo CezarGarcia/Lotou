@@ -8,9 +8,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCloudOff,
+  lucidePause,
+  lucidePlay,
+  lucidePlus,
+  lucideTicketPercent,
+} from '@ng-icons/lucide';
 import { CountPipe, formatCount } from '../../core/format/count.pipe';
 import { MoneyPipe } from '../../core/format/money.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
@@ -25,14 +31,9 @@ import { CouponsStore } from './coupons.store';
 @Component({
   selector: 'app-coupons-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    MatButtonModule,
-    MatIconModule,
-    MatProgressBarModule,
-    CountPipe,
-    MoneyPipe,
-    ShowDatePipe,
-    CouponForm,
+  imports: [MatButtonModule, NgIcon, CountPipe, MoneyPipe, ShowDatePipe, CouponForm],
+  viewProviders: [
+    provideIcons({ lucideCloudOff, lucidePause, lucidePlay, lucidePlus, lucideTicketPercent }),
   ],
   providers: [CouponsStore],
   templateUrl: './coupons.page.html',

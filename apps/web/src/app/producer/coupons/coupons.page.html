@@ -1,19 +1,19 @@
 <section class="page" aria-labelledby="coupons-title">
   <header class="top">
     <div>
-      <h2 id="coupons-title">Cupons</h2>
+      <h2 id="coupons-title" class="display">Cupons</h2>
       <p>Descontos para divulgar o show. O uso é contado no pedido e volta se ele for cancelado.</p>
     </div>
     @if (!formOpen()) {
-      <button matButton="filled" type="button" (click)="openForm()">
-        <mat-icon aria-hidden="true">add</mat-icon>
+      <button matButton="filled" type="button" class="cta" (click)="openForm()">
+        <ng-icon name="lucidePlus" aria-hidden="true" />
         Novo cupom
       </button>
     }
   </header>
 
   @if (formOpen() && context.id(); as showId) {
-    <div class="card">
+    <div class="form-card">
       <app-coupon-form
         [showId]="showId"
         [timezone]="context.timezone()"
@@ -28,7 +28,7 @@
         <div class="error" role="alert">
           <p>Não foi possível criar o cupom. {{ error.message }}</p>
           @if (error.traceId) {
-            <small>Código para o suporte: {{ error.traceId }}</small>
+            <small class="mono">Código para o suporte: {{ error.traceId }}</small>
           }
         </div>
       }
@@ -43,85 +43,89 @@
     @if (store.loading()) {
       <div class="list" aria-hidden="true">
         @for (item of skeletons; track item) {
-          <div class="skeleton"></div>
+          <div class="skeleton placeholder"></div>
         }
       </div>
     } @else if (store.error() && store.coupons().length === 0) {
       @let error = store.error()!;
       <div class="state" role="alert">
-        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <ng-icon name="lucideCloudOff" aria-hidden="true" />
         <p>Não foi possível carregar os cupons. {{ error.message }}</p>
-        <button matButton="tonal" type="button" (click)="store.retry()">Tentar de novo</button>
+        <button matButton="outlined" type="button" (click)="store.retry()">Tentar de novo</button>
       </div>
     } @else if (store.empty()) {
       <div class="state">
-        <mat-icon aria-hidden="true">sell</mat-icon>
+        <ng-icon name="lucideTicketPercent" aria-hidden="true" />
         <p>Nenhum cupom ainda. Crie o primeiro para a divulgação do show.</p>
       </div>
     } @else {
       <ul class="list">
         @for (coupon of store.coupons(); track coupon.id) {
-          <li class="card coupon" [attr.data-status]="coupon.status">
+          <li class="coupon" [attr.data-status]="coupon.status">
             <div class="head">
               <code>{{ coupon.code }}</code>
               <span class="status">{{ status(coupon) }}</span>
             </div>
-            <p class="discount">{{ describe(coupon) }}</p>
-            <p class="meta">
-              {{ sectorsText(coupon) }} · válido até
-              {{ coupon.validUntil | showDate: context.timezone() : 'date' }} às
-              {{ coupon.validUntil | showDate: context.timezone() : 'time' }}
-            </p>
-            <div
-              class="bar"
-              role="meter"
-              [attr.aria-label]="'Usos do cupom ' + coupon.code"
-              aria-valuemin="0"
-              [attr.aria-valuemax]="coupon.maxUses"
-              [attr.aria-valuenow]="coupon.uses"
-              [attr.aria-valuetext]="usesText(coupon)"
-            >
-              <span [style.width.%]="usedPercent(coupon)"></span>
+            <div class="body">
+              <p class="discount">{{ describe(coupon) }}</p>
+              <p class="meta">
+                {{ sectorsText(coupon) }} · válido até
+                {{ coupon.validUntil | showDate: context.timezone() : 'date' }} às
+                {{ coupon.validUntil | showDate: context.timezone() : 'time' }}
+              </p>
+              <div class="usage">
+                <p class="usage-text">
+                  <span class="eyebrow">Usos</span>
+                  <span class="num">{{ coupon.uses | count }} de {{ coupon.maxUses | count }}</span>
+                </p>
+                <div
+                  class="bar"
+                  role="meter"
+                  [attr.aria-label]="'Usos do cupom ' + coupon.code"
+                  aria-valuemin="0"
+                  [attr.aria-valuemax]="coupon.maxUses"
+                  [attr.aria-valuenow]="coupon.uses"
+                  [attr.aria-valuetext]="usesText(coupon)"
+                >
+                  <span [style.width.%]="usedPercent(coupon)"></span>
+                </div>
+              </div>
+              <dl>
+                <div>
+                  <dt class="eyebrow">Restantes</dt>
+                  <dd class="num">{{ coupon.remaining | count }}</dd>
+                </div>
+                <div>
+                  <dt class="eyebrow">Desconto dado</dt>
+                  <dd class="num">{{ coupon.discountGivenCents | brl }}</dd>
+                </div>
+              </dl>
+              @if (coupon.status === 'ACTIVE' || coupon.status === 'PAUSED') {
+                <div class="actions">
+                  @if (coupon.status === 'ACTIVE') {
+                    <button
+                      matButton="outlined"
+                      type="button"
+                      [disabled]="store.busy().has(coupon.id)"
+                      (click)="store.pause(coupon)"
+                    >
+                      <ng-icon name="lucidePause" aria-hidden="true" />
+                      Pausar <span class="sr-only">{{ coupon.code }}</span>
+                    </button>
+                  } @else {
+                    <button
+                      matButton="filled"
+                      type="button"
+                      [disabled]="store.busy().has(coupon.id)"
+                      (click)="store.resume(coupon)"
+                    >
+                      <ng-icon name="lucidePlay" aria-hidden="true" />
+                      Retomar <span class="sr-only">{{ coupon.code }}</span>
+                    </button>
+                  }
+                </div>
+              }
             </div>
-            <dl>
-              <div>
-                <dt>Usos</dt>
-                <dd>{{ coupon.uses | count }} de {{ coupon.maxUses | count }}</dd>
-              </div>
-              <div>
-                <dt>Restantes</dt>
-                <dd>{{ coupon.remaining | count }}</dd>
-              </div>
-              <div>
-                <dt>Desconto dado</dt>
-                <dd>{{ coupon.discountGivenCents | brl }}</dd>
-              </div>
-            </dl>
-            @if (coupon.status === 'ACTIVE' || coupon.status === 'PAUSED') {
-              <div class="actions">
-                @if (coupon.status === 'ACTIVE') {
-                  <button
-                    matButton="outlined"
-                    type="button"
-                    [disabled]="store.busy().has(coupon.id)"
-                    (click)="store.pause(coupon)"
-                  >
-                    <mat-icon aria-hidden="true">pause</mat-icon>
-                    Pausar <span class="sr-only">{{ coupon.code }}</span>
-                  </button>
-                } @else {
-                  <button
-                    matButton="tonal"
-                    type="button"
-                    [disabled]="store.busy().has(coupon.id)"
-                    (click)="store.resume(coupon)"
-                  >
-                    <mat-icon aria-hidden="true">play_arrow</mat-icon>
-                    Retomar <span class="sr-only">{{ coupon.code }}</span>
-                  </button>
-                }
-              </div>
-            }
           </li>
         }
       </ul>

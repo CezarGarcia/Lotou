@@ -1,51 +1,90 @@
 form {
   display: grid;
-  gap: 12px;
+  gap: 20px;
 }
 
 h3 {
-  margin: 0;
-  font: var(--mat-sys-title-medium);
-  font-weight: 700;
+  margin: 0 0 4px;
+  font-size: 2rem;
 }
 
 fieldset {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
 legend {
-  margin-bottom: 4px;
-  font: var(--mat-sys-label-large);
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--lt-muted);
+  font-family: var(--lt-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
+// Os dois tipos de desconto como opções grandes, fáceis de acertar.
 mat-radio-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
+}
+
+mat-radio-button {
+  padding: 4px 14px 4px 4px;
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 14px;
+  transition: border-color 0.15s ease;
+
+  &.mat-mdc-radio-checked {
+    border-color: var(--lt-text);
+    box-shadow: inset 0 0 0 1px var(--lt-text);
+  }
 }
 
 .row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 20px 16px;
 
-  @media (max-width: 520px) {
+  @media (max-width: 560px) {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+
+  legend {
+    margin-bottom: 0;
+  }
+
+  .help {
+    flex-basis: 100%;
   }
 }
 
 .help {
   margin: 0;
-  font: var(--mat-sys-body-small);
-  color: var(--mat-sys-on-surface-variant);
+  color: var(--lt-muted);
+  font-size: 0.8125rem;
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lt-line);
+}
+
+.cta {
+  --mat-button-filled-container-color: var(--lt-cta);
+  --mat-button-filled-label-text-color: var(--lt-on-cta);
 }

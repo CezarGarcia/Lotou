@@ -1,25 +1,27 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
 import { CountPipe } from '../../core/format/count.pipe';
 import { MoneyPipe } from '../../core/format/money.pipe';
+import { cartazPalette } from '../../shared/ui/cartaz-palette';
 import { LOT_STATUS_LABELS, label } from '../shared/labels';
 import { SectorMetrics } from './live.protocol';
 
 /**
  * Um setor no painel: vendidos sobre a capacidade (barra em CSS puro, sem
  * biblioteca de gráficos), restantes e o lote em venda com preço e situação.
+ * Cada setor tem a sua cor, tirada das tintas dos cartazes pelo nome.
  */
 @Component({
   selector: 'app-sector-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CountPipe, MatIconModule, MoneyPipe],
+  imports: [CountPipe, MoneyPipe],
+  host: { '[style.--setor]': 'color()' },
   template: `
     @let s = sector();
     <div class="head">
       <h3>{{ s.name }}</h3>
-      @if (s.currentLot; as lot) {
-        <span class="chip" [attr.data-status]="lot.status">{{ lotStatus() }}</span>
-      }
+      <span class="sold num"
+        >{{ s.sold | count }} de {{ s.capacity | count }} vendidos · {{ percent() }}%</span
+      >
     </div>
     <div
       class="bar"
@@ -34,99 +36,101 @@ import { SectorMetrics } from './live.protocol';
     >
       <span [style.width.%]="ratio() * 100"></span>
     </div>
-    <p class="numbers">
-      <span>
-        <strong>{{ s.sold | count }}</strong> de {{ s.capacity | count }} vendidos ·
-        {{ percent() }}%
-      </span>
-      <span>
+    <div class="foot">
+      <p class="lot">
+        <span class="swatch" aria-hidden="true"></span>
+        @if (s.currentLot; as lot) {
+          {{ lot.name }} · {{ lot.priceCents | brl }}
+          <span class="lot-status" [attr.data-status]="lot.status">{{ lotStatus() }}</span>
+        } @else {
+          As vendas ainda não abriram
+        }
+      </p>
+      <p class="remaining num">
         <strong>{{ s.remaining | count }}</strong>
         {{ s.remaining === 1 ? 'restante' : 'restantes' }}
-      </span>
-    </p>
-    <p class="lot">
-      @if (s.currentLot; as lot) {
-        <mat-icon aria-hidden="true">sell</mat-icon>
-        {{ lot.name }} · {{ lot.priceCents | brl }}
-      } @else {
-        <mat-icon aria-hidden="true">schedule</mat-icon>
-        As vendas ainda não abriram
-      }
-    </p>
+      </p>
+    </div>
   `,
   styles: `
     :host {
       display: grid;
-      gap: 8px;
-      padding: 16px;
-      border: 1px solid var(--mat-sys-outline-variant);
-      border-radius: 16px;
+      gap: 10px;
     }
     h3,
     p {
       margin: 0;
     }
     h3 {
-      font: var(--mat-sys-title-medium);
+      font-size: 1rem;
       font-weight: 700;
     }
     .head,
-    .numbers {
+    .foot {
       display: flex;
       flex-wrap: wrap;
+      align-items: baseline;
       justify-content: space-between;
       gap: 4px 12px;
     }
-    .numbers {
-      font-variant-numeric: tabular-nums;
-      color: var(--mat-sys-on-surface-variant);
+    .sold,
+    .remaining {
+      color: var(--lt-muted);
+      font-size: 0.9375rem;
     }
     strong {
-      color: var(--mat-sys-on-surface);
+      color: var(--lt-text);
     }
     .bar {
-      height: 12px;
+      height: 14px;
       overflow: hidden;
-      border-radius: 999px;
-      background: var(--mat-sys-surface-container-highest);
+      border-radius: 99px;
+      background: var(--lt-bg-deep);
     }
     .bar span {
       display: block;
       height: 100%;
-      border-radius: inherit;
-      background: var(--mat-sys-primary);
-      transition: width 400ms ease;
+      background: var(--setor);
+      box-shadow: inset 0 0 0 1px rgb(18 16 21 / 0.12);
+      transition: width 0.4s ease;
     }
-    .chip {
-      padding: 2px 10px;
-      border-radius: 999px;
-      background: var(--mat-sys-surface-container-highest);
-      font: var(--mat-sys-label-medium);
-      font-weight: 600;
-    }
-    .chip[data-status='ON_SALE'] {
-      background: var(--mat-sys-primary-container);
-      color: var(--mat-sys-on-primary-container);
-    }
-    .chip[data-status='SOLD_OUT'] {
-      background: var(--mat-sys-error-container);
-      color: var(--mat-sys-on-error-container);
+    .foot {
+      font-size: 0.8125rem;
     }
     .lot {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 6px;
+      color: var(--lt-muted);
     }
-    .lot mat-icon {
-      width: 18px;
-      height: 18px;
-      font-size: 18px;
-      color: var(--mat-sys-on-surface-variant);
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: var(--setor);
     }
-    @media (prefers-reduced-motion: reduce) {
-      .bar span {
-        transition: none;
-      }
+    .lot-status {
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--lt-bg-deep);
+      color: var(--lt-text-3);
+      font-family: var(--lt-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .lot-status[data-status='ON_SALE'] {
+      background: var(--lt-ok-soft);
+      color: #145c42;
+    }
+    .lot-status[data-status='SOLD_OUT'] {
+      background: var(--lt-danger-soft);
+      color: var(--lt-danger);
+    }
+    .lot-status[data-status='PAUSED'] {
+      background: var(--lt-warn-soft);
+      color: var(--lt-warn);
     }
   `,
 })
@@ -145,4 +149,7 @@ export class SectorCard {
   protected readonly lotStatus = computed(() =>
     label(LOT_STATUS_LABELS, this.sector().currentLot?.status ?? ''),
   );
+
+  /** A cor do setor, a mesma em toda visita ao painel. */
+  protected readonly color = computed(() => cartazPalette(this.sector().name).background);
 }

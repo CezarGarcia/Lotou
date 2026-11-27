@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideEyeOff,
+  lucideLock,
+  lucideLogOut,
+  lucideRefreshCw,
+  lucideScanLine,
+} from '@ng-icons/lucide';
 import { AuthService } from '../../core/auth/auth.service';
 import { CountPipe, formatCount } from '../../core/format/count.pipe';
 import { MoneyPipe } from '../../core/format/money.pipe';
@@ -27,14 +34,9 @@ const STATUS_TEXT: Record<LiveStatus, string> = {
 @Component({
   selector: 'app-live-show-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CountPipe,
-    RouterLink,
-    MatButtonModule,
-    MatIconModule,
-    MoneyPipe,
-    SectorCard,
-    ActivityFeed,
+  imports: [CountPipe, RouterLink, MatButtonModule, MoneyPipe, NgIcon, SectorCard, ActivityFeed],
+  viewProviders: [
+    provideIcons({ lucideEyeOff, lucideLock, lucideLogOut, lucideRefreshCw, lucideScanLine }),
   ],
   providers: [LiveShowStore],
   templateUrl: './live-show.page.html',
@@ -48,6 +50,13 @@ export class LiveShowPage {
   protected readonly timezone = this.context.timezone;
 
   protected readonly statusText = computed(() => STATUS_TEXT[this.store.status()]);
+
+  /** Parte da capacidade já vendida, de 0 a 100, arredondada para baixo. */
+  protected readonly soldPercent = computed(() => {
+    const capacity = this.store.capacity();
+    const sold = this.store.metrics()?.ticketsSold ?? 0;
+    return capacity > 0 ? Math.min(100, Math.floor((sold / capacity) * 100)) : 0;
+  });
 
   /** Parte dos ingressos vendidos que já entrou, de 0 a 100. */
   protected readonly entryPercent = computed(() => {

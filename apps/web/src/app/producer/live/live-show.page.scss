@@ -1,7 +1,7 @@
 .page {
   display: grid;
-  gap: 20px;
-  padding-block: 8px 0;
+  gap: 16px;
+  padding-top: 8px;
 }
 
 .head {
@@ -9,182 +9,326 @@
   justify-content: flex-end;
 }
 
+// Indicador da conexão do WebSocket.
 .connection {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  font: var(--mat-sys-label-large);
+  gap: 4px 10px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--lt-line);
+  border-radius: 999px;
+  background: var(--lt-surface);
+  font-size: 0.875rem;
+  font-weight: 600;
 
   .dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--mat-sys-outline);
+    background: var(--lt-muted);
   }
 
   .updated {
-    color: var(--mat-sys-on-surface-variant);
-    font-variant-numeric: tabular-nums;
+    color: var(--lt-muted);
+    font-size: 0.75rem;
+    font-weight: 400;
   }
 
   &[data-status='live'] .dot {
-    background: var(--mat-sys-primary);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
+    background: var(--lt-ok);
+    animation: pulsa 1.8s ease-in-out infinite;
   }
 
   &[data-status='reconnecting'] .dot {
-    background: var(--mat-sys-tertiary);
+    background: #e0a800;
   }
 
   &[data-status='denied'] .dot {
-    background: var(--mat-sys-error);
+    background: var(--lt-danger);
   }
+}
+
+@keyframes pulsa {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(31 138 98 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgb(31 138 98 / 0);
+  }
+}
+
+.numbers {
+  display: grid;
+  gap: 12px;
 }
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
   margin: 0;
 
-  @media (max-width: 700px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  &.minor {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  // No celular, dois números por linha e os secundários em três colunas.
+  @media (max-width: 600px) {
+    gap: 10px;
+
+    &.minor {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
   }
 }
 
 .kpi,
-.skeleton {
-  min-height: 96px;
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-low);
-}
-
-.skeleton {
-  background: var(--mat-sys-surface-container-high);
+.card {
+  border: 1px solid var(--lt-line);
+  border-radius: 18px;
+  background: var(--lt-surface);
 }
 
 .kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+
   dt {
-    font: var(--mat-sys-label-large);
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-muted);
+    font-size: 0.875rem;
   }
 
   dd {
-    margin: 6px 0 0;
-    // Receita com sete dígitos ainda cabe no card do celular.
-    font-size: clamp(1.2rem, 4.5vw, 1.8rem);
-    font-weight: 800;
-    overflow-wrap: anywhere;
+    margin: 0;
+  }
+
+  .value {
+    font-family: var(--lt-display);
+    font-size: clamp(2.25rem, 4vw, 2.875rem);
+    font-weight: 900;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
   }
 
   small {
-    font: var(--mat-sys-body-small);
-    color: var(--mat-sys-on-surface-variant);
+    color: #8e879a;
+    font-size: 0.5em;
   }
 
-  &.main {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
+  .extra {
+    display: grid;
+    gap: 8px;
+    margin-top: auto;
+  }
 
-    dt,
-    small {
-      color: inherit;
+  .note {
+    color: var(--lt-muted);
+    font-size: 0.8125rem;
+  }
+
+  // Os números secundários: cartão baixo, rótulo e número na mesma linha.
+  .minor & {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-radius: 14px;
+
+    .value {
+      font-size: 1.75rem;
+    }
+  }
+
+  @media (max-width: 600px) {
+    padding: 14px;
+
+    .value {
+      font-size: 2rem;
+    }
+
+    .minor & {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 10px 12px;
+
+      dt {
+        font-size: 0.75rem;
+        line-height: 1.3;
+      }
     }
   }
 }
 
-.gates {
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-low);
+.bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--lt-bg-deep);
 
-  .gate-total {
-    margin: 0 0 8px;
-
-    strong {
-      font-size: 1.6rem;
-      font-weight: 800;
-    }
-  }
-
-  .bar {
-    height: 10px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--mat-sys-surface-container-highest);
-
-    span {
-      display: block;
-      height: 100%;
-      background: var(--mat-sys-tertiary);
-    }
-  }
-
-  .gate-list {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 8px;
-    margin-top: 12px;
-
-    li {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 12px;
-      border-radius: 10px;
-      background: var(--mat-sys-surface-container);
-    }
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--lt-ok);
+    transition: width 0.4s ease;
   }
 }
 
 .columns {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 24px;
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
 
-  @media (max-width: 900px) {
-    grid-template-columns: minmax(0, 1fr);
+.main-column {
+  display: grid;
+  flex: 999 1 560px;
+  gap: 16px;
+  min-width: 0;
+}
+
+.feed {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 1.0625rem;
   }
 }
 
-ul {
+.sectors ul {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 24px 32px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lt-ok);
+  animation: pulsa 1.8s ease-in-out infinite;
+}
+
+.gates {
+  .gate-total {
+    margin: 0;
+    color: var(--lt-muted);
+
+    strong {
+      margin-right: 4px;
+      color: var(--lt-text);
+      font-size: 2.5rem;
+    }
+  }
+
+  .bar {
+    height: 12px;
+  }
+
+  .bar span {
+    background: var(--lt-info);
+  }
+}
+
+.gate-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    gap: 10px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--lt-raised);
+    font-size: 0.875rem;
+  }
+
+  span {
+    color: var(--lt-muted);
+  }
+}
+
 .empty {
   margin: 0;
-  color: var(--mat-sys-on-surface-variant);
+  color: var(--lt-muted);
 }
 
 .state {
   display: grid;
   justify-items: center;
   gap: 8px;
-  padding: 48px 16px;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 20px;
+  padding: 48px 20px;
   text-align: center;
 
-  mat-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 48px;
-    color: var(--mat-sys-outline);
-  }
-
   h2 {
-    margin: 0;
+    margin: 8px 0 0;
+    font-size: 1.25rem;
   }
 
   p {
     margin: 0 0 8px;
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-muted);
   }
+}
+
+.state-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--lt-raised);
+  font-size: 28px;
+}
+
+.loading {
+  display: grid;
+  gap: 16px;
+}
+
+.placeholder {
+  height: 150px;
+  border: 1px solid var(--lt-line);
+  border-radius: 18px;
+
+  &.tall {
+    flex: 1 1 340px;
+    height: 320px;
+  }
+}
+
+// Ícone dentro dos botões do Material, centrado com o texto.
+.mat-mdc-button-base ng-icon {
+  margin-right: 2px;
+  font-size: 18px;
+  vertical-align: -4px;
 }

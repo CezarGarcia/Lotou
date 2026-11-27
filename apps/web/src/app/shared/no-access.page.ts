@@ -1,29 +1,31 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideLock } from '@ng-icons/lucide';
 
 /**
  * Quem entrou sem o papel da área (produtor ou portaria) e tentou abri-la. O
- * texto vem do `data` da rota, como input.
+ * texto vem do `data` da rota, como input. As cores vêm dos tokens, então a
+ * tela segue o tema da área que a abriu (dia no painel, noite na portaria).
  */
 @Component({
   selector: 'app-no-access-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, MatButtonModule, MatIconModule],
+  imports: [RouterLink, NgIcon],
+  viewProviders: [provideIcons({ lucideLock })],
   template: `
     <div class="container page">
       <section class="state" role="alert">
-        <mat-icon aria-hidden="true">lock</mat-icon>
-        <h1>Acesso restrito</h1>
-        <p>{{ message() }}</p>
-        <a matButton="filled" routerLink="/">Ver os shows</a>
+        <span class="icon"><ng-icon name="lucideLock" aria-hidden="true" /></span>
+        <h1 class="display">Acesso restrito</h1>
+        <p class="message">{{ message() }}</p>
+        <a class="btn btn-cta" routerLink="/">Ver os shows</a>
       </section>
     </div>
   `,
   styles: `
     .page {
-      padding-block: 48px 64px;
+      padding-block: 56px 72px;
     }
     .state {
       display: grid;
@@ -32,25 +34,35 @@ import { RouterLink } from '@angular/router';
       max-width: 520px;
       margin-inline: auto;
       padding: 48px 24px;
-      border: 1px solid var(--mat-sys-outline-variant);
-      border-radius: 20px;
-      background: var(--mat-sys-surface-container-lowest);
+      border: 1px solid var(--lt-line);
+      border-radius: var(--lt-radius-lg);
+      background: var(--lt-surface);
       text-align: center;
     }
-    mat-icon {
-      width: 48px;
-      height: 48px;
-      font-size: 48px;
-      color: var(--mat-sys-outline);
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 72px;
+      height: 72px;
+      margin-bottom: 4px;
+      border-radius: 50%;
+      background: var(--lt-danger-soft);
+      color: var(--lt-danger);
+      font-size: 32px;
+    }
+    p {
+      margin: 0;
+    }
+    .eyebrow {
+      color: var(--lt-muted);
     }
     h1 {
       margin: 0;
-      font: var(--mat-sys-headline-small);
-      font-weight: 700;
+      font-size: clamp(2.5rem, 8vw, 3.5rem);
     }
-    p {
-      margin: 0 0 8px;
-      color: var(--mat-sys-on-surface-variant);
+    .message {
+      margin-bottom: 12px;
+      color: var(--lt-text-3);
     }
   `,
 })

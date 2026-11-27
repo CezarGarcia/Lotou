@@ -1,26 +1,43 @@
 <form [formGroup]="form" (ngSubmit)="submit()" novalidate aria-labelledby="coupon-form-title">
-  <h3 id="coupon-form-title">Novo cupom</h3>
+  <h3 id="coupon-form-title" class="display">Novo cupom</h3>
 
-  <mat-form-field appearance="outline">
-    <mat-label>Código</mat-label>
-    <input
-      matInput
-      formControlName="code"
-      autocomplete="off"
-      autocapitalize="characters"
-      spellcheck="false"
-      maxlength="30"
-      (input)="uppercase()"
-    />
-    <mat-hint>O comprador digita no pagamento. Ex.: LANCAMENTO10</mat-hint>
-    @if (form.controls.code.hasError('required')) {
-      <mat-error>Informe o código.</mat-error>
-    } @else if (form.controls.code.hasError('couponCode')) {
-      <mat-error>De 3 a 30 caracteres: letras sem acento, números, hífen ou sublinhado.</mat-error>
-    } @else if (form.controls.code.hasError('taken')) {
-      <mat-error>{{ form.controls.code.getError('taken') }}</mat-error>
-    }
-  </mat-form-field>
+  <div class="row">
+    <mat-form-field appearance="outline" class="code" subscriptSizing="dynamic">
+      <mat-label>Código</mat-label>
+      <input
+        matInput
+        formControlName="code"
+        autocomplete="off"
+        autocapitalize="characters"
+        spellcheck="false"
+        maxlength="30"
+        (input)="uppercase()"
+      />
+      <mat-hint>O comprador digita no pagamento. Ex.: LANCAMENTO10</mat-hint>
+      @if (form.controls.code.hasError('required')) {
+        <mat-error>Informe o código.</mat-error>
+      } @else if (form.controls.code.hasError('couponCode')) {
+        <mat-error
+          >De 3 a 30 caracteres: letras sem acento, números, hífen ou sublinhado.</mat-error
+        >
+      } @else if (form.controls.code.hasError('taken')) {
+        <mat-error>{{ form.controls.code.getError('taken') }}</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Válido até</mat-label>
+      <input matInput type="datetime-local" formControlName="validUntil" />
+      <mat-hint>{{ zoneLabel() }}</mat-hint>
+      @if (form.controls.validUntil.hasError('required')) {
+        <mat-error>Informe até quando o cupom vale.</mat-error>
+      } @else if (form.controls.validUntil.hasError('past')) {
+        <mat-error>Escolha um horário que ainda não passou.</mat-error>
+      } @else if (form.controls.validUntil.hasError('dateTime')) {
+        <mat-error>Data ou hora inválida.</mat-error>
+      }
+    </mat-form-field>
+  </div>
 
   <fieldset class="kind">
     <legend>Tipo de desconto</legend>
@@ -86,19 +103,6 @@
     </mat-form-field>
   </div>
 
-  <mat-form-field appearance="outline">
-    <mat-label>Válido até</mat-label>
-    <input matInput type="datetime-local" formControlName="validUntil" />
-    <mat-hint>{{ zoneLabel() }}</mat-hint>
-    @if (form.controls.validUntil.hasError('required')) {
-      <mat-error>Informe até quando o cupom vale.</mat-error>
-    } @else if (form.controls.validUntil.hasError('past')) {
-      <mat-error>Escolha um horário que ainda não passou.</mat-error>
-    } @else if (form.controls.validUntil.hasError('dateTime')) {
-      <mat-error>Data ou hora inválida.</mat-error>
-    }
-  </mat-form-field>
-
   @if (sectors().length > 0) {
     <fieldset class="sectors">
       <legend>Setores</legend>
@@ -121,7 +125,7 @@
 
   <div class="actions">
     <button matButton type="button" (click)="cancel.emit()">Cancelar</button>
-    <button matButton="filled" type="submit" [disabled]="pending()">
+    <button matButton="filled" type="submit" class="cta" [disabled]="pending()">
       @if (pending()) {
         <mat-spinner diameter="18" aria-label="Criando o cupom" />
       } @else {

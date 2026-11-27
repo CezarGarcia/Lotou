@@ -89,7 +89,7 @@ describe('ShowShellPage', () => {
     expect(text()).toContain('Banda do Mar');
     expect(text()).toContain('Turnê Mar Aberto · 31/12/2030 às 22:00');
     const tabs = [...element().querySelectorAll('nav a')].map((a) => [
-      plain(a.textContent!).replace(/^\S+ /, '').trim(),
+      plain(a.textContent!).trim(),
       a.getAttribute('href'),
     ]);
     expect(tabs).toEqual([

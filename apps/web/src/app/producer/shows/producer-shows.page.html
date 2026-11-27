@@ -1,31 +1,34 @@
 <div class="container page">
   <header class="intro">
-    <p class="eyebrow">Painel do produtor</p>
-    <h1>Meus shows</h1>
-    <p>Escolha um show para acompanhar as vendas ao vivo.</p>
+    <p class="eyebrow muted">Painel do produtor</p>
+    <h1 class="display">Meus shows</h1>
+    <p class="lead">Escolha um show para acompanhar as vendas ao vivo.</p>
   </header>
 
   <section aria-live="polite" [attr.aria-busy]="store.loading()">
     @if (store.loading()) {
       <div class="list" aria-hidden="true">
         @for (item of skeletons; track $index) {
-          <div class="skeleton"></div>
+          <div class="skeleton placeholder"></div>
         }
       </div>
     } @else if (store.error() && store.shows().length === 0) {
       @let error = store.error()!;
-      <div class="state" role="alert">
-        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <div class="state panel" role="alert">
+        <span class="state-icon"><ng-icon name="lucideCloudOff" aria-hidden="true" /></span>
         <h2>Não foi possível carregar seus shows</h2>
         <p>{{ error.message }}</p>
         @if (error.traceId) {
-          <p class="trace">Código para o suporte: {{ error.traceId }}</p>
+          <p class="trace mono">Código para o suporte: {{ error.traceId }}</p>
         }
-        <button matButton="tonal" type="button" (click)="store.retry()">Tentar de novo</button>
+        <button matButton="outlined" type="button" (click)="store.retry()">
+          <ng-icon name="lucideRefreshCw" aria-hidden="true" />
+          Tentar de novo
+        </button>
       </div>
     } @else if (store.empty()) {
-      <div class="state">
-        <mat-icon aria-hidden="true">event_busy</mat-icon>
+      <div class="state panel">
+        <span class="state-icon"><ng-icon name="lucideCalendarX" aria-hidden="true" /></span>
         <h2>Você ainda não tem shows</h2>
         <p>Os shows que você cadastrar aparecem aqui, com as vendas de cada um.</p>
       </div>
@@ -34,32 +37,35 @@
         @for (show of store.shows(); track show.id) {
           <li>
             <a class="show" [routerLink]="['/painel/shows', show.id]">
-              <span class="date" aria-hidden="true">
-                <strong>{{ show.startsAt | showDate: show.timezone : 'day' }}</strong>
-                {{ show.startsAt | showDate: show.timezone : 'month' }}
-              </span>
+              <app-cartaz class="poster" size="mini" [artist]="show.artist" />
               <span class="text">
-                <strong class="artist">{{ show.artist }}</strong>
-                <span>{{ show.title }}</span>
-                <span class="meta">
-                  {{ show.startsAt | showDate: show.timezone : 'date' }} às
-                  {{ show.startsAt | showDate: show.timezone : 'time' }}
-                  @if (show.venueName) {
-                    · {{ show.venueName }}{{ show.city ? ', ' + show.city : '' }}
-                  }
+                <span class="top">
+                  <app-show-status [status]="show.status" />
+                  <span class="when mono"
+                    >{{ show.startsAt | showDate: show.timezone : 'date' }} às
+                    {{ show.startsAt | showDate: show.timezone : 'time' }}</span
+                  >
                 </span>
+                <strong class="artist display">{{ show.artist }}</strong>
+                <span class="title">{{ show.title }}</span>
+                @if (show.venueName) {
+                  <span class="meta">
+                    <ng-icon name="lucideMapPin" aria-hidden="true" />
+                    {{ show.venueName }}{{ show.city ? ', ' + show.city : '' }}
+                  </span>
+                }
               </span>
               <span class="numbers">
-                <span class="status" [attr.data-status]="show.status">{{
-                  status(show.status)
-                }}</span>
-                <span>
-                  <strong>{{ show.ticketsSold | count }}</strong>
+                <span class="figure">
+                  <strong class="display num">{{ show.ticketsSold | count }}</strong>
                   {{ show.ticketsSold === 1 ? 'ingresso vendido' : 'ingressos vendidos' }}
                 </span>
-                <span class="revenue">{{ show.revenueCents | brl }}</span>
+                <span class="figure">
+                  <strong class="display num">{{ show.revenueCents | brl }}</strong>
+                  receita
+                </span>
               </span>
-              <mat-icon class="go" aria-hidden="true">chevron_right</mat-icon>
+              <ng-icon class="go" name="lucideChevronRight" aria-hidden="true" />
             </a>
           </li>
         }

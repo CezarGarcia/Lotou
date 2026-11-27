@@ -123,14 +123,17 @@ describe('LiveShowPage', () => {
       plain(kpi.querySelector('dt')!.textContent!).trim(),
       plain(kpi.querySelector('dd')!.textContent!).trim(),
     ]);
+    // Os quatro números principais em cartões grandes; depois, os pedidos.
     expect(kpis).toEqual([
       ['Ingressos vendidos', '1.240 de 2.100'],
       ['Receita', 'R$ 186.000,00'],
       ['Ingressos restantes', '860'],
+      ['Pedidos no último minuto', '37'],
       ['Pedidos confirmados', '610'],
       ['Pedidos cancelados', '42'],
-      ['Pedidos no último minuto', '37'],
     ]);
+    expect(element().querySelectorAll('.kpi.main')).toHaveLength(4);
+    expect(text()).toContain('59% da capacidade');
 
     const sectors = element().querySelectorAll('app-sector-card');
     expect(sectors).toHaveLength(2);
