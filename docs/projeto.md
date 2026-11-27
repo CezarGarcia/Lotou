@@ -792,16 +792,18 @@ Os testes de carga e caos são a vitrine: cada um gera um print do Grafana e um 
 
 ### Carga (k6)
 
-| Cenário | O que prova |
-| --- | --- |
-| Abertura de vendas: 20 mil usuários virtuais, 2 mil ingressos de pista e 500 cadeiras | zero venda além da capacidade, p99 da reserva e fila estável |
-| Disputa por assento: mil usuários tentando os mesmos 50 assentos | nenhum assento vendido duas vezes; conflitos contados na métrica |
-| Mesma abertura com reserva no Postgres | comparação de throughput e p99 entre Lua e lock no banco (ADR 3) |
-| Portaria: 30 mil check-ins em 10 portões, com 5% de leituras repetidas de propósito | nenhuma entrada dupla e p99 do check-in abaixo da meta |
-| Cupom com limite de 100 usos disputado por mil compradores | exatamente 100 usos aceitos |
-| Página do show com cache ligado e desligado | ganho real de latência e taxa de acerto |
-| Pico de pedidos com consumidor lento | lag cresce e volta a zero sem perder eventos |
-| Geração de ingressos com 1, 2 e 4 workers | a vazão da fila `tickets.render` cresce com os workers |
+Os cenários ficam em `load-tests/`, com o passo a passo e os detalhes de cada medida no [README](../load-tests/README.md). Os resultados são de uma máquina de 4 CPUs com o ambiente inteiro e o k6 juntos.
+
+| Cenário | O que prova | Resultado medido |
+| --- | --- | --- |
+| Abertura de vendas: 20 mil usuários virtuais, 2 mil ingressos de pista e 500 cadeiras | zero venda além da capacidade, p99 da reserva e fila estável | 2.000 usuários por 40 s: estoque esgotado, nenhuma venda além da capacidade, p99 de 2,98 s (`make load-opening`, fase 2) |
+| Disputa por assento: mil usuários tentando os mesmos 50 assentos | nenhum assento vendido duas vezes; conflitos contados na métrica | nenhuma cadeira duplicada, p99 de 283 ms (`make load-contention`, fase 2) |
+| Mesma abertura com reserva no Postgres | comparação de throughput e p99 entre Lua e lock no banco (ADR 3) | 19.415 tentativas contra 78.621 no Redis, p99 de 20,5 s (fase 2) |
+| Portaria: 30 mil check-ins em 10 portões, com 5% de leituras repetidas de propósito | nenhuma entrada dupla e p99 do check-in abaixo da meta | 30.000 liberadas e 1.500 repetidas barradas como já utilizadas, nenhuma entrada dupla no banco; p99 de 145 ms a 150 leituras/s; o checkin-service satura perto de 265/s (`make load-gate-prepare load-gate`) |
+| Cupom com limite de 100 usos disputado por mil compradores | exatamente 100 usos aceitos | 100 pedidos com o cupom, 900 recusados com `EXHAUSTED`, `uses = 100` no banco (`make load-coupon`) |
+| Página do show com cache ligado e desligado | ganho real de latência e taxa de acerto | 2.475 contra 996 leituras/s, p95 de 117 ms contra 273 ms (`make load-show-page`, fase 2) |
+| Pico de pedidos com consumidor lento | lag cresce e volta a zero sem perder eventos | 9.285 pedidos em 60 s com o analytics parado: lag de até 18.039, de volta à linha de base 292 s depois de ele voltar; relatório igual ao order-service e ao banco (`make load-consumer-lag`) |
+| Geração de ingressos com 1, 2 e 4 workers | a vazão da fila `tickets.render` cresce com os workers | 16,1, 26,8 e 40,6 PDFs por segundo (`make load-render`) |
 
 ### Caos
 
