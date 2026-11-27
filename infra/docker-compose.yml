@@ -7,6 +7,8 @@
 #   6379  redis-cache                6380  redis-core
 #   4317/4318  OTel Collector (OTLP gRPC e HTTP)
 #   9094  Kafka (do host)            8090  Kafka UI
+#   5672  RabbitMQ (AMQP)            15672 RabbitMQ (painel de management)
+#   1025  Mailpit (SMTP)             8025  Mailpit (e-mails enviados)
 #
 # As credenciais abaixo são de desenvolvimento. Para trocá-las, crie um arquivo
 # .env na raiz (veja .env.example).
@@ -214,6 +216,52 @@ services:
       retries: 6
       start_period: 20s
 
+  # PDF dos ingressos com QR code e e-mails do comprador. Lê order.events e
+  # passa as tarefas pelo RabbitMQ (retry e DLQ); os e-mails vão para o Mailpit.
+  # Sem porta publicada. DLQ de volta para a fila: `make requeue-notifications`.
+  notification-service:
+    build:
+      context: ../services/notification-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: notification-service
+      PORT: "8085"
+      KAFKA_BROKERS: kafka:9092
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-lotou}:${RABBITMQ_PASSWORD:-lotou}@rabbitmq:5672/
+      REDIS_URL: redis://redis-core:6379
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      EVENT_SERVICE_URL: http://event-service:3000
+      # Lê o e-mail do comprador na API de administração, com a conta de serviço
+      # notification-service (só view-users).
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_CLIENT_SECRET: ${NOTIFICATION_CLIENT_SECRET:-notification-service-dev-secret}
+      # Processos que geram PDFs ao mesmo tempo (um consumidor de tickets.render cada).
+      RENDER_WORKERS: ${NOTIFICATION_RENDER_WORKERS:-2}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      redis-core:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    # Na parada, o serviço termina os e-mails e PDFs em andamento antes de sair.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
   # Carga de dados fictícios. Não sobe com o ambiente: roda com `make seed`.
   seed:
     image: node:24-alpine
@@ -407,6 +455,42 @@ services:
       - redis-core-data:/data
     healthcheck: *redis-healthcheck
 
+  # Tarefas com retry: geração dos ingressos e e-mails (docs/projeto.md,
+  # "RabbitMQ"). A topologia é declarada pelo notification-service ao subir.
+  # Painel: http://localhost:15672 (lotou / lotou).
+  rabbitmq:
+    image: rabbitmq:4.2-management-alpine
+    # O nome do nó (rabbit@rabbitmq) vem do hostname e nomeia o diretório dos
+    # dados no volume: fixo, as filas sobrevivem a recriar o container.
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-lotou}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-lotou}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  # Servidor SMTP de desenvolvimento: guarda os e-mails, que se leem em
+  # http://localhost:8025. Nada sai para a internet.
+  mailpit:
+    image: axllent/mailpit:v1.29
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   # ------------------------------------------------------------ identidade
   keycloak:
     image: quay.io/keycloak/keycloak:26.8
@@ -477,4 +561,5 @@ volumes:
   mongodb-data:
   kafka-data:
   redis-core-data:
+  rabbitmq-data:
   lgtm-data:
