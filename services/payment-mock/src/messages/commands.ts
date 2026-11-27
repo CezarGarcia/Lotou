@@ -34,6 +34,8 @@ const authorizePaymentV1 = z.object({
 export const REFUND_REASONS = [
   'RESERVATION_EXPIRED',
   'ORDER_CANCELLED',
+  'TICKET_CONFLICT',
+  'SHOW_CANCELLED',
 ] as const;
 
 const refundPaymentV1 = z.object({

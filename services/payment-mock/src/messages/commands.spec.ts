@@ -86,6 +86,20 @@ describe('parseMessage', () => {
     expect(() => parseMessage(bytes(message))).toThrow(PoisonMessageError);
   });
 
+  it.each([
+    'RESERVATION_EXPIRED',
+    'ORDER_CANCELLED',
+    'TICKET_CONFLICT',
+    'SHOW_CANCELLED',
+  ])('aceita RefundPayment com o motivo %s do contrato', (reason) => {
+    const example = refund();
+    const message = { ...example, payload: { ...example.payload, reason } };
+    expect(contractErrors(TOPIC, message)).toEqual([]);
+    expect(parseMessage(bytes(message))).toMatchObject({
+      command: { type: 'RefundPayment', payload: { reason } },
+    });
+  });
+
   it('recusa RefundPayment com motivo fora do contrato', () => {
     const example = refund();
     const message = {
