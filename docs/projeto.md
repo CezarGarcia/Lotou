@@ -316,7 +316,7 @@ O gateway também leva o WebSocket do painel até o analytics-service, que é o 
 | order-service | Java · Spring Boot | pedidos, cupons, emissão de ingressos, cancelamento, reembolso, saga e outbox | Postgres, redis-core |
 | payment-mock | Node | simula um gateway de pagamento com recusa, estorno e latência configuráveis | Postgres |
 | analytics-service | Python · FastAPI | métricas ao vivo, read models, relatório financeiro e hub de tempo real (SSE e WebSocket) | MongoDB, redis-core |
-| notification-service | Python · FastAPI + workers | gera o PDF do ingresso com QR code e envia os e-mails (Mailpit em desenvolvimento) | RabbitMQ |
+| notification-service | Python · FastAPI + workers | gera o PDF do ingresso com QR code e envia os e-mails (Mailpit em desenvolvimento) | RabbitMQ, redis-core (deduplicação) |
 | checkin-service | Node · NestJS | valida o QR na portaria com uma cópia local dos ingressos válidos | Postgres, redis-core |
 | producer-assistant | Python · FastAPI + LangGraph | agente de IA do produtor | MongoDB (leitura) |
 
@@ -457,9 +457,10 @@ A chave define a partição: todos os eventos de um mesmo pedido ou show chegam 
 | `notifications` | topic | `email.ticket.issued`, `email.order.cancelled`, `email.refund.completed` | `notifications.email` | prioridade (ingresso antes de marketing), prefetch 10, ack manual |
 | `notifications.retry` | direct | `10s`, `1m`, `5m` | `notifications.retry.*` | TTL por fila + dead-letter de volta à fila principal |
 | `notifications.dlx` | fanout | — | `notifications.email.dlq` | destino final após 4 tentativas |
-| `reports` | direct | `statement.pdf` | `reports.generate` | gera o PDF do relatório financeiro do produtor sob demanda |
+| `tickets.dlx` | fanout | — | `tickets.render.dlq` | PDF que não dá para gerar (show inexistente, tarefa ilegível) sai da fila em vez de voltar para sempre |
+| `reports` | direct | `statement.pdf` | `reports.generate` | gera o PDF do relatório financeiro do produtor sob demanda (fase 6) |
 
-O `notification-service` consome `order.events` do Kafka. Ao ver um `OrderConfirmed`, enfileira a geração do ingresso; quando o PDF fica pronto, enfileira o e-mail. Assim o retry com backoff, a prioridade, a divisão de carga entre workers e a DLQ ficam onde o RabbitMQ é melhor.
+O `notification-service` consome `order.events` do Kafka. Ao ver um `TicketsIssued`, enfileira a geração do PDF com os ingressos; quando o PDF fica pronto, enfileira o e-mail, com prioridade alta. Um `OrderCancelled` vira o e-mail de pedido cancelado. O e-mail do comprador vem do Keycloak, pelo `sub`, na hora de enviar: nenhum evento carrega e-mail. Assim o retry com backoff, a prioridade, a divisão de carga entre workers e a DLQ ficam onde o RabbitMQ é melhor (ADR 2).
 
 ### Redis Streams e pub/sub
 
@@ -913,6 +914,29 @@ O que ficou para as fases seguintes, de propósito:
 - No inventory, o trace dos fatos começa no relay: a transação ainda não informa o `traceparent` nos caminhos do motor Redis (ADR 8).
 - O SSE da fila e do mapa continua no inventory até o analytics virar o hub de tempo real (fase 4).
 
+### Fase 4 (RabbitMQ e tempo real)
+
+Fase concluída em 27/11/2026. Critérios de pronto atingidos:
+
+- **DLQ demonstrada:** com o SMTP fora do ar, o e-mail do ingresso passa pelas quatro tentativas (10 s, 1 min e 5 min) e chega a `notifications.email.dlq`; com o SMTP de volta, `make requeue-notifications` o devolve e ele é entregue. Coberto por teste de integração e repetido no ambiente do Compose: com o Mailpit parado, a mensagem chegou à DLQ cerca de 6 minutos depois da compra; com ele de volta, a requeue entregou o e-mail com o PDF e a DLQ voltou a zero.
+- **Evento chega ao painel em menos de 2 s:** no teste, com duas instâncias do analytics, o `OrderConfirmed` chega às duas em cerca de 33 ms; no Compose, a venda aparece no painel do produtor 467 ms depois do clique em pagar, contando a saga inteira (pagamento, confirmação da reserva e emissão).
+
+- [x] RabbitMQ e Mailpit no Compose
+- [x] notification-service: `TicketsIssued` vira um PDF com o QR de cada ingresso (workers com prefetch 1) e um e-mail com prioridade alta; `OrderCancelled` vira o e-mail de cancelamento; retry por filas com TTL, DLQ, requeue e deduplicação no `redis-core`; e-mail do comprador lido no Keycloak (ADR 2)
+- [x] QR code assinado com HMAC em cada ingresso, gerado pelo order-service e publicado em `TicketsIssued`; a loja desenha o mesmo QR na página do pedido (ADR 15)
+- [x] analytics como hub de tempo real do painel: WebSocket autenticado na primeira mensagem, métricas a cada segundo por `dashboard.metrics:{showId}` e feed por `stream:activity:{showId}`, com várias instâncias (ADRs 17, 31 e 32)
+- [x] Painel ao vivo do produtor na loja (`/painel`), com reconexão, renovação do token na mesma conexão e acessibilidade conferida com axe
+- [x] Gateway leva o WebSocket ao analytics, só a partir da origem da loja; o seed cria os shows em nome do produtor de demonstração
+
+Decisões da fase que viraram ADR: RabbitMQ para ingressos e e-mails (2), QR assinado com HMAC (15), SSE na loja e WebSocket no painel (17), o analytics como hub só do painel (31) e o painel com várias instâncias (32).
+
+O que ficou para as fases seguintes, de propósito:
+
+- A posição na fila e o mapa de assentos continuam no SSE do inventory (ADR 31).
+- Entradas na portaria e o tamanho da fila no painel: chegam com o checkin-service (fase 6) e quando o inventory publicar a fila.
+- Métricas do RabbitMQ no Grafana (o plugin Prometheus já está ligado na imagem, falta o Collector ler) e o alerta de DLQ (fase 7).
+- E-mails de reembolso e o PDF do relatório financeiro (fase 6).
+
 ## Questões em aberto
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br
@@ -924,7 +948,7 @@ O que ficou para as fases seguintes, de propósito:
 - [x] Contratos: JSON Schema autocontido, com exemplos conferidos no CI (ADR 28)
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1, 3,8 GB na fase 2 e 4,6 GB na fase 3 em repouso, com dezessete containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container quando o RabbitMQ entrar e, se preciso, criar um perfil "lite" no Compose
+- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1, 3,8 GB na fase 2, 4,6 GB na fase 3 e 5,3 GB na fase 4 em repouso, com dezenove containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container e, se preciso, criar um perfil "lite" no Compose
 - [x] Login no Angular: `angular-auth-oidc-client`, com Authorization Code e PKCE (ADR 27)
 - [ ] CPF do comprador: hoje ele é informado na reserva. Num produto real viria do cadastro, validado; vale levar o CPF para o cadastro no Keycloak?
 - [x] Reconciliação após perda do Redis: a marca `show:{id}` é gravada por último na carga; sem ela, o job recarrega o show inteiro a partir do Postgres (ADR 26)
