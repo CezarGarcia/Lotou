@@ -423,7 +423,6 @@ Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, 
 | `rl:{sub}` ou `rl:ip:{hash do IP}` | sorted set | janela | core | rate limit por janela deslizante do event-service |
 | `request_rate_limiter.{operação:user:sub}.tokens` e `.timestamp` | string | segundos | core | balde do token bucket do gateway, por operação de compra e usuário (sem token, `ip:{hash do IP}`) |
 | `lock:{nome}` | string | segundos | core | lock distribuído de jobs |
-| `metrics:sectors:{showId}` | sorted set | 48 h | core | vendas por setor ao vivo |
 | `stream:reservations` | stream | aparado até a entrada mais antiga ainda não gravada (`XTRIM MINID`) | core | reservas a persistir no Postgres |
 | `stream:activity:{showId}` | stream | MAXLEN \~1000 | core | feed de atividade do painel, por show |
 | `dashboard:watched` | sorted set | membros vencem em 5 s sem renovação | core | shows com alguém no painel, em qualquer instância do analytics; score = até quando (ADR 32) |
@@ -587,7 +586,7 @@ Cada dado tem um padrão de cache escolhido pela tolerância a dado velho. Preç
 - **Check-in:** `SET NX` em `checkin:{ticketId}` garante que só o primeiro portão libera a entrada, mesmo com leituras simultâneas.
 - **Idempotência:** `SET NX` da Idempotency-Key antes de criar o pedido; um clique duplo devolve o mesmo pedido.
 - **Lock distribuído:** `SET NX PX` com token único e liberação via Lua, para que só uma instância rode jobs como a abertura de vendas. Documentar o limite: para correção forte, a garantia final fica numa constraint do Postgres.
-- **Ranking ao vivo:** `ZINCRBY` em `metrics:sectors:{showId}` a cada venda.
+- **Painel ao vivo:** as vendas por setor saem dos read models do analytics, publicadas a cada segundo em `dashboard.metrics:{showId}`, com um único cálculo por show por segundo entre as instâncias (ADR 32).
 
 ### Métricas que provam que o cache funciona
 
@@ -662,7 +661,7 @@ O `producer-assistant` responde perguntas sobre vendas, ocupação e lotes usand
 | Ferramenta | O que faz | Fonte |
 | --- | --- | --- |
 | `get_sales_summary(showId, período)` | ingressos vendidos, receita e ocupação | `sales_by_sector` |
-| `get_sector_performance(showId)` | ocupação e ritmo de venda por setor | `metrics:sectors` + `sales_by_sector` |
+| `get_sector_performance(showId)` | ocupação e ritmo de venda por setor | `sales_by_sector` |
 | `get_sellout_forecast(showId, setor)` | quando o setor esgota no ritmo atual | read models |
 | `get_opening_report(showId)` | tamanho da fila, tempo de espera, conversão, desistências e reservas expiradas | analytics |
 | `get_financial_statement(showId)` | vendas brutas, descontos, reembolsos, taxa da plataforma e valor a receber | `producer_statements` |
