@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ed25519PublicKey } from '../checkin/ticket-code.js';
 
 const milliseconds = z.coerce.number().int().min(0);
 
@@ -58,6 +59,18 @@ export const envSchema = z.object({
    * padrão: a portaria não sobe sem saber conferir um ingresso.
    */
   TICKET_QR_KEY: z.string().min(16),
+  /**
+   * Chave pública Ed25519 do QR code `LOTOU2` (ADR 38), SPKI DER em base64: o
+   * order-service assina com a privada. Vai também no pacote offline, para o
+   * leitor conferir o ingresso sem internet. Sem valor padrão, como a do HMAC.
+   */
+  TICKET_PUBLIC_KEY: z
+    .string()
+    .trim()
+    .refine(
+      isEd25519PublicKey,
+      'Esperada uma chave pública Ed25519 (SPKI DER em base64)',
+    ),
 
   /** Quantos dias à frente a lista de shows da portaria mostra. */
   SHOWS_DAYS_AHEAD: z.coerce.number().int().min(0).max(60).default(7),
@@ -71,3 +84,12 @@ export const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+function isEd25519PublicKey(value: string): boolean {
+  try {
+    ed25519PublicKey(value);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -230,8 +230,11 @@ services:
       DATABASE_PASSWORD: ${CHECKIN_DB_PASSWORD:-checkin}
       # `checkin:{ticketId}`: quem entrou primeiro, na corrida entre portões.
       REDIS_URL: redis://redis-core:6379
-      # A mesma chave do order-service, que assina o QR code (ADR 15).
+      # A mesma chave do order-service, que assinava o QR code LOTOU1 (ADR 15).
       TICKET_QR_KEY: ${TICKET_QR_KEY:-lotou-dev-ticket-qr-key}
+      # Chave pública Ed25519 do QR LOTOU2 (ADR 38), SPKI DER em base64; o order-service
+      # assina com a privada. Vai no pacote da portaria offline. Só para desenvolvimento.
+      TICKET_PUBLIC_KEY: ${TICKET_PUBLIC_KEY:-MCowBQYDK2VwAyEAhWgmccSbsr6X93I0fr2tCinuwgsslf5j6ZdL+BpmlpA=}
     depends_on:
       postgres:
         condition: service_healthy

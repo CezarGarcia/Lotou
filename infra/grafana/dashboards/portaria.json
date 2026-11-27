@@ -1,7 +1,7 @@
 {
   "uid": "lotou-portaria",
   "title": "Portaria ao vivo",
-  "description": "Entradas por minuto e por portão, leituras recusadas, ocupação do local e a duração do check-in.",
+  "description": "Entradas por minuto e por portão, leituras recusadas, ocupação do local, a duração do check-in e a portaria offline.",
   "tags": [
     "lotou"
   ],
@@ -481,7 +481,7 @@
     },
     {
       "type": "row",
-      "title": "Ocupação",
+      "title": "Portaria offline",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -491,6 +491,225 @@
         "y": 21
       },
       "id": 10
+    },
+    {
+      "type": "stat",
+      "title": "Conflitos offline (15 min)",
+      "description": "Entradas sem internet com ingresso que não valia (alerta Entrada indevida pela portaria offline).",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "pg-checkin"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "pg-checkin"
+          },
+          "rawSql": "SELECT count(*) FROM offline_conflicts WHERE detected_at > now() - interval '15 minutes'",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 22
+      },
+      "id": 11
+    },
+    {
+      "type": "timeseries",
+      "title": "Leituras offline enviadas por resultado",
+      "description": "Leituras feitas sem internet e enviadas quando a rede voltou, por minuto: RECORDED (entrada gravada), DUPLICATE, CONFLICT e REJECTED. Aparecem na hora do envio, não da leitura.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (rate(checkin_offline_scans_total[$__rate_interval])) * 60",
+          "legendFormat": "{{outcome}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 6,
+        "y": 22
+      },
+      "id": 12
+    },
+    {
+      "type": "timeseries",
+      "title": "Conflitos offline por tipo",
+      "description": "DUPLICATE (já tinha entrado), CANCELLED, UNKNOWN e WRONG_SHOW: a pessoa entrou com um ingresso que não valia.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (kind) (increase(checkin_offline_conflicts_total[$__rate_interval]))",
+          "legendFormat": "{{kind}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 15,
+        "y": 22
+      },
+      "id": 13
+    },
+    {
+      "type": "table",
+      "title": "Últimos conflitos da portaria offline",
+      "description": "Do Postgres do checkin-service. A primeira entrada (pelo horário da leitura) vale; as outras ficam aqui.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "pg-checkin"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "pg-checkin"
+          },
+          "rawSql": "\nSELECT c.detected_at AS detectado, s.title AS show, c.kind AS tipo, c.gate AS \"portão\", left(c.device_id::text, 8) AS aparelho,\n       c.scanned_at AS lido, c.first_gate AS \"entrou antes por\", c.first_checked_in_at AS \"entrou antes às\",\n       left(c.ticket_id::text, 8) AS ingresso\nFROM offline_conflicts c\nLEFT JOIN shows s ON s.show_id = c.show_id\nORDER BY c.detected_at DESC\nLIMIT 50",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "Ocupação",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "id": 15
     },
     {
       "type": "table",
@@ -525,9 +744,9 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 39
       },
-      "id": 11
+      "id": 16
     }
   ],
   "links": [

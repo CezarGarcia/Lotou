@@ -1,9 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { context, type Span, trace } from '@opentelemetry/api';
 import type { Pool } from 'pg';
 import { newId } from '../common/ids.js';
-import type { Env } from '../config/env.js';
 import { PG_POOL } from '../database/database.module.js';
 import { withTransaction } from '../database/transaction.js';
 import { TOPICS } from '../kafka/topics.js';
@@ -52,8 +50,9 @@ type Recorded =
 /**
  * A leitura do QR code na portaria (docs/projeto.md, "Fluxo E").
  *
- * 1. Confere a assinatura do código, sem consultar nada: falsificado ou
- *    malformado é `INVALID_CODE`, e o banco nem é tocado.
+ * 1. Confere a assinatura do código (`LOTOU2`, Ed25519, ou o `LOTOU1` antigo,
+ *    HMAC), sem consultar nada: falsificado ou malformado é `INVALID_CODE`,
+ *    e o banco nem é tocado.
  * 2. Busca o ingresso na cópia local (uma consulta pela chave primária):
  *    desconhecido, de outro show, cancelado, já usado ou antes da abertura dos
  *    portões são recusados.
@@ -70,19 +69,14 @@ type Recorded =
 @Injectable()
 export class CheckinService {
   private readonly logger = new Logger(CheckinService.name);
-  private readonly codes: TicketCodeVerifier;
 
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly codes: TicketCodeVerifier,
     private readonly firstEntries: FirstEntryStore,
     private readonly rejections: RejectionBuffer,
     private readonly relay: OutboxRelay,
-    config: ConfigService<Env, true>,
-  ) {
-    this.codes = new TicketCodeVerifier(
-      config.get('TICKET_QR_KEY', { infer: true }),
-    );
-  }
+  ) {}
 
   /**
    * `incoming` são os cabeçalhos de trace que vieram na requisição: valem
@@ -109,7 +103,10 @@ export class CheckinService {
       return this.reject(scan, 'INVALID_CODE', null, requestTrace, now);
     }
     const { ticketId } = code;
-    span?.setAttribute('lotou.ticket.id', ticketId);
+    span?.setAttributes({
+      'lotou.ticket.id': ticketId,
+      'lotou.checkin.code_format': code.format,
+    });
 
     const ticket = await findScannedTicket(this.pool, ticketId);
     const evaluation = evaluate(ticket, scan.showId, now);

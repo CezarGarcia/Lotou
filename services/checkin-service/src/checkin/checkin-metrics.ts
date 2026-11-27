@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Counter, type Histogram, metrics } from '@opentelemetry/api';
 import type { CheckinResult } from './checkin-result.js';
+import type { ConflictKind, OfflineOutcome } from './offline-scan.js';
 
 /**
  * Métricas da portaria (docs/projeto.md, "Métricas de negócio"). Usa a API do
@@ -11,6 +12,11 @@ import type { CheckinResult } from './checkin-result.js';
  *   leituras recusadas).
  * - `checkin_duration_seconds{result}`: quanto a leitura levou dentro do
  *   serviço, para a meta de p99 abaixo de 200 ms.
+ * - `checkin_offline_scans_total{outcome}`: leituras feitas sem internet e
+ *   enviadas depois (ADR 38), pelo que aconteceu com elas; uma leitura
+ *   reenviada não conta de novo.
+ * - `checkin_offline_conflicts_total{kind}`: quem entrou offline com um
+ *   ingresso que não valia (já usado, cancelado, desconhecido, de outro show).
  */
 @Injectable()
 export class CheckinMetrics {
@@ -42,6 +48,22 @@ export class CheckinMetrics {
     },
   );
 
+  private readonly offlineScans: Counter = this.meter.createCounter(
+    'checkin_offline_scans_total',
+    {
+      description:
+        'Leituras feitas sem internet e enviadas depois, pelo resultado da sincronização',
+    },
+  );
+
+  private readonly offlineConflicts: Counter = this.meter.createCounter(
+    'checkin_offline_conflicts_total',
+    {
+      description:
+        'Entradas offline com ingresso que não valia: já usado, cancelado, desconhecido ou de outro show',
+    },
+  );
+
   record(gate: string, result: CheckinResult, seconds: number): void {
     this.checkins.add(1, { gate, result });
     this.duration.record(seconds, { result });
@@ -49,5 +71,12 @@ export class CheckinMetrics {
 
   rejectionsDropped(count: number): void {
     this.dropped.add(count);
+  }
+
+  offlineScan(outcome: OfflineOutcome, kind: ConflictKind | null): void {
+    this.offlineScans.add(1, { outcome });
+    if (kind) {
+      this.offlineConflicts.add(1, { kind });
+    }
   }
 }

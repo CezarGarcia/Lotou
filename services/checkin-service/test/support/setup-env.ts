@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 import pg from 'pg';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { inject } from 'vitest';
 import './quiet-logs.js';
 import './tracing.js';
@@ -33,3 +33,13 @@ await allocator.quit();
 process.env.REDIS_URL = redisUrl(db);
 
 process.env.KAFKA_BROKERS = inject('kafkaBrokers');
+
+// O par de chaves do QR `LOTOU2`, gerado na hora: a aplicação recebe a pública,
+// como no Compose, e as fixtures assinam os ingressos com a privada.
+const ticketKeys = generateKeyPairSync('ed25519');
+process.env.TICKET_PUBLIC_KEY = ticketKeys.publicKey
+  .export({ format: 'der', type: 'spki' })
+  .toString('base64');
+process.env.TEST_TICKET_PRIVATE_KEY = ticketKeys.privateKey
+  .export({ format: 'der', type: 'pkcs8' })
+  .toString('base64');

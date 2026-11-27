@@ -162,7 +162,7 @@ INVARIANTS_SQL = """SELECT
 
 def gate() -> Board:
     b = Board("lotou-portaria", "Portaria ao vivo",
-              "Entradas por minuto e por portão, leituras recusadas, ocupação do local e a duração do check-in.",
+              "Entradas por minuto e por portão, leituras recusadas, ocupação do local, a duração do check-in e a portaria offline.",
               refresh="5s", time_from="now-30m")
     b.row("Agora")
     b.add(stat("Entradas por minuto", 'sum(rate(checkins_total{result="ACCEPTED"}[2m])) * 60', "short", decimals=0), 6, 4)
@@ -184,6 +184,27 @@ def gate() -> Board:
         target(quantile(0.5, "checkin_duration_seconds", ""), "p50"),
         target(quantile(0.99, "checkin_duration_seconds", ""), "p99", "B")], "s",
         thresholds=[{"color": "transparent", "value": None}, {"color": "red", "value": 0.2}]), 24, 7)
+    b.row("Portaria offline")
+    b.add(stat("Conflitos offline (15 min)",
+               "SELECT count(*) FROM offline_conflicts WHERE detected_at > now() - interval '15 minutes'",
+               datasource=pg("pg-checkin"), steps=BAD,
+               description="Entradas sem internet com ingresso que não valia (alerta Entrada indevida pela portaria offline)."), 6, 8)
+    b.add(timeseries("Leituras offline enviadas por resultado",
+                     [target("sum by (outcome) (rate(checkin_offline_scans_total[$__rate_interval])) * 60", "{{outcome}}")], "short",
+                     "Leituras feitas sem internet e enviadas quando a rede voltou, por minuto: RECORDED (entrada gravada), DUPLICATE, "
+                     "CONFLICT e REJECTED. Aparecem na hora do envio, não da leitura.", stack=True), 9, 8)
+    b.add(timeseries("Conflitos offline por tipo",
+                     [target("sum by (kind) (increase(checkin_offline_conflicts_total[$__rate_interval]))", "{{kind}}")], "short",
+                     "DUPLICATE (já tinha entrado), CANCELLED, UNKNOWN e WRONG_SHOW: a pessoa entrou com um ingresso que não valia.",
+                     stack=True), 9, 8)
+    b.add(table("Últimos conflitos da portaria offline", """
+SELECT c.detected_at AS detectado, s.title AS show, c.kind AS tipo, c.gate AS "portão", left(c.device_id::text, 8) AS aparelho,
+       c.scanned_at AS lido, c.first_gate AS "entrou antes por", c.first_checked_in_at AS "entrou antes às",
+       left(c.ticket_id::text, 8) AS ingresso
+FROM offline_conflicts c
+LEFT JOIN shows s ON s.show_id = c.show_id
+ORDER BY c.detected_at DESC
+LIMIT 50""", "pg-checkin", "Do Postgres do checkin-service. A primeira entrada (pelo horário da leitura) vale; as outras ficam aqui."), 24, 8)
     b.row("Ocupação")
     b.add(table("Ocupação por show (shows de hoje e próximos)", """
 SELECT s.title AS show, s.venue_name AS local, s.starts_at AS "começa",
