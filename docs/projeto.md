@@ -995,6 +995,29 @@ O que ficou para as fases seguintes, de propósito:
 - O leitor da portaria sem internet (fila local de leituras para sincronizar depois) segue como questão em aberto.
 - O teste de carga do cupom (mil compradores disputando 100 usos) e o alerta de REFUND\_FAILED entram na fase 7, com os SLOs.
 
+### Fase 7 (vitrine)
+
+Fase concluída em 27/11/2026, sem o vídeo, que fica para o fim da fase 8. Critério de pronto atingido: o ambiente inteiro sobe numa máquina limpa (`make clean up seed smoke e2e`, também no CI a cada push), com os dashboards, os alertas e os dados de demonstração.
+
+- [x] Métricas de Postgres, Redis, MongoDB, Kafka e RabbitMQ lidas pelo Collector, e tail sampling (erros, lentos, smoke e e2e, e 10% do resto)
+- [x] Seis dashboards provisionados no Grafana e doze alertas com e-mail no Mailpit; as invariantes consultadas nos bancos por um usuário só de leitura (ADR 35)
+- [x] SLOs do checkout com burn rate em janelas múltiplas: disponibilidade (99,5% sem 5xx) e latência (99% abaixo de 1 s)
+- [x] Testes de carga que faltavam: portaria (30 mil check-ins), cupom disputado, consumidor lento e workers de PDF
+- [x] Os oito experimentos de caos automatizados em `make chaos`, com os resultados na seção "Caos"
+- [x] Testes ponta a ponta com Playwright na loja, no painel e na portaria (`make e2e`), no CI depois do smoke
+- [x] Limite de memória por container, heap das JVMs em 60% do limite e reinício automático dos serviços
+- [x] Seed com cupom de lançamento em cada show e um show de hoje que vale o dia inteiro; `make seed-vendas` com atividade de demonstração
+- [x] Correção de resiliência achada pelos testes: uma conexão que caía no meio da transação derrubava os serviços Node
+
+Decisão da fase que virou ADR: SLOs com burn rate, alertas no Grafana e invariantes consultadas nos bancos (35).
+
+O que ficou para depois, de propósito:
+
+- O vídeo de apresentação, no fim da fase 8, já com a interface revisada.
+- A comparação com o Datadog (seção "E o Datadog?"): precisa de uma conta de teste, e não muda nada no código, só o exporter do Collector.
+- O disjuntor ou um teto maior de espera para as repetições da saga numa queda longa de um serviço (seção "Caos").
+- O dashboard de IA, com o agente da fase 5.
+
 ## Questões em aberto
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br
@@ -1006,7 +1029,7 @@ O que ficou para as fases seguintes, de propósito:
 - [x] Contratos: JSON Schema autocontido, com exemplos conferidos no CI (ADR 28)
 - [ ] Demo pública: só local, ou uma VPS barata para uma versão no ar?
 - [ ] Busca com OpenSearch (autocomplete de artista) como fase extra?
-- [ ] Memória: o ambiente usava cerca de 2,2 GB na fase 0, 3,5 GB na fase 1, 3,8 GB na fase 2, 4,6 GB na fase 3 e 5,3 GB na fase 4 em repouso, com dezenove containers (cada serviço Java ocupa de 450 a 600 MB; Keycloak e `grafana/otel-lgtm`, de 700 a 900 MB cada; os dois Redis, poucos MB). Sob carga, a JVM do inventory chegou a 4,5 GB, porque os containers não têm limite de memória e a JVM usa até 75% da RAM da máquina. Definir limites por container e, se preciso, criar um perfil "lite" no Compose
+- [x] Memória: o ambiente usava cerca de 2,2 GB na fase 0 e 5,3 GB na fase 4, e sem limite a JVM do inventory chegou a 4,5 GB sob carga. Na fase 7, cada container ganhou limite de memória (o maior é o `lgtm`, com 3 GB, porque o Tempo relê o WAL na subida depois de uma carga) e as JVMs usam 60% do limite como heap: em repouso, os 20 containers somam 4,3 GB. Um perfil "lite" não foi preciso
 - [x] Login no Angular: `angular-auth-oidc-client`, com Authorization Code e PKCE (ADR 27)
 - [ ] CPF do comprador: hoje ele é informado na reserva. Num produto real viria do cadastro, validado; vale levar o CPF para o cadastro no Keycloak?
 - [x] Reconciliação após perda do Redis: a marca `show:{id}` é gravada por último na carga; sem ela, o job recarrega o show inteiro a partir do Postgres (ADR 26)
