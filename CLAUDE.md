@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fases 0 (Fundação), 1 (Pedidos e estoque), 2 (Redis e abertura de vendas) e 3 (Kafka e saga) concluídas. A próxima é a fase 4 (RabbitMQ e tempo real). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
+Fases 0 (Fundação), 1 (Pedidos e estoque), 2 (Redis e abertura de vendas), 3 (Kafka e saga) e 4 (RabbitMQ e tempo real) concluídas. A próxima é a fase 5 (Agente de IA). O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 
@@ -31,6 +31,7 @@ Na raiz (`make help` lista todos):
 - `make test`: roda os testes de todos os serviços
 - `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta pela saga e confere os traces no Tempo
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
+- `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
 
 Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
@@ -41,7 +42,7 @@ Por serviço:
 - `services/api-gateway`, `services/inventory-service`: `./mvnw test`
 - `services/order-service`: `make test-order-service` na raiz (constrói a imagem do inventory, que os testes de ponta a ponta usam) ou `./mvnw test` se a imagem já existe
 - `services/payment-mock`: `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format:check`
-- `services/analytics-service`: `uv run pytest`, `uv run ruff check`, `uv run mypy` (ou `make test-analytics-service` na raiz)
+- `services/analytics-service`, `services/notification-service`: `uv run pytest`, `uv run ruff check`, `uv run mypy` (ou `make test-analytics-service` e `make test-notification-service` na raiz)
 - `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
 - `contracts/`: `python contracts/check.py` confere os JSON Schemas das mensagens e os exemplos
 
