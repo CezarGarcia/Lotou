@@ -66,6 +66,13 @@ public final class InventoryProblems {
                 "A reserva está em %s e não pode mais ser alterada.".formatted(status)).with("status", status);
     }
 
+    /** Só os ingressos de uma reserva confirmada (vendidos) podem ser devolvidos à venda. */
+    public static ProblemException reservationNotConfirmed(Object status) {
+        return new ProblemException(HttpStatus.CONFLICT, "reservation-not-confirmed", "Reserva não confirmada",
+                "A reserva está em %s; só ingressos de uma reserva confirmada voltam à venda.".formatted(status))
+                .with("status", status);
+    }
+
     /** Show de alta demanda: só reserva quem foi admitido pela fila virtual. */
     public static ProblemException queueAdmissionRequired() {
         return new ProblemException(HttpStatus.CONFLICT, "queue-admission-required", "Entre na fila virtual",

@@ -194,9 +194,10 @@ stateDiagram-v2
     HELD --> CONFIRMED: pagamento aprovado
     HELD --> RELEASED: pagamento recusado
     HELD --> EXPIRED: 10 min sem pagamento
-    CONFIRMED --> [*]
+    CONFIRMED --> RETURNED: pedido cancelado e reembolsado
     RELEASED --> [*]
     EXPIRED --> [*]
+    RETURNED --> [*]
 ```
 *Reserva*
 
@@ -247,6 +248,7 @@ Estados destacados são finais: nada sai deles. O pedido em REFUND\_FAILED não 
 | Reserva | HELD | CONFIRMED | pagamento aprovado (`ConfirmReservation`) | order |
 | Reserva | HELD | RELEASED | pagamento recusado (`ReleaseReservation`) | order |
 | Reserva | HELD | EXPIRED | 10 minutos sem pagamento | job de expiração |
+| Reserva | CONFIRMED | RETURNED | pedido cancelado e reembolsado (`ReturnTickets`): os ingressos voltam à venda | inventory |
 | Pedido | PENDING | CONFIRMED | `PaymentAuthorized` | payment-mock |
 | Pedido | PENDING | CANCELLED | `PaymentDeclined` ou reserva expirada | payment-mock ou inventory |
 | Pedido | CONFIRMED | REFUNDING | comprador cancela no prazo, ou show cancelado | comprador ou produtor |

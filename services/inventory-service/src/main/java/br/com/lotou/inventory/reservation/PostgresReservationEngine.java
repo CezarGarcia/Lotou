@@ -170,7 +170,26 @@ public class PostgresReservationEngine implements ReservationEngine {
         }));
     }
 
-    /** Devolve à venda o que a reserva segurava: cota do CPF, estoque do setor e cadeiras. */
+    @Override
+    public ReservationView returnTickets(UUID id) {
+        return this.transaction.execute(status -> {
+            Reservation reservation = lock(id);
+            if (!reservation.is(ReservationStatus.RETURNED)) {
+                if (!reservation.is(ReservationStatus.CONFIRMED)) {
+                    throw InventoryProblems.reservationNotConfirmed(reservation.getStatus());
+                }
+                // Mesma ordem de travas da reserva: cota, lotes do setor, cadeiras. Com as vendas
+                // encerradas, SectorLots não devolve estoque a lote nenhum.
+                giveBack(reservation, ReservationStatus.RETURNED);
+            }
+            return ReservationView.of(reservation);
+        });
+    }
+
+    /**
+     * Devolve à venda o que a reserva segurava ou tinha comprado: cota do CPF, estoque do setor e
+     * cadeiras.
+     */
     private void giveBack(Reservation reservation, ReservationStatus target) {
         reservation.transitionTo(target, this.clock.instant());
         this.limits.giveBack(reservation.getShowId(), reservation.getCpfHash(), reservation.getQuantity());
