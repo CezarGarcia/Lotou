@@ -5,6 +5,8 @@
  * - Autentica no Keycloak como a conta de serviço `lotou-seed` (client
  *   credentials), que tem o papel de produtor.
  * - Cria cada local e cada show com `Idempotency-Key`, e publica os shows.
+ * - Cria o cupom de lançamento de cada show (o order-service precisa já ter
+ *   recebido o show pelo Kafka: espera um pouco se ainda não recebeu).
  * - Pode rodar várias vezes: o que já existe é reaproveitado, não duplicado.
  *
  * Uso: `make seed` na raiz (roda dentro do Compose), ou direto com Node 22+:
@@ -127,13 +129,16 @@ async function seedVenues(token) {
 }
 
 async function seedShows(token, venuesByName) {
-  const published = new Set(
-    (await listAll(token, '/shows')).map((show) => `${show.artist}|${show.title}`),
+  const published = new Map(
+    (await listAll(token, '/shows')).map((show) => [`${show.artist}|${show.title}`, show]),
   );
-  for (const { venue: venueName, sectors, ...show } of shows) {
+  const withCoupons = [];
+  for (const { venue: venueName, sectors, coupon, ...show } of shows) {
     const label = `${show.artist}: ${show.title}`;
-    if (published.has(`${show.artist}|${show.title}`)) {
+    const existing = published.get(`${show.artist}|${show.title}`);
+    if (existing) {
       console.log(`  = ${label} (já existe)`);
+      if (coupon) withCoupons.push({ label, showId: existing.id, coupon, until: show.salesEndAt });
       continue;
     }
 
@@ -157,6 +162,34 @@ async function seedShows(token, venuesByName) {
       await api(token, 'POST', `/shows/${created.id}/publish`);
     }
     console.log(`  + ${label} (${venueName})`);
+    if (coupon) withCoupons.push({ label, showId: created.id, coupon, until: show.salesEndAt });
+  }
+  return withCoupons;
+}
+
+/** O cupom de lançamento de cada show, se o show ainda não tem um com o mesmo código. */
+async function seedCoupons(token, withCoupons) {
+  for (const { label, showId, coupon, until } of withCoupons) {
+    let existing;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        existing = await listAll(token, `/coupons?showId=${showId}`);
+        break;
+      } catch (error) {
+        // 404: o order-service ainda não recebeu o show pelo Kafka.
+        if (!error.message.includes('-> 404') || attempt === 15) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
+    if (existing.some((saved) => saved.code === coupon.code)) {
+      console.log(`  = ${coupon.code} (já existe)`);
+      continue;
+    }
+    await api(token, 'POST', '/coupons', {
+      body: { showId, ...coupon, validUntil: new Date(until).toISOString() },
+      idempotencyKey: `seed-coupon-${showId}-${coupon.code}`,
+    });
+    console.log(`  + ${coupon.code} (${label})`);
   }
 }
 
@@ -166,5 +199,7 @@ const token = await getToken();
 console.log('Locais');
 const venuesByName = await seedVenues(token);
 console.log('Shows');
-await seedShows(token, venuesByName);
+const withCoupons = await seedShows(token, venuesByName);
+console.log('Cupons');
+await seedCoupons(token, withCoupons);
 console.log('Pronto. Abra a loja em http://localhost:4200');

@@ -108,6 +108,7 @@ export const shows = [
   {
     venue: 'Arena Paulista',
     title: 'Turnê Horizonte',
+    coupon: { code: 'HORIZONTE15', kind: 'PERCENT', percent: 15, maxUses: 200 },
     artist: 'Marina Céu',
     description:
       'A maior turnê da carreira de Marina Céu chega a São Paulo com o repertório do álbum Horizonte, banda completa e participações especiais. Abertura de vendas com fila virtual.',
@@ -127,6 +128,7 @@ export const shows = [
   {
     venue: 'Teatro Guanabara',
     title: 'Vinte Anos de Estrada',
+    coupon: { code: 'ESTRADA20', kind: 'AMOUNT', amountCents: 2_000, maxUses: 100 },
     artist: 'Os Tropicais do Asfalto',
     description:
       'Show acústico de aniversário, com os sucessos dos vinte anos da banda em arranjos novos para o palco do Teatro Guanabara.',
@@ -143,6 +145,7 @@ export const shows = [
   {
     venue: 'Estádio do Capibaribe',
     title: 'Maracatu Elétrico ao Vivo',
+    coupon: { code: 'MARACATU10', kind: 'PERCENT', percent: 10, maxUses: 500 },
     artist: 'Nação Coral',
     description:
       'Tambores de maracatu, guitarras e metais numa noite só. A Nação Coral grava seu primeiro álbum ao vivo no Estádio do Capibaribe.',
@@ -160,6 +163,7 @@ export const shows = [
   {
     venue: 'Hangar Ver-o-Rio',
     title: 'Baile da Maré Cheia',
+    coupon: { code: 'MARE10', kind: 'PERCENT', percent: 10, maxUses: 100 },
     artist: 'Orquestra Ribeirinha',
     description:
       'Carimbó, guitarrada e brega num baile de quatro horas, com a Orquestra Ribeirinha e convidados da cena de Belém.',
@@ -194,6 +198,7 @@ export const shows = [
   {
     venue: 'Pedreira do Sul',
     title: 'Inverno Elétrico',
+    coupon: { code: 'INVERNO25', kind: 'PERCENT', percent: 25, maxUses: 50 },
     artist: 'Quinteto Vento Sul',
     description:
       'Rock instrumental ao ar livre na Pedreira do Sul. O Quinteto Vento Sul apresenta o disco Inverno Elétrico na íntegra.',
