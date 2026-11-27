@@ -15,7 +15,6 @@ import {
   withViewTransitions,
 } from '@angular/router';
 import { provideNgIconsConfig } from '@ng-icons/core';
-import { MAT_ICON_DEFAULT_OPTIONS } from '@angular/material/icon';
 import { provideAuth } from 'angular-auth-oidc-client';
 import { routes } from './app.routes';
 import { OIDC_CONFIG } from './core/auth/auth.config';
@@ -41,7 +40,6 @@ export const appConfig: ApplicationConfig = {
     // A sessão (ou a volta do login) é resolvida antes da primeira rota.
     provideAppInitializer(() => inject(AuthService).start()),
     { provide: LOCALE_ID, useValue: 'pt-BR' },
-    { provide: MAT_ICON_DEFAULT_OPTIONS, useValue: { fontSet: 'material-symbols-outlined' } },
     // Ícones Lucide: traço fino, do tamanho da letra ao redor.
     provideNgIconsConfig({ size: '1.25em', strokeWidth: 2 }),
   ],
