@@ -100,6 +100,7 @@ export class ShowsService {
       ...schedule,
       startsOn: venue && localDate(dto.startsAt, venue.timezone),
       highDemand: dto.highDemand,
+      serviceFeePaidBy: dto.serviceFeePaidBy,
       venue: toShowVenue(venue),
       sectors,
     });
@@ -214,6 +215,10 @@ export class ShowsService {
       ...schedule,
       startsOn: venue && localDate(schedule.startsAt, venue.timezone),
       highDemand: changed(changes.highDemand, current.highDemand),
+      serviceFeePaidBy: changed(
+        changes.serviceFeePaidBy,
+        current.serviceFeePaidBy ?? 'BUYER',
+      ),
       venue: venueChanged ? toShowVenue(venue) : current.venue,
       sectors,
     };
@@ -252,6 +257,32 @@ export class ShowsService {
     });
     await this.pageCache.evict([id]);
     return updated;
+  }
+
+  /**
+   * PUBLISHED ou ON_SALE -> CANCELLED, pelo produtor. O `ShowUpdated` com o
+   * status novo sai na mesma transação; o order-service o lê e reembolsa todos
+   * os pedidos confirmados, com controle de vazão.
+   */
+  async cancel(id: string, producerId: string): Promise<Show> {
+    const current = await this.getOwned(id, producerId);
+    this.assertTransition(current, 'CANCELLED');
+    const cancelled = await this.connection.transaction(async (session) => {
+      const show = await this.shows
+        .findOneAndUpdate(
+          { _id: id, version: current.version, status: current.status },
+          { $set: { status: 'CANCELLED' }, $inc: { version: 1 } },
+          { returnDocument: 'after', session },
+        )
+        .lean();
+      if (!show) {
+        versionConflict();
+      }
+      await this.outbox.append([catalogMessage('ShowUpdated', show)], session);
+      return show;
+    });
+    await this.pageCache.evict([id]);
+    return cancelled;
   }
 
   /** DRAFT -> PUBLISHED: exige local, ao menos um setor e ao menos um lote. */

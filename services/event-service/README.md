@@ -15,8 +15,9 @@ Atrás do gateway, as rotas ganham o prefixo `/api` (`/api/v1/shows`).
 | `GET` | `/v1/shows` | público | busca por `artist`, `city`, `from` e `to`, paginada por cursor (cache de 60 s) |
 | `GET` | `/v1/shows/:id` | público | página do show; rascunho só para o dono (cache de 10 min) |
 | `POST` | `/v1/shows` | produtor | cria o show como `DRAFT` (exige `Idempotency-Key`) |
-| `PATCH` | `/v1/shows/:id` | dono | altera os campos enviados; exige a `version` lida |
-| `POST` | `/v1/shows/:id/publish` | dono | `DRAFT` → `PUBLISHED`; exige local, setor e lote |
+| `PATCH` | `/v1/shows/:id` | dono | altera os campos enviados; exige a `version` lida. `serviceFeePaidBy` (`BUYER`, o padrão, ou `PRODUCER`) diz quem paga a taxa de serviço de 10% e só muda antes de as vendas abrirem |
+| `POST` | `/v1/shows/:id/publish` | dono | `DRAFT` → `PUBLISHED`; exige local, setor e um lote em cada setor |
+| `POST` | `/v1/shows/:id/cancel` | dono | `PUBLISHED` ou `ON_SALE` → `CANCELLED`; o `ShowUpdated` leva o order-service a reembolsar todos os pedidos confirmados |
 | `GET` | `/v1/venues` | público | lista locais, paginada por cursor |
 | `GET` | `/v1/venues/:id` | público | detalhe do local |
 | `POST` | `/v1/venues` | produtor | cadastra o local (exige `Idempotency-Key`) |

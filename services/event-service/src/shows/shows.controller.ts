@@ -96,4 +96,15 @@ export class ShowsController {
   ): Promise<ShowResponse> {
     return toShowResponse(await this.shows.publish(id, user.id));
   }
+
+  /** O produtor cancela o show: os pedidos confirmados são reembolsados. */
+  @Post(':id/cancel')
+  @Roles('producer')
+  @HttpCode(HttpStatus.OK)
+  async cancel(
+    @Param('id', { schema: showIdSchema }) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ShowResponse> {
+    return toShowResponse(await this.shows.cancel(id, user.id));
+  }
 }

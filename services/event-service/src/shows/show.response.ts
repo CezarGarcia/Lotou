@@ -1,6 +1,6 @@
 import type { SectorKind } from '../venues/sector-kind.js';
 import type { ShowStatus } from './show-status.js';
-import type { Show } from './show.schema.js';
+import type { ServiceFeePayer, Show } from './show.schema.js';
 
 export interface ShowVenueResponse {
   id: string;
@@ -20,6 +20,7 @@ export interface ShowSummaryResponse {
   startsAt: Date;
   salesStartAt: Date | null;
   highDemand: boolean;
+  serviceFeePaidBy: ServiceFeePayer;
   venue: ShowVenueResponse | null;
   /** Menor preço entre os lotes, em centavos; `null` sem lotes. */
   priceFromCents: number | null;
@@ -67,6 +68,7 @@ export function toShowSummary(show: Show): ShowSummaryResponse {
     startsAt: show.startsAt,
     salesStartAt: show.salesStartAt,
     highDemand: show.highDemand,
+    serviceFeePaidBy: show.serviceFeePaidBy ?? 'BUYER',
     venue: show.venue && {
       id: show.venue.id,
       name: show.venue.name,

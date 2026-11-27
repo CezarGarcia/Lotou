@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { idSchema } from '../common/ids/id.js';
 import { cursorSchema, limitSchema } from '../common/pagination/cursor.js';
+import { SERVICE_FEE_PAYERS } from './show.schema.js';
 
 // Data e hora com fuso explícito (Z ou offset): sem fuso, o instante é ambíguo.
 const instant = z.iso
@@ -43,6 +44,7 @@ export const createShowSchema = z.object({
   salesStartAt: instant.nullish(),
   salesEndAt: instant.nullish(),
   highDemand: z.boolean().default(false),
+  serviceFeePaidBy: z.enum(SERVICE_FEE_PAYERS).default('BUYER'),
   venueId: idSchema.nullish(),
   sectors: sectors.default([]),
 });
@@ -60,6 +62,7 @@ export const updateShowSchema = z
     salesStartAt: instant.nullable(),
     salesEndAt: instant.nullable(),
     highDemand: z.boolean(),
+    serviceFeePaidBy: z.enum(SERVICE_FEE_PAYERS),
     venueId: idSchema.nullable(),
     sectors,
   })

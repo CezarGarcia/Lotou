@@ -3,7 +3,7 @@ import { TOPICS } from '../kafka/kafka.js';
 import type { OutgoingMessage } from '../outbox/outbox.js';
 import type { SectorKind } from '../venues/sector-kind.js';
 import type { ShowStatus } from './show-status.js';
-import type { Show } from './show.schema.js';
+import type { ServiceFeePayer, Show } from './show.schema.js';
 
 /**
  * Tipos de `shows.catalog`: `ShowPublished` quando o show sai do rascunho e
@@ -33,6 +33,7 @@ export interface CatalogSnapshot {
   salesStartAt: string | null;
   salesEndAt: string | null;
   highDemand: boolean;
+  serviceFeePaidBy: ServiceFeePayer;
   venue: {
     id: string;
     name: string;
@@ -85,6 +86,7 @@ export function toCatalogSnapshot(show: Show): CatalogSnapshot {
     salesStartAt: iso(show.salesStartAt),
     salesEndAt: iso(show.salesEndAt),
     highDemand: show.highDemand,
+    serviceFeePaidBy: show.serviceFeePaidBy ?? 'BUYER',
     venue: {
       id: venue.id,
       name: venue.name,

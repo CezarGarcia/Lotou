@@ -4,6 +4,10 @@ import { SECTOR_KINDS, type SectorKind } from '../venues/sector-kind.js';
 import { type SeatRow, SeatRowSchema } from '../venues/venue.schema.js';
 import { SHOW_STATUSES, type ShowStatus } from './show-status.js';
 
+/** Quem paga a taxa de serviço (veja `serviceFeePaidBy`). */
+export const SERVICE_FEE_PAYERS = ['BUYER', 'PRODUCER'] as const;
+export type ServiceFeePayer = (typeof SERVICE_FEE_PAYERS)[number];
+
 @Schema({ _id: false })
 export class ShowLot {
   @Prop({ type: String, required: true })
@@ -126,6 +130,13 @@ export class Show {
   /** Alta demanda: liga a fila virtual na abertura das vendas. */
   @Prop({ default: false })
   highDemand: boolean;
+
+  /**
+   * Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o
+   * produtor (descontada do valor a receber). Não muda depois que as vendas abrem.
+   */
+  @Prop({ type: String, enum: SERVICE_FEE_PAYERS, default: 'BUYER' })
+  serviceFeePaidBy: ServiceFeePayer;
 
   @Prop({ type: ShowVenueSchema, default: null })
   venue: ShowVenue | null;

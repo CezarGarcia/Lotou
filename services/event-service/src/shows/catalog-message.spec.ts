@@ -20,6 +20,7 @@ const show = (overrides: Partial<Show> = {}): Show => ({
   salesStartAt: new Date('2027-01-10T15:00:00Z'),
   salesEndAt: new Date('2027-03-20T21:00:00Z'),
   highDemand: true,
+  serviceFeePaidBy: 'BUYER',
   venue: {
     id: newId(),
     name: 'Arena Lotou',

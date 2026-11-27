@@ -156,6 +156,33 @@ describe('Catálogo no Kafka (shows.catalog)', () => {
     expect(versionsOf(messages)).toEqual([2, 3, 4]);
   });
 
+  it('cancelar o show publica o status CANCELLED, e só o dono cancela', async () => {
+    const show = await createPublishedShow(
+      producer,
+      showAt(venue, { serviceFeePaidBy: 'PRODUCER' }),
+    );
+    const other = await t.as('producer');
+    await other.post(`/v1/shows/${show.id}/cancel`, {}, null).expect(404);
+
+    const cancelled = (
+      await producer.post(`/v1/shows/${show.id}/cancel`, {}, null).expect(200)
+    ).body;
+    expect(cancelled.status).toBe('CANCELLED');
+    // Cancelado é final: cancelar de novo é uma transição fora da tabela.
+    await producer.post(`/v1/shows/${show.id}/cancel`, {}, null).expect(409);
+
+    const messages = await reader.waitFor(show.id, 2);
+    expect(messages.map((m) => m.value.type)).toEqual([
+      'ShowPublished',
+      'ShowUpdated',
+    ]);
+    expect(messages[1].value.payload).toMatchObject({
+      status: 'CANCELLED',
+      serviceFeePaidBy: 'PRODUCER',
+    });
+    expectValid(messages);
+  });
+
   it('renomear o local muda a versão dos shows e publica os que saíram do rascunho', async () => {
     const own = await createVenue(producer, { name: 'Teatro Antigo' });
     const published = await createPublishedShow(producer, showAt(own));
