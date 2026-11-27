@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui rabbitmq mailpit keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
-.PHONY: help up infra down clean seed smoke e2e logs ps test load-opening load-contention load-show-page load-check \
+.PHONY: help up infra down clean seed seed-vendas smoke e2e logs ps test load-opening load-contention load-show-page load-check \
 	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-checkin-service \
 	test-analytics-service test-notification-service test-web replay-analytics requeue-notifications
 
@@ -35,6 +35,9 @@ clean: ## Derruba o ambiente e apaga os dados (volumes)
 seed: ## Carrega locais e shows fictícios (pode rodar mais de uma vez)
 	$(COMPOSE) run --rm seed
 
+seed-vendas: ## Compras, cupons, cancelamentos e entradas de demonstração, pela API (depois do seed)
+	$(COMPOSE) run --rm seed node vendas.mjs
+
 smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
 	$(COMPOSE) run --rm smoke
 
@@ -63,6 +66,9 @@ load-show-page: ## Carga: página do show com o cache ligado e desligado
 	SHOW_CACHE_ENABLED=false RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
 	-$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
 	$(COMPOSE) up -d --wait event-service
+
+chaos: ## Experimento de caos (EXP=notificacao-fora|pagamento-recusando|estorno-falhando|pedidos-fora|portaria-sem-consumir|redis-core-reiniciado|postgres-lento|mensagem-malformada|todos)
+	COMPOSE="$(COMPOSE)" node scripts/chaos.mjs $(or $(EXP),todos)
 
 load-check: ## Confere no Postgres as invariantes de venda (tudo deve dar zero)
 	@./scripts/wait-projection.sh "$(COMPOSE)"

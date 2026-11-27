@@ -168,6 +168,22 @@ Como funciona:
 
 `make smoke` confere os traces pela linha de comando, e o CI repete a conferência a cada push.
 
+O Collector faz **tail sampling**: guarda todo trace com erro ou acima de 500 ms, todos os do `make smoke` e dos testes ponta a ponta, e 10% do resto (`TRACE_SAMPLE_PERCENT=100` guarda tudo, para depurar).
+
+## Dashboards, alertas e SLO
+
+O Grafana (http://localhost:3000, pasta **Lotou**) já vem com seis dashboards: abertura de vendas ao vivo, portaria ao vivo, negócio, RED por serviço com o SLO do checkout, mensageria (lag do Kafka, filas, DLQs, DLTs e outbox) e Redis e cache. As métricas de Postgres, Redis, MongoDB, Kafka e RabbitMQ são lidas pelo próprio Collector, sem um exporter por banco.
+
+São dez alertas, com e-mail no Mailpit (http://localhost:8025, para `plantao@lotou.test`), cada um com o link do dashboard que ajuda a investigar ([ADR 35](docs/adr/0035-slos-burn-rate-e-alertas-no-grafana.md)):
+
+- **invariantes**, consultadas direto nos bancos com um usuário só de leitura: venda além da capacidade, entrada dupla, saga presa (pedido em PENDING há mais de 15 minutos) e reembolso que falhou;
+- **SLO do checkout**: 99,5% das reservas e dos pedidos sem erro 5xx em 30 dias, com alerta de burn rate em janelas múltiplas (14,4 vezes em 1 h e 5 min; 6 vezes em 6 h e 30 min), e a portaria lenta (p99 do check-in acima de 200 ms);
+- **mensageria**: consumidor atrasado em `order.events`, mensagem numa DLQ do RabbitMQ e mensagem nova numa DLT do Kafka.
+
+Os alertas já pegaram um incidente de verdade durante o desenvolvimento: com o Postgres reiniciado, o payment-mock caiu, e o e-mail "Saga presa" chegou com 626 pedidos parados. A causa (uma conexão que cai no meio da transação derrubava o processo) foi corrigida, e os serviços agora voltam sozinhos se o processo cair.
+
+`make seed-vendas` gera atividade de demonstração pela API (compras, cupons, cancelamentos e entradas na portaria), para os dashboards, o painel e o financeiro não começarem vazios.
+
 ## Arquitetura
 
 O que existe hoje:
