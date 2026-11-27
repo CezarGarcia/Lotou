@@ -4,6 +4,7 @@ Toda mensagem montada aqui passa pelo schema do seu tipo antes de ser usada,
 então os testes nunca exercitam um formato que o produtor não publicaria.
 """
 
+import base64
 import json
 import os
 import time
@@ -215,10 +216,19 @@ class OrderSpec:
         return envelope("OrderCancelled", self.id, {**self._base(), "reason": reason, "cancelledAt": iso(at)}, at)
 
     def tickets_issued(self, at: datetime) -> Message:
-        tickets = [
-            {"ticketId": uuid7(at), "sectorId": self.sector.id, "sectorName": self.sector.name, "seat": seat}
-            for seat in self.seats
-        ]
+        tickets = []
+        for seat in self.seats:
+            ticket_id = uuid7(at)
+            tickets.append(
+                {
+                    "ticketId": ticket_id,
+                    "sectorId": self.sector.id,
+                    "sectorName": self.sector.name,
+                    "seat": seat,
+                    # O analytics ignora o código do QR (é a credencial de entrada); só o formato importa aqui.
+                    "code": f"LOTOU1.{ticket_id}.{base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')}",
+                }
+            )
         payload = {
             "orderId": self.id,
             "buyerId": self.buyer_id,
