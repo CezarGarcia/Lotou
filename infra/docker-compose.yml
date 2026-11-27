@@ -616,6 +616,8 @@ services:
       - "8180:8080"
     volumes:
       - ./keycloak/lotou-realm.json:/opt/keycloak/data/import/lotou-realm.json:ro
+      # Tela de login com o visual da loja (ADR 0036).
+      - ./keycloak/themes/lotou:/opt/keycloak/themes/lotou:ro
     depends_on:
       postgres:
         condition: service_healthy

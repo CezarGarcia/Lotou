@@ -1,0 +1,328 @@
+/*
+ * Login do Lotou: o mesmo visual de cartaz da loja (tema noite).
+ * As fontes vêm junto com o tema (licença OFL, em ../fonts).
+ */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(../fonts/inter-latin-wght-normal.woff2) format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'Big Shoulders Display Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(../fonts/big-shoulders-display-latin-wght-normal.woff2) format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url(../fonts/dm-mono-latin-500-normal.woff2) format('woff2');
+}
+
+:root {
+  --lt-bg: #121015;
+  --lt-surface: #1c1921;
+  --lt-raised: #26222c;
+  --lt-line: #2a2630;
+  --lt-line-strong: #332e3a;
+  --lt-text: #f4efe6;
+  --lt-muted: #aba4b5;
+  --lt-cta: #ffd23f;
+  --lt-cta-hover: #ffe27a;
+  --lt-danger: #ff5a5a;
+  --lt-font: 'Inter Variable', Inter, system-ui, sans-serif;
+  --lt-display: 'Big Shoulders Display Variable', 'Arial Narrow', Impact, sans-serif;
+  --lt-mono: 'DM Mono', ui-monospace, monospace;
+
+  /* Variáveis do PatternFly usadas pelos componentes da tela. */
+  --pf-v5-global--FontFamily--text: var(--lt-font);
+  --pf-v5-global--FontFamily--heading: var(--lt-display);
+  --pf-v5-global--Color--100: var(--lt-text);
+  --pf-v5-global--Color--200: var(--lt-muted);
+  --pf-v5-global--link--Color: var(--lt-cta);
+  --pf-v5-global--link--Color--hover: var(--lt-cta-hover);
+  --pf-v5-global--BackgroundColor--100: var(--lt-surface);
+  --pf-v5-global--primary-color--100: var(--lt-cta);
+  --pf-v5-global--danger-color--100: var(--lt-danger);
+  color-scheme: dark;
+}
+
+html,
+body#keycloak-bg {
+  min-height: 100%;
+}
+
+body#keycloak-bg {
+  margin: 0;
+  background: var(--lt-bg);
+  color: var(--lt-text);
+  font-family: var(--lt-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Os cartazes colados atrás do formulário: faixas de cor com retícula. */
+body#keycloak-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(rgb(0 0 0 / 0.55) 1.1px, transparent 1.5px) 0 0 / 7px 7px,
+    linear-gradient(
+      104deg,
+      #ff4d8d 0 18%,
+      #121015 18% 21%,
+      #59c3ff 21% 37%,
+      #121015 37% 63%,
+      #ffd23f 63% 79%,
+      #121015 79% 82%,
+      #1f8a62 82% 100%
+    );
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.pf-v5-c-login {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: none;
+}
+
+.pf-v5-c-login__container {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 0;
+}
+
+/* A marca: "LOTOU" num recorte amarelo colado torto. */
+#kc-header {
+  padding: 0;
+  margin: 0;
+}
+
+#kc-header-wrapper {
+  display: inline-block;
+  padding: 6px 16px 2px;
+  background: var(--lt-cta);
+  color: #121015;
+  font-family: var(--lt-display);
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  transform: rotate(-2deg);
+  white-space: normal;
+}
+
+.pf-v5-c-login__main {
+  width: 100%;
+  margin: 0;
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 24px;
+  background: var(--lt-surface);
+  box-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.8);
+  color: var(--lt-text);
+}
+
+.pf-v5-c-login__main-header {
+  padding: 32px 32px 8px;
+  border: 0;
+}
+
+#kc-page-title {
+  margin: 0;
+  font-family: var(--lt-display);
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 0.9;
+  text-transform: uppercase;
+  color: var(--lt-text);
+}
+
+.pf-v5-c-login__main-body {
+  padding: 16px 32px 8px;
+}
+
+.pf-v5-c-form__label-text {
+  font-family: var(--lt-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lt-muted);
+}
+
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: var(--lt-bg);
+  --pf-v5-c-form-control--Color: var(--lt-text);
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 14px;
+  background: var(--lt-bg);
+  overflow: hidden;
+}
+
+/* As bordas desenhadas pelo PatternFly saem; a borda é a do próprio campo. */
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  display: none;
+}
+
+.pf-v5-c-form-control > input {
+  min-height: 50px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--lt-text);
+  font-size: 16px;
+}
+
+.pf-v5-c-form-control > input:focus-visible {
+  outline: 0;
+}
+
+.pf-v5-c-form-control:focus-within {
+  border-color: var(--lt-cta);
+  box-shadow: 0 0 0 1px var(--lt-cta);
+}
+
+.pf-v5-c-form-control.pf-m-error {
+  border-color: var(--lt-danger);
+}
+
+.pf-v5-c-input-group {
+  gap: 8px;
+}
+
+.pf-v5-c-button.pf-m-control {
+  min-width: 50px;
+  min-height: 50px;
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 14px;
+  background: var(--lt-raised);
+  color: var(--lt-text);
+}
+
+.pf-v5-c-button.pf-m-control::after {
+  border: 0;
+}
+
+.pf-v5-c-button.pf-m-primary,
+#kc-login {
+  min-height: 56px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lt-cta);
+  color: #121015;
+  font-family: var(--lt-font);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+#kc-login:hover {
+  background: var(--lt-cta-hover);
+}
+
+.pf-v5-c-button.pf-m-primary:focus-visible,
+.pf-v5-c-button.pf-m-control:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--lt-cta);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--lt-cta);
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  color: var(--lt-cta-hover);
+}
+
+.pf-v5-c-helper-text__item-text,
+.kc-feedback-text {
+  color: var(--lt-muted);
+}
+
+.pf-v5-c-helper-text__item-text.pf-m-error,
+.pf-v5-c-form__helper-text .pf-m-error {
+  color: var(--lt-danger);
+}
+
+/* Mensagens (senha errada, sessão expirada). */
+.pf-v5-c-alert {
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 14px;
+  background: var(--lt-raised);
+  color: var(--lt-text);
+  box-shadow: none;
+}
+
+.pf-v5-c-alert.pf-m-danger,
+.pf-v5-c-alert.pf-m-error {
+  border-color: var(--lt-danger);
+}
+
+.pf-v5-c-alert__title {
+  color: var(--lt-text);
+}
+
+.pf-v5-c-login__main-footer {
+  padding: 0 32px 28px;
+}
+
+.pf-v5-c-login__main-footer-band {
+  margin: 8px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--lt-line);
+  background: none;
+  color: var(--lt-muted);
+}
+
+.pf-v5-c-check__label,
+.pf-v5-c-login__main-footer-band-item {
+  color: var(--lt-muted);
+}
+
+/* Seletor de idioma, quando aparece. */
+.pf-v5-c-menu-toggle {
+  color: var(--lt-text);
+}
+
+@media (max-width: 480px) {
+  .pf-v5-c-login__main-header {
+    padding: 28px 22px 8px;
+  }
+
+  .pf-v5-c-login__main-body {
+    padding: 12px 22px 8px;
+  }
+
+  .pf-v5-c-login__main-footer {
+    padding: 0 22px 24px;
+  }
+
+  #kc-page-title {
+    font-size: 38px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

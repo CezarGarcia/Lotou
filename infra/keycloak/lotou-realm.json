@@ -1,5 +1,6 @@
 {
   "realm": "lotou",
+  "loginTheme": "lotou",
   "displayName": "Lotou",
   "enabled": true,
   "sslRequired": "external",
