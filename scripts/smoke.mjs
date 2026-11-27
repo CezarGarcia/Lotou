@@ -143,8 +143,12 @@ async function buyerToken() {
   return (await response.json()).access_token;
 }
 
-/** Espera o trace chegar ao Tempo com todos os serviços e bancos esperados. */
+/**
+ * Espera o trace chegar ao Tempo com todos os serviços esperados e um dos bancos aceitos
+ * (`database` pode ser uma lista).
+ */
 async function expectTrace({ traceId }, services, database) {
+  const accepted = [database].flat();
   let seen = { services: [], databases: [] };
   for (let attempt = 0; attempt < 30; attempt++) {
     const response = await fetch(`${GRAFANA_URL}/api/datasources/proxy/uid/tempo/api/traces/${traceId}`);
@@ -163,8 +167,9 @@ async function expectTrace({ traceId }, services, database) {
           ),
         ],
       };
-      if (services.every((name) => seen.services.includes(name)) && seen.databases.includes(database)) {
-        console.log(`   trace ${traceId}: ${seen.services.join(', ')} -> ${database}`);
+      const reached = accepted.find((name) => seen.databases.includes(name));
+      if (services.every((name) => seen.services.includes(name)) && reached) {
+        console.log(`   trace ${traceId}: ${seen.services.join(', ')} -> ${reached}`);
         return;
       }
     }
@@ -264,7 +269,8 @@ if (used.tickets[0].status !== 'USED' || used.tickets[0].gate !== 'Portão A') {
 console.log('   o pedido mostra o ingresso como usado no Portão A');
 
 console.log('5. Traces no Tempo');
-await expectTrace(searchTrace, ['api-gateway', 'event-service'], 'mongodb');
+// A busca termina no MongoDB, ou no redis-cache quando ela já estava no cache.
+await expectTrace(searchTrace, ['api-gateway', 'event-service'], ['mongodb', 'redis']);
 // A reserva acontece num script Lua no redis-core (motor padrão): o trace termina no Redis.
 await expectTrace(purchaseTrace, ['api-gateway', 'inventory-service'], 'redis');
 // O trace do pedido atravessa o Kafka: do gateway ao order-service, dele ao payment-mock e ao inventory.
