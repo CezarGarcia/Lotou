@@ -4,6 +4,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { GateSetupPage } from './gate-setup.page';
 import { GateSettings } from './gate-settings';
+import { GATE_OFFLINE_DB, MemoryGateOfflineDb } from './offline/gate-offline-db';
+import { CAMAROTE, PISTA, testPackage } from './offline/offline.testing';
 
 const show = (showId: string, artist: string) => ({
   showId,
@@ -20,12 +22,31 @@ describe('GateSetupPage', () => {
   let http: HttpTestingController;
   let navigate: ReturnType<typeof vi.spyOn>;
   let settings: GateSettings;
+  let db: MemoryGateOfflineDb;
 
   const element = () => fixture.nativeElement as HTMLElement;
 
+  /** Espera as respostas e o armazenamento do aparelho (promessas) e desenha. */
+  async function settle() {
+    await fixture.whenStable();
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve();
+    }
+    fixture.detectChanges();
+  }
+
+  beforeEach(() => {
+    db = new MemoryGateOfflineDb();
+  });
+
   async function render(shows: object, wanted?: string) {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: GATE_OFFLINE_DB, useValue: db },
+      ],
     });
     settings = TestBed.inject(GateSettings);
     settings.gate.set('');
@@ -37,7 +58,7 @@ describe('GateSetupPage', () => {
     }
     fixture.detectChanges();
     http.expectOne('/api/v1/checkins/shows').flush(shows);
-    await fixture.whenStable();
+    await settle();
     fixture.detectChanges();
   }
 
@@ -105,7 +126,12 @@ describe('GateSetupPage', () => {
 
   it('mostra o erro e tenta de novo', async () => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: GATE_OFFLINE_DB, useValue: db },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(GateSetupPage);
@@ -113,6 +139,7 @@ describe('GateSetupPage', () => {
     http
       .expectOne('/api/v1/checkins/shows')
       .flush({ title: 'Fora do ar', status: 503 }, { status: 503, statusText: 'Unavailable' });
+    await settle();
     fixture.detectChanges();
     expect(element().querySelector('[role="alert"]')!.textContent).toContain('Fora do ar');
     element().querySelector<HTMLButtonElement>('[role="alert"] button')!.click();
@@ -120,5 +147,88 @@ describe('GateSetupPage', () => {
     http.expectOne('/api/v1/checkins/shows').flush([]);
     fixture.detectChanges();
     expect(element().textContent).toContain('Nenhum show hoje');
+  });
+
+  describe('setores deste portão', () => {
+    const sectorChips = () => [
+      ...element().querySelectorAll<HTMLButtonElement>('[aria-label="Setores atendidos"] button'),
+    ];
+
+    async function withSectors() {
+      await render([show('s1', 'Banda A')]);
+      http.expectOne('/api/v1/shows/s1').flush({
+        id: 's1',
+        sectors: [
+          { id: PISTA, name: 'Pista' },
+          { id: CAMAROTE, name: 'Camarote' },
+        ],
+      });
+      await settle();
+      fixture.detectChanges();
+      setGate('Portão B');
+    }
+
+    it('por padrão, o portão atende todos', async () => {
+      await withSectors();
+      expect(sectorChips().map((chip) => chip.textContent!.trim())).toEqual([
+        'Todos',
+        'Pista',
+        'Camarote',
+      ]);
+      expect(sectorChips()[0].getAttribute('aria-pressed')).toBe('true');
+      submit().click();
+      expect(navigate).toHaveBeenCalledWith(['/portaria/shows', 's1'], {
+        queryParams: { portao: 'Portão B' },
+      });
+    });
+
+    it('escolhe os setores, guarda no aparelho e leva ao leitor', async () => {
+      await withSectors();
+      sectorChips()[2].click();
+      fixture.detectChanges();
+      expect(sectorChips()[0].getAttribute('aria-pressed')).toBe('false');
+      expect(sectorChips()[2].getAttribute('aria-pressed')).toBe('true');
+      submit().click();
+      expect(settings.sectorsFor('s1')).toEqual([CAMAROTE]);
+      expect(navigate).toHaveBeenCalledWith(['/portaria/shows', 's1'], {
+        queryParams: { portao: 'Portão B', setores: CAMAROTE },
+      });
+      // "Todos" desfaz a escolha.
+      sectorChips()[0].click();
+      fixture.detectChanges();
+      expect(sectorChips()[2].getAttribute('aria-pressed')).toBe('false');
+    });
+  });
+
+  it('sem conexão, mostra os shows com a lista guardada no aparelho', async () => {
+    await db.savePackage({
+      showId: 's1',
+      savedAt: '2026-12-16T23:31:00Z',
+      pkg: testPackage('chave'),
+      show: show('s1', 'Banda Guardada'),
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: GATE_OFFLINE_DB, useValue: db },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(GateSetupPage);
+    fixture.detectChanges();
+    http.expectOne('/api/v1/checkins/shows').error(new ProgressEvent('error'));
+    await settle();
+    fixture.detectChanges();
+    expect(element().querySelector('.stored')?.textContent).toContain('guardada neste aparelho');
+    expect(element().textContent).toContain('Banda Guardada');
+    // Os setores vêm do pacote guardado.
+    http.expectOne('/api/v1/shows/s1').error(new ProgressEvent('error'));
+    await settle();
+    fixture.detectChanges();
+    expect(element().querySelector('[aria-label="Setores atendidos"]')?.textContent).toContain(
+      'Camarote',
+    );
   });
 });

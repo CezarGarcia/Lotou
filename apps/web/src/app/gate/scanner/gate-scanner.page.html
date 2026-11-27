@@ -22,6 +22,16 @@
     <span class="gate display">{{ gate() }}</span>
   </header>
 
+  <app-offline-status
+    [online]="store.offline.online()"
+    [savedAt]="store.offline.stored()?.savedAt ?? null"
+    [timezone]="store.timezone()"
+    [pending]="store.offline.pending()"
+    [sectors]="sectorNames()"
+    [loginNeeded]="store.offline.loginNeeded()"
+    (login)="login()"
+  />
+
   <dl class="counter" aria-label="Entradas registradas">
     <div>
       <dt>No show</dt>
@@ -79,16 +89,19 @@
     @if (store.history().length > 0) {
       <ol>
         @for (record of store.history(); track record.id) {
-          <li [attr.data-tone]="record.view.tone">
+          <li [attr.data-tone]="record.view.tone" [class.sync]="record.sync">
             <span class="dot" aria-hidden="true"></span>
             <span class="what">
               <strong>{{ record.view.title }}</strong>
               @if (record.view.place) {
                 <span> · {{ record.view.place }}</span>
               }
+              @if (record.sync) {
+                <span class="note">{{ record.view.detail }}</span>
+              }
             </span>
             <time class="mono" [attr.datetime]="record.at">{{
-              clock(record.at, store.show()?.timezone)
+              clock(record.at, store.timezone())
             }}</time>
           </li>
         }
@@ -115,7 +128,7 @@
     [record]="record"
     [gate]="gate()"
     [artist]="store.show()?.artist ?? ''"
-    [timezone]="store.show()?.timezone"
+    [timezone]="store.timezone()"
     (next)="store.dismiss()"
   />
 }

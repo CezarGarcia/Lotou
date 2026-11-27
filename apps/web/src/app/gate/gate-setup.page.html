@@ -27,6 +27,12 @@
           </div>
         }
         @default {
+          @if (stored()) {
+            <p class="stored" role="status">
+              <ng-icon name="lucideCloudOff" aria-hidden="true" />
+              Sem conexão com o servidor. Estes shows têm a lista guardada neste aparelho.
+            </p>
+          }
           @if (list().length === 0) {
             <p class="state panel">
               Nenhum show hoje nem nos próximos dias. Quando houver, ele aparece aqui.
@@ -87,6 +93,35 @@
         }
       </div>
     </fieldset>
+
+    @if (sectors().length > 1) {
+      <fieldset aria-describedby="sectors-help">
+        <legend class="step"><span class="n">3</span> Setores deste portão</legend>
+        <p id="sectors-help" class="help">
+          Opcional. Sem internet, o leitor recusa ingresso de setor que este portão não atende.
+        </p>
+        <div class="suggestions" role="group" aria-label="Setores atendidos">
+          <button
+            class="chip"
+            type="button"
+            [attr.aria-pressed]="chosen().length === 0"
+            (click)="allSectors()"
+          >
+            Todos
+          </button>
+          @for (sector of sectors(); track sector.id) {
+            <button
+              class="chip"
+              type="button"
+              [attr.aria-pressed]="chosen().includes(sector.id)"
+              (click)="toggleSector(sector.id)"
+            >
+              {{ sector.name }}
+            </button>
+          }
+        </div>
+      </fieldset>
+    }
 
     <button class="btn btn-cta btn-lg cta" type="submit" [disabled]="form.invalid">
       <ng-icon name="lucideScanLine" aria-hidden="true" />

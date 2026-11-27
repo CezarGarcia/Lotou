@@ -7,7 +7,8 @@ import { SCAN_ICONS, clockOf } from './scan-result';
  * O resultado da leitura em tela cheia, para ser lido de longe: a cor (verde
  * libera, amarelo já entrou, vermelho barra), o título enorme, o ingresso e o
  * que fazer. A barra do topo encolhe no tempo em que a tela volta sozinha ao
- * leitor. Tocar em qualquer lugar também volta.
+ * leitor. Tocar em qualquer lugar também volta. Uma decisão tomada sem o
+ * servidor leva um carimbo, para a equipe saber que veio da lista do aparelho.
  */
 @Component({
   selector: 'app-scan-result-screen',
@@ -29,6 +30,9 @@ import { SCAN_ICONS, clockOf } from './scan-result';
       </p>
 
       <div class="body">
+        @if (view.offline) {
+          <p class="seal mono">Sem internet · validado neste aparelho</p>
+        }
         <ng-icon [name]="view.icon" aria-hidden="true" />
         <h2 class="display title">{{ view.title }}</h2>
         @if (view.detail) {

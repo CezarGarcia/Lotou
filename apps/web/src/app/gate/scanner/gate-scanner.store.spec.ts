@@ -1,12 +1,31 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthService } from '../../core/auth/auth.service';
+import { NetworkStatus } from '../../core/ui/network-status';
+import { GATE_OFFLINE_DB, MemoryGateOfflineDb } from '../offline/gate-offline-db';
+import { GateOfflineStore, SYNC_MS } from '../offline/gate-offline.store';
+import {
+  CAMAROTE,
+  T1,
+  T2,
+  fakeVerifier,
+  signedCode,
+  testPackage,
+} from '../offline/offline.testing';
+import { SIGNATURE_VERIFIER } from '../offline/ticket-code';
 import { GateFeedback } from './gate-feedback';
-import { RESULT_MS, SUMMARY_POLL_MS, GateScannerStore } from './gate-scanner.store';
+import {
+  CHECKIN_TIMEOUT_MS,
+  RESULT_MS,
+  SUMMARY_POLL_MS,
+  GateScannerStore,
+} from './gate-scanner.store';
 import { SAME_CODE_WINDOW_MS } from './scan-debounce';
 
 const NOW = Date.parse('2026-12-16T23:30:00Z');
+const PACKAGE_URL = '/api/v1/checkins/shows/s1/offline-package';
 const SHOWS = [
   {
     showId: 's1',
@@ -23,17 +42,23 @@ describe('GateScannerStore', () => {
   let store: GateScannerStore;
   let http: HttpTestingController;
   let feedback: { signal: ReturnType<typeof vi.fn>; unlock: ReturnType<typeof vi.fn> };
+  let online: WritableSignal<boolean>;
 
   beforeEach(async () => {
     vi.useFakeTimers({ now: NOW });
     feedback = { signal: vi.fn(), unlock: vi.fn() };
+    online = signal(true);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         GateScannerStore,
+        GateOfflineStore,
         { provide: GateFeedback, useValue: feedback },
         { provide: AuthService, useValue: { login: vi.fn() } },
+        { provide: NetworkStatus, useValue: { online } },
+        { provide: GATE_OFFLINE_DB, useValue: new MemoryGateOfflineDb() },
+        { provide: SIGNATURE_VERIFIER, useValue: fakeVerifier },
       ],
     });
     store = TestBed.inject(GateScannerStore);
@@ -45,6 +70,8 @@ describe('GateScannerStore', () => {
     http
       .expectOne('/api/v1/checkins/shows/s1/summary')
       .flush({ checkedIn: 10, byGate: [{ gate: 'Portão B', count: 4 }], rejected: 1 });
+    http.expectOne(PACKAGE_URL).flush(testPackage('chave'));
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   afterEach(() => {
@@ -125,19 +152,146 @@ describe('GateScannerStore', () => {
     expect(feedback.signal).toHaveBeenCalledWith('error');
   });
 
-  it('sem rede, pede para ler de novo', () => {
-    store.submit('A', 'camera');
+  it('sem resposta do servidor, valida no aparelho com o pacote do show', async () => {
+    const code = signedCode(T1);
+    store.submit(code, 'camera');
     checkin().error(new ProgressEvent('error'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.checking()).toBe(false);
+    expect(store.result()?.view).toMatchObject({
+      tone: 'ok',
+      title: 'Entrada liberada',
+      place: 'Pista',
+      offline: true,
+    });
+    expect(store.gateCount()).toBe(5);
+    expect(store.offline.pending()).toBe(1);
+  });
+
+  it('servidor sem responder em 4 s: valida no aparelho', async () => {
+    store.submit(signedCode(T2), 'manual');
+    const request = checkin();
+    await vi.advanceTimersByTimeAsync(CHECKIN_TIMEOUT_MS);
+    expect(request.cancelled).toBe(true);
+    expect(store.result()?.view).toMatchObject({
+      tone: 'warn',
+      title: 'Ingresso já utilizado',
+      detail: 'Entrou às 20:10 pelo Portão A.',
+      offline: true,
+    });
+  });
+
+  it('sem internet, nem tenta o servidor; a segunda leitura é "já utilizado"', async () => {
+    online.set(false);
+    const code = signedCode(T1);
+    store.submit(code, 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectNone('/api/v1/checkins');
+    expect(store.result()?.view.tone).toBe('ok');
+
+    store.submit(code, 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.result()?.view).toMatchObject({
+      tone: 'warn',
+      detail: 'Entrou às 20:30 pelo Portão B.',
+      offline: true,
+    });
+  });
+
+  it('o ingresso aceito aqui e ainda não enviado é decidido aqui, mesmo com internet', async () => {
+    online.set(false);
+    const code = signedCode(T1);
+    store.submit(code, 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    online.set(true);
+    store.submit(code, 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectNone('/api/v1/checkins');
+    expect(store.result()?.view).toMatchObject({ tone: 'warn', offline: false });
+  });
+
+  it('sem internet, o portão que não atende o setor manda a pessoa para outro', async () => {
+    store.start('s1', 'Portão B', [CAMAROTE]);
+    online.set(false);
+    store.submit(signedCode(T1), 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.result()?.view).toMatchObject({
+      tone: 'warn',
+      title: 'Setor de outro portão',
+      place: 'Pista',
+    });
+    expect(store.offline.pending()).toBe(0);
+  });
+
+  it('sem rede e sem a lista do show, pede para ler de novo', async () => {
+    store.start('outro', 'Portão B');
+    online.set(false);
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    http.expectOne('/api/v1/checkins/shows/outro/summary').flush({});
+    store.submit('A', 'camera');
+    await vi.advanceTimersByTimeAsync(0);
     expect(store.result()?.view).toMatchObject({
       tone: 'error',
       title: 'Não foi possível validar',
     });
+    expect(store.result()?.view.detail).toContain('não tem a lista do show');
     expect(store.checking()).toBe(false);
+  });
+
+  it('a entrada liberada online também vale na lista do aparelho', async () => {
+    const code = signedCode(T1);
+    store.submit(code, 'manual');
+    checkin().flush({
+      result: 'ACCEPTED',
+      ticket: { ticketId: T1, sectorName: 'Pista', seat: null },
+      firstEntry: null,
+    });
+    vi.advanceTimersByTime(SAME_CODE_WINDOW_MS);
+    online.set(false);
+    store.submit(code, 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.result()?.view).toMatchObject({
+      tone: 'warn',
+      detail: 'Entrou às 20:30 pelo Portão B.',
+    });
+  });
+
+  it('a entrada dupla revelada no envio aparece nas últimas leituras', async () => {
+    online.set(false);
+    store.submit(signedCode(T1), 'manual');
+    await vi.advanceTimersByTimeAsync(0);
+    online.set(true);
+    await vi.advanceTimersByTimeAsync(SYNC_MS);
+    http.match('/api/v1/checkins/shows/s1/summary').forEach((poll) => poll.flush({}));
+    const request = http.expectOne('/api/v1/checkins/offline');
+    const [scan] = request.request.body.scans;
+    request.flush({
+      results: [
+        {
+          id: scan.id,
+          outcome: 'DUPLICATE',
+          firstEntry: { gate: 'Portão A', checkedInAt: '2026-12-16T23:20:00Z' },
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.history()[0]).toMatchObject({
+      sync: true,
+      view: {
+        tone: 'warn',
+        title: 'Entrada dupla detectada',
+        detail: 'Já tinha entrado às 20:20 pelo Portão A.',
+        place: 'Pista',
+      },
+    });
+    // O aviso não ocupa a tela nem apita: a pessoa já entrou.
+    expect(feedback.signal).toHaveBeenCalledTimes(1);
   });
 
   it('se a resposta se perdeu, o "já utilizado" pelo mesmo portão logo depois é a mesma pessoa', () => {
     store.submit('A', 'manual');
-    checkin().flush(null, { status: 504, statusText: 'Gateway Timeout' });
+    checkin().flush(null, { status: 500, statusText: 'Internal Server Error' });
     store.submit('A', 'manual');
     checkin().flush({
       result: 'ALREADY_USED',
@@ -149,7 +303,7 @@ describe('GateScannerStore', () => {
 
   it('um "já utilizado" de outro portão continua amarelo, mesmo depois de uma falha', () => {
     store.submit('A', 'manual');
-    checkin().flush(null, { status: 503, statusText: 'Unavailable' });
+    checkin().flush(null, { status: 500, statusText: 'Internal Server Error' });
     store.submit('A', 'manual');
     checkin().flush({
       result: 'ALREADY_USED',

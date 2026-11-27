@@ -185,6 +185,17 @@
     font-size: 0.75rem;
   }
 
+  // Aviso do envio das leituras sem internet: o motivo numa segunda linha.
+  .sync .what {
+    white-space: normal;
+  }
+
+  .note {
+    display: block;
+    color: var(--lt-muted);
+    font-size: 0.8125rem;
+  }
+
   .empty {
     margin: 0;
     color: var(--lt-muted);

@@ -8,10 +8,13 @@ import {
   lucideHistory,
   lucideLock,
   lucideScanQrCode,
+  lucideSignpost,
+  lucideTriangleAlert,
   lucideWifiOff,
 } from '@ng-icons/lucide';
 import { formatInTimezone } from '../../core/format/show-date.pipe';
 import { CheckinResponse, CheckinTicket } from '../data/checkin.api';
+import type { SyncNotice } from '../offline/gate-offline.store';
 
 /** A cor da tela: verde libera, amarelo já entrou, vermelho barra. */
 export type ScanTone = 'ok' | 'warn' | 'error';
@@ -27,6 +30,8 @@ export const SCAN_ICONS = {
   lucideHistory,
   lucideLock,
   lucideScanQrCode,
+  lucideSignpost,
+  lucideTriangleAlert,
   lucideWifiOff,
 };
 
@@ -43,6 +48,8 @@ export interface ScanView {
   ticket?: string;
   /** O que a portaria faz agora, quando não é óbvio. */
   advice?: string;
+  /** Decidido no aparelho, sem o servidor (ADR 38). */
+  offline?: boolean;
 }
 
 /** Final do ingresso: os últimos 8 caracteres do id, que o comprador vê no pedido. */
@@ -152,6 +159,18 @@ export function describeCheckin(
         place,
         ticket,
       };
+    case 'WRONG_SECTOR':
+      return {
+        tone: 'warn',
+        icon: 'lucideSignpost',
+        title: 'Setor de outro portão',
+        detail: response.ticket?.sectorName
+          ? `Ingresso do setor ${response.ticket.sectorName}, que este portão não atende.`
+          : 'Este portão não atende o setor deste ingresso.',
+        place,
+        ticket,
+        advice: 'Indique à pessoa o portão do setor dela.',
+      };
     default:
       return {
         tone: 'error',
@@ -191,9 +210,69 @@ export function acceptedOnRetry(response: CheckinResponse): ScanView {
   };
 }
 
+/**
+ * O que o envio de uma leitura feita sem internet revelou. A pessoa já
+ * entrou: não há o que recusar, mas a equipe precisa saber (o conflito fica
+ * registrado no servidor, com alerta para a supervisão).
+ */
+export function describeSyncNotice(
+  notice: SyncNotice,
+  options: { timezone?: string; now?: number } = {},
+): ScanView {
+  const { timezone, now = Date.now() } = options;
+  const { result, ticket } = notice;
+  const place = placeOf(
+    ticket ? { ticketId: ticket.id, sectorName: ticket.sectorName, seat: ticket.seat } : null,
+  );
+  const end = `…${notice.scan.ticketId.slice(-8)}`;
+  switch (result.outcome) {
+    case 'DUPLICATE':
+      return {
+        tone: 'warn',
+        icon: 'lucideHistory',
+        title: 'Entrada dupla detectada',
+        detail: result.firstEntry
+          ? `Já tinha entrado ${when(result.firstEntry.checkedInAt, timezone, now)} pelo ${result.firstEntry.gate}.`
+          : 'O ingresso já tinha entrado por outro portão.',
+        place,
+        ticket: end,
+      };
+    case 'CONFLICT': {
+      const titles: Record<string, string> = {
+        CANCELLED: 'Entrou com ingresso cancelado',
+        WRONG_SHOW: 'Entrou com ingresso de outro show',
+      };
+      return {
+        tone: 'warn',
+        icon: 'lucideTriangleAlert',
+        title: titles[result.kind] ?? 'Entrou com ingresso fora da lista',
+        detail: 'A lista do aparelho estava desatualizada. O caso ficou registrado.',
+        place,
+        ticket: end,
+      };
+    }
+    default:
+      return {
+        tone: 'error',
+        icon: 'lucideCircleAlert',
+        title: 'Leitura sem internet recusada',
+        detail:
+          result.reason === 'INVALID_TIME'
+            ? 'O relógio do aparelho estava errado na hora da leitura.'
+            : 'O servidor não reconheceu o código.',
+        place,
+        ticket: end,
+      };
+  }
+}
+
 /** Uma frase para leitores de tela e para o histórico. */
 export function scanSentence(view: ScanView): string {
-  return [view.title, view.place, view.detail].filter(Boolean).join('. ').replace(/\.\./g, '.');
+  const offline = view.offline ? 'Validado neste aparelho, sem internet' : '';
+  return [view.title, view.place, view.detail, offline]
+    .filter(Boolean)
+    .join('. ')
+    .replace(/\.\./g, '.');
 }
 
 /** "23:42:17" no fuso do show: a hora de cada leitura, com segundos. */
