@@ -1,0 +1,38 @@
+# Bancos dos serviços, só leitura (usuário observer): os painéis e os alertas das
+# invariantes de venda e portaria consultam a fonte da verdade, não uma métrica
+# que o próprio serviço poderia errar.
+apiVersion: 1
+
+datasources:
+  - name: Postgres inventory
+    type: grafana-postgresql-datasource
+    uid: pg-inventory
+    url: postgres:5432
+    user: observer
+    jsonData: &pg
+      database: inventory
+      sslmode: disable
+      postgresVersion: 1800
+      maxOpenConns: 2
+    secureJsonData: &pgsecret
+      password: ${OBSERVER_DB_PASSWORD}
+
+  - name: Postgres orders
+    type: grafana-postgresql-datasource
+    uid: pg-orders
+    url: postgres:5432
+    user: observer
+    jsonData:
+      <<: *pg
+      database: orders
+    secureJsonData: *pgsecret
+
+  - name: Postgres checkin
+    type: grafana-postgresql-datasource
+    uid: pg-checkin
+    url: postgres:5432
+    user: observer
+    jsonData:
+      <<: *pg
+      database: checkin
+    secureJsonData: *pgsecret

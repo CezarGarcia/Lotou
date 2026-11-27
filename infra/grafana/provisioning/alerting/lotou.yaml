@@ -1,0 +1,728 @@
+# Alertas do Lotou (docs/projeto.md, "Alertas"), provisionados no Grafana. Chegam
+# por e-mail ao Mailpit (http://localhost:8025), para plantao@lotou.test.
+#
+# As invariantes (venda além da capacidade, entrada dupla, saga presa, reembolso
+# que falhou) consultam os bancos, só leitura; os SLOs e a mensageria, o Prometheus.
+# Um alerta sem dados fica OK: sem tráfego, não há erro a contar.
+apiVersion: 1
+contactPoints:
+- orgId: 1
+  name: Plantão
+  receivers:
+  - uid: plantao-email
+    type: email
+    settings:
+      addresses: plantao@lotou.test
+      singleEmail: true
+    disableResolveMessage: false
+policies:
+- orgId: 1
+  receiver: Plantão
+  group_by:
+  - grafana_folder
+  - alertname
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+groups:
+- orgId: 1
+  name: Invariantes
+  folder: Lotou
+  interval: 1m
+  rules:
+  - uid: venda-alem-da-capacidade
+    title: Venda além da capacidade
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: pg-inventory
+      model:
+        refId: A
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: pg-inventory
+        rawSql: |-
+          SELECT
+            (SELECT count(*) FROM (
+               SELECT l.id FROM lots l
+               JOIN reservation_items i ON i.lot_id = l.id
+               JOIN reservations r ON r.id = i.reservation_id AND r.status IN ('HELD', 'CONFIRMED')
+               GROUP BY l.id, l.quantity HAVING count(*) > l.quantity) AS lotes)
+          + (SELECT count(*) FROM (
+               SELECT s.id FROM sectors s
+               JOIN reservations r ON r.show_id = s.show_id AND r.sector_id = s.id AND r.status IN ('HELD', 'CONFIRMED')
+               GROUP BY s.id, s.capacity HAVING sum(r.quantity) > s.capacity) AS setores)
+          + (SELECT count(*) FROM (
+               SELECT i.seat_id FROM reservation_items i
+               JOIN reservations r ON r.id = i.reservation_id AND r.status IN ('HELD', 'CONFIRMED')
+               WHERE i.seat_id IS NOT NULL GROUP BY i.seat_id HAVING count(*) > 1) AS cadeiras) AS violacoes
+        rawQuery: true
+        editorMode: code
+        format: table
+        intervalMs: 60000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Ingressos vendidos além da capacidade ou cadeira com duas reservas
+      description: 'A invariante do sistema quebrou: um lote ou setor tem mais reservas ativas que ingressos, ou uma cadeira
+        está em duas reservas. Confira com `make load-check` e veja os traces da reserva.'
+      dashboard: http://localhost:3000/d/lotou-abertura
+    labels:
+      severidade: critica
+    isPaused: false
+  - uid: entrada-dupla
+    title: Entrada dupla na portaria
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: pg-checkin
+      model:
+        refId: A
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: pg-checkin
+        rawSql: SELECT count(*) AS violacoes FROM (SELECT ticket_id FROM checkins GROUP BY ticket_id HAVING count(*) > 1)
+          AS duplas
+        rawQuery: true
+        editorMode: code
+        format: table
+        intervalMs: 60000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Um ingresso entrou duas vezes
+      description: 'Dois check-ins para o mesmo ingresso. A constraint única de `checkins.ticket_id` deveria impedir: confira
+        se ela existe.'
+      dashboard: http://localhost:3000/d/lotou-portaria
+    labels:
+      severidade: critica
+    isPaused: false
+  - uid: saga-presa
+    title: Saga presa
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: pg-orders
+      model:
+        refId: A
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: pg-orders
+        rawSql: SELECT count(*) AS pedidos FROM orders WHERE status = 'PENDING' AND created_at < now() - interval '15 minutes'
+        rawQuery: true
+        editorMode: code
+        format: table
+        intervalMs: 60000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Pedido em PENDING há mais de 15 minutos
+      description: A saga de compra não terminou nem compensou. Veja `saga_state` do pedido e o trace dele; o job de prazos
+        repete os comandos.
+      dashboard: http://localhost:3000/d/lotou-negocio
+    labels:
+      severidade: alta
+    isPaused: false
+  - uid: reembolso-falhou
+    title: Reembolso falhou
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: pg-orders
+      model:
+        refId: A
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: pg-orders
+        rawSql: SELECT count(*) AS pedidos FROM orders WHERE status = 'REFUND_FAILED'
+        rawQuery: true
+        editorMode: code
+        format: table
+        intervalMs: 60000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: 'Pedido em REFUND_FAILED: dinheiro do comprador parado'
+      description: O estorno falhou cinco vezes. O produtor reprocessa na aba Financeiro do painel (ou `POST /api/v1/orders/{id}/refund/retry`).
+      dashboard: http://localhost:3000/d/lotou-negocio
+    labels:
+      severidade: alta
+    isPaused: false
+- orgId: 1
+  name: SLOs
+  folder: Lotou
+  interval: 1m
+  rules:
+  - uid: checkout-burn-rate-rapido
+    title: 'Checkout: orçamento de erro queimando rápido'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 3600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: &id001
+          type: prometheus
+          uid: prometheus
+        expr: (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order",http_response_status_code=~"5.."}[1h]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[1h])))
+          > 14.4 * 0.005 and (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order",http_response_status_code=~"5.."}[5m]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[5m])))
+          > 14.4 * 0.005
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    for: 2m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Erros do checkout consomem o orçamento do mês 14,4 vezes mais rápido que o aceitável
+      description: 'SLO: 99,5% das reservas e pedidos sem erro 5xx em 30 dias (ADR 35). Com 14,4x de consumo em 1 h (e ainda
+        em 5 min), 2% do orçamento do mês se foi em uma hora. Abra o dashboard RED e os traces com erro. A consulta só devolve
+        valor quando as duas janelas passam do limite, e o valor é a taxa de erro da janela longa.'
+      dashboard: http://localhost:3000/d/lotou-red
+    labels:
+      severidade: critica
+    isPaused: false
+  - uid: checkout-burn-rate-lento
+    title: 'Checkout: orçamento de erro queimando devagar'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 21600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: *id001
+        expr: (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order",http_response_status_code=~"5.."}[6h]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[6h])))
+          > 6 * 0.005 and (sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order",http_response_status_code=~"5.."}[30m]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[30m])))
+          > 6 * 0.005
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    for: 15m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Erros do checkout consomem o orçamento do mês 6 vezes mais rápido que o aceitável
+      description: 'SLO: 99,5% das reservas e pedidos sem erro 5xx em 30 dias (ADR 35). Com 6x de consumo em 6 h, 5% do orçamento
+        se foi. A consulta só devolve valor quando as duas janelas passam do limite, e o valor é a taxa de erro da janela
+        longa.'
+      dashboard: http://localhost:3000/d/lotou-red
+    labels:
+      severidade: alta
+    isPaused: false
+  - uid: portaria-lenta
+    title: Portaria lenta
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: *id001
+        expr: histogram_quantile(0.99, sum by (le) (rate(checkin_duration_seconds_bucket[5m])))
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.2
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: p99 do check-in acima de 200 ms por 5 minutos
+      description: Fila na porta do show. Veja o dashboard da portaria e os traces lentos do checkin-service (Postgres e redis-core).
+      dashboard: http://localhost:3000/d/lotou-portaria
+    labels:
+      severidade: alta
+    isPaused: false
+- orgId: 1
+  name: Mensageria
+  folder: Lotou
+  interval: 1m
+  rules:
+  - uid: consumer-lag
+    title: Consumidor atrasado em order.events
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: *id001
+        expr: max(kafka_consumer_group_lag_sum_ratio{topic="order.events"})
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 1000
+    for: 2m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Lag de um consumer group de order.events acima de 1.000 mensagens por 2 minutos
+      description: Um consumidor não acompanha. Na portaria, ingresso recém-comprado ainda não seria aceito. Veja o dashboard
+        de mensageria.
+      dashboard: http://localhost:3000/d/lotou-mensageria
+    labels:
+      severidade: alta
+    isPaused: false
+  - uid: dlq
+    title: Mensagem na DLQ do RabbitMQ
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: *id001
+        expr: sum(rabbitmq_message_current{rabbitmq_queue_name=~".+\\.dlq",state="ready"})
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Há mensagem em uma DLQ do notification-service
+      description: Um ingresso, e-mail ou relatório não foi entregue depois das tentativas. Corrija a causa e rode `make requeue-notifications`.
+      dashboard: http://localhost:3000/d/lotou-mensageria
+    labels:
+      severidade: alta
+    isPaused: false
+  - uid: dlt
+    title: Mensagem nova numa DLT do Kafka
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource: *id001
+        expr: sum(delta(kafka_partition_current_offset_ratio{topic=~".+\\.dlt"}[15m]))
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        intervalMs: 1000
+        maxDataPoints: 43200
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Uma mensagem foi para um tópico .dlt nos últimos 15 minutos
+      description: Um consumidor desistiu de uma mensagem (malformada ou falhando depois das tentativas). Leia-a no Kafka
+        UI (http://localhost:8090).
+      dashboard: http://localhost:3000/d/lotou-mensageria
+    labels:
+      severidade: media
+    isPaused: false

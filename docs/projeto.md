@@ -630,7 +630,6 @@ As métricas da infraestrutura são lidas pelo próprio Collector (receivers do 
 - `ticket_reservations_total{type, result}`: pista ou cadeira; reservado, esgotado, assento ocupado ou limite do CPF
 - `seat_hold_conflicts_total`: duas pessoas tentando o mesmo assento
 - `queue_length`, `queue_admitted_total` e `queue_wait_seconds`
-- `lot_transitions_total`
 - `coupon_redemptions_total{result}`
 - `checkins_total{gate, result}`: liberado, já utilizado, cancelado ou inválido
 - `refunds_total{status}`
@@ -639,6 +638,8 @@ As métricas da infraestrutura são lidas pelo próprio Collector (receivers do 
 - `llm_tokens_total` e `llm_request_duration_seconds`
 
 ### Dashboards
+
+Provisionados no Grafana do Compose (pasta Lotou), gerados por `infra/grafana/dashboards.py`. Os painéis das invariantes e das tabelas por show consultam os bancos com um usuário só de leitura.
 
 1. **Abertura de vendas ao vivo:** fila, admissões, reservas por segundo, ingressos restantes por lote e setor, e conflitos de assento
 2. **Portaria ao vivo:** entradas por minuto e por portão, ocupação do local e leituras recusadas
@@ -650,6 +651,8 @@ As métricas da infraestrutura são lidas pelo próprio Collector (receivers do 
 
 ### Alertas
 
+Regras do Grafana provisionadas em `infra/grafana/provisioning/alerting/lotou.yaml`, avaliadas a cada minuto, com e-mail para o Mailpit (ADR 35). O SLO do checkout é 99,5% das reservas e dos pedidos sem erro 5xx, em 30 dias.
+
 | Alerta | Condição | Por quê |
 | --- | --- | --- |
 | Venda além da capacidade | ingressos emitidos acima da capacidade de um setor, ou um assento com dois ingressos | é a invariante do sistema |
@@ -660,6 +663,7 @@ As métricas da infraestrutura são lidas pelo próprio Collector (receivers do 
 | DLQ | qualquer mensagem em `notifications.email.dlq` | ingresso que não chegou ao comprador |
 | Saga presa | pedido em PENDING há mais de 15 min | compensação falhou |
 | Reembolso falhou | qualquer pedido em REFUND\_FAILED | dinheiro do comprador parado |
+| DLT | mensagem nova num tópico `.dlt` nos últimos 15 min | um consumidor desistiu de uma mensagem |
 
 ### E o Datadog?
 
@@ -770,6 +774,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
 | 32 | Painel com várias instâncias: interesse num ZSET com prazo, o segundo de cada show disputado num script Lua e o feed registrado uma vez por `eventId`, fora das gerações | líder eleito calculando tudo; calcular em toda instância | sem failover nem trabalho repetido; o replay não repete linhas no feed |
 | 33 | Uso do cupom contado no Postgres, na mesma transação que cria o pedido | contador num script Lua no Redis | pedido e uso no mesmo banco, sem reconciliação; o update condicional garante o limite exato |
+| 35 | SLO do checkout (99,5% sem 5xx em 30 dias) com alerta de burn rate em janelas múltiplas; alertas no Grafana, com as invariantes consultadas nos bancos | regras no Prometheus com Alertmanager; métrica de invariante emitida pelo serviço | menos componentes, e a invariante é conferida na fonte da verdade, não pelo serviço que poderia ter errado |
 | 34 | Reembolso em massa com fila em `refunds` e um job que começa N por segundo | mandar todos os estornos de uma vez; fila no RabbitMQ | o gateway de pagamento não recebe milhares de estornos de uma vez; o estado do reembolso fica junto do pedido |
 
 ## Testes, carga e caos

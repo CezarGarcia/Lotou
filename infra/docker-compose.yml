@@ -368,6 +368,7 @@ services:
       ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
       PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:-payments}
       CHECKIN_DB_PASSWORD: ${CHECKIN_DB_PASSWORD:-checkin}
+      OBSERVER_DB_PASSWORD: ${OBSERVER_DB_PASSWORD:-observer}
     ports:
       - "5432:5432"
     volumes:
@@ -579,8 +580,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.166.0
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-lotou}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lotou}
+      OBSERVER_DB_PASSWORD: ${OBSERVER_DB_PASSWORD:-observer}
       RABBITMQ_USER: ${RABBITMQ_USER:-lotou}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lotou}
       # Porcentagem dos traces rápidos e sem erro que vão ao Tempo (os outros vão todos).
@@ -597,10 +597,22 @@ services:
   # Tempo, Prometheus, Loki e Grafana num container só (desenvolvimento).
   lgtm:
     image: grafana/otel-lgtm:0.41.1
+    environment:
+      OBSERVER_DB_PASSWORD: ${OBSERVER_DB_PASSWORD:-observer}
+      # Os alertas chegam por e-mail no Mailpit (http://localhost:8025).
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: mailpit:1025
+      GF_SMTP_FROM_ADDRESS: alertas@lotou.test
+      GF_SMTP_FROM_NAME: Alertas do Lotou
     ports:
       - "3000:3000"
     volumes:
       - lgtm-data:/data
+      # Dashboards, fontes de dados (bancos, só leitura) e alertas do Lotou, ao lado dos que vêm na imagem.
+      - ./grafana/dashboards:/otel-lgtm/lotou-dashboards:ro
+      - ./grafana/provisioning/dashboards/lotou.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/lotou.yaml:ro
+      - ./grafana/provisioning/datasources/lotou.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/lotou.yaml:ro
+      - ./grafana/provisioning/alerting/lotou.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/lotou.yaml:ro
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/ready"]
       interval: 5s

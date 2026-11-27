@@ -22,8 +22,9 @@ receivers:
   postgresql:
     endpoint: postgres:5432
     transport: tcp
-    username: ${env:POSTGRES_USER:-lotou}
-    password: ${env:POSTGRES_PASSWORD:-lotou}
+    # Usuário só de leitura (pg_monitor), criado no init do Postgres.
+    username: observer
+    password: ${env:OBSERVER_DB_PASSWORD:-observer}
     databases: [inventory, orders, payments, checkin]
     collection_interval: 15s
     tls:
