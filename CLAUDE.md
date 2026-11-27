@@ -30,6 +30,7 @@ Na raiz (`make help` lista todos):
 - `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
 - `make test`: roda os testes de todos os serviços
 - `make smoke`: confere o ambiente no ar: compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo (precisa do `make seed` do dia, que cria um show de hoje)
+- `make e2e`: testes ponta a ponta com Playwright na loja no ar (compra com cupom, cadeira no mapa, cancelamento, painel do produtor e portaria no celular); precisa do `make seed` do dia. Na primeira vez, `cd e2e && npx playwright install chromium`
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
@@ -44,6 +45,7 @@ Por serviço:
 - `services/payment-mock`, `services/checkin-service`: `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format:check`
 - `services/analytics-service`, `services/notification-service`: `uv run pytest`, `uv run ruff check`, `uv run mypy` (ou `make test-analytics-service` e `make test-notification-service` na raiz)
 - `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
+- `e2e`: `npx playwright test`, `npm run typecheck`, `npm run format:check` (`CHROMIUM_EXECUTABLE_PATH` aponta para um Chromium já instalado)
 - `contracts/`: `python contracts/check.py` confere os JSON Schemas das mensagens e os exemplos
 
 ## Convenções obrigatórias
