@@ -25,7 +25,10 @@ from pydantic.alias_generators import to_camel
 TOPIC_CATALOG = "shows.catalog"
 TOPIC_ORDERS = "order.events"
 TOPIC_INVENTORY = "inventory.events"
-TOPICS: tuple[str, ...] = (TOPIC_CATALOG, TOPIC_ORDERS, TOPIC_INVENTORY)
+TOPIC_CHECKIN = "checkin.events"
+# Os tópicos que o consumidor ao vivo lê, e o replay também: o replay só
+# reconstrói o que o consumidor ao vivo montou se ler exatamente os mesmos.
+TOPICS: tuple[str, ...] = (TOPIC_CATALOG, TOPIC_ORDERS, TOPIC_INVENTORY, TOPIC_CHECKIN)
 
 Uuid = Annotated[
     str,
@@ -90,6 +93,9 @@ class Sector(ContractModel):
 
 
 ShowStatus = Literal["PUBLISHED", "ON_SALE", "SALES_CLOSED", "FINISHED", "CANCELLED"]
+# Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o
+# produtor (sai do valor a receber dele).
+FeePaidBy = Literal["BUYER", "PRODUCER"]
 
 
 class ShowSnapshot(ContractModel):
@@ -109,6 +115,8 @@ class ShowSnapshot(ContractModel):
     venue: Venue
     sectors: list[Sector] = Field(min_length=1)
     updated_at: UtcDatetime
+    # Fase 6. Shows publicados antes dela não têm o campo: o comprador pagava.
+    service_fee_paid_by: FeePaidBy = "BUYER"
 
 
 # ---------------------------------------------------------------- order.events
@@ -123,22 +131,41 @@ class OrderItem(ContractModel):
     unit_price_cents: Cents
 
 
-class OrderCreated(ContractModel):
+class Pricing(ContractModel):
+    """Valores do pedido da fase 6: subtotal, desconto do cupom e taxa de serviço.
+
+    Os eventos publicados antes da fase 6 não têm esses campos, e o replay lê o
+    `order.events` desde o começo. Para eles valem os padrões: sem cupom, sem
+    taxa, e o subtotal é o total (era assim que o pedido era cobrado).
+    """
+
+    total_cents: Cents
+    subtotal_cents: Cents | None = None
+    discount_cents: Cents = 0
+    service_fee_cents: Cents = 0
+    service_fee_paid_by: FeePaidBy = "BUYER"
+    coupon_id: Uuid | None = None
+    coupon_code: str | None = None
+
+    @property
+    def subtotal(self) -> int:
+        return self.subtotal_cents if self.subtotal_cents is not None else self.total_cents
+
+
+class OrderCreated(Pricing):
     order_id: Uuid
     buyer_id: NonEmpty
     show_id: Uuid
     reservation_id: Uuid
-    total_cents: Cents
     items: list[OrderItem] = Field(min_length=1)
     created_at: UtcDatetime
 
 
-class OrderConfirmed(ContractModel):
+class OrderConfirmed(Pricing):
     order_id: Uuid
     buyer_id: NonEmpty
     show_id: Uuid
     reservation_id: Uuid
-    total_cents: Cents
     items: list[OrderItem] = Field(min_length=1)
     confirmed_at: UtcDatetime
 
@@ -170,7 +197,49 @@ class TicketsIssued(ContractModel):
     issued_at: UtcDatetime
 
 
-OrderEvent = OrderCreated | OrderConfirmed | OrderCancelled | TicketsIssued
+class TicketsCancelled(ContractModel):
+    """Os ingressos foram cancelados: o pedido entra em reembolso (`REFUNDING`)."""
+
+    order_id: Uuid
+    buyer_id: NonEmpty
+    show_id: Uuid
+    ticket_ids: list[Uuid] = Field(min_length=1)
+    # Lido como texto, como o motivo do OrderCancelled.
+    reason: NonEmpty
+    cancelled_at: UtcDatetime
+
+
+class OrderRefunded(Pricing):
+    """Estorno concluído. `refunded_cents` é o que o comprador recebeu de volta (o total pago)."""
+
+    order_id: Uuid
+    buyer_id: NonEmpty
+    show_id: Uuid
+    reservation_id: Uuid
+    refunded_cents: Cents
+    reason: NonEmpty
+    refunded_at: UtcDatetime
+    # O OrderRefunded não traz `totalCents`: o que o comprador pagou é o `refundedCents`.
+    total_cents: Cents = 0
+
+
+class OrderRefundFailed(ContractModel):
+    order_id: Uuid
+    buyer_id: NonEmpty
+    show_id: Uuid
+    attempts: int = Field(ge=1)
+    failed_at: UtcDatetime
+
+
+OrderEvent = (
+    OrderCreated
+    | OrderConfirmed
+    | OrderCancelled
+    | TicketsIssued
+    | TicketsCancelled
+    | OrderRefunded
+    | OrderRefundFailed
+)
 
 # ------------------------------------------------------------ inventory.events
 
@@ -191,7 +260,23 @@ class LotSoldOut(ContractModel):
     sold_out_at: UtcDatetime
 
 
-Payload = ShowSnapshot | OrderEvent | LotOpened | LotSoldOut
+# -------------------------------------------------------------- checkin.events
+
+
+class TicketCheckedIn(ContractModel):
+    """Entrada registrada na portaria. A chave do tópico é o `showId`, não o pedido."""
+
+    ticket_id: Uuid
+    show_id: Uuid
+    order_id: Uuid
+    sector_id: Uuid
+    sector_name: NonEmpty
+    seat: str | None
+    gate: NonEmpty
+    checked_in_at: UtcDatetime
+
+
+Payload = ShowSnapshot | OrderEvent | LotOpened | LotSoldOut | TicketCheckedIn
 
 # (tipo, versão) -> modelo do payload. Só o que muda um read model está aqui.
 PAYLOADS: dict[tuple[str, int], type[ContractModel]] = {
@@ -201,13 +286,21 @@ PAYLOADS: dict[tuple[str, int], type[ContractModel]] = {
     ("OrderConfirmed", 1): OrderConfirmed,
     ("OrderCancelled", 1): OrderCancelled,
     ("TicketsIssued", 1): TicketsIssued,
+    ("TicketsCancelled", 1): TicketsCancelled,
+    ("OrderRefunded", 1): OrderRefunded,
+    ("OrderRefundFailed", 1): OrderRefundFailed,
     ("LotOpened", 1): LotOpened,
     ("LotSoldOut", 1): LotSoldOut,
+    ("TicketCheckedIn", 1): TicketCheckedIn,
 }
 
 # Tipos conhecidos que, de propósito, não alimentam read model: a reserva
-# confirmada ou liberada já aparece no pedido (OrderConfirmed, OrderCancelled).
-DELIBERATELY_IGNORED = frozenset({"ReservationConfirmed", "ReservationReleased"})
+# confirmada, liberada ou devolvida já aparece no pedido (OrderConfirmed,
+# OrderCancelled, OrderRefunded), e a leitura recusada na portaria não muda
+# ingresso nenhum.
+DELIBERATELY_IGNORED = frozenset(
+    {"ReservationConfirmed", "ReservationReleased", "ReservationReturned", "CheckinRejected"}
+)
 
 
 class ContractError(Exception):

@@ -14,6 +14,7 @@ TOPIC_CONFIGS: dict[str, dict[str, str]] = {
     "shows.catalog": {"cleanup.policy": "compact"},
     "order.events": {"retention.ms": "-1"},
     "inventory.events": {"retention.ms": "-1"},
+    "checkin.events": {"retention.ms": "-1"},
 }
 
 

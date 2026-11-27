@@ -15,7 +15,11 @@ from analytics.contracts import (
     OrderCancelled,
     OrderConfirmed,
     OrderCreated,
+    OrderRefunded,
+    OrderRefundFailed,
     ShowSnapshot,
+    TicketCheckedIn,
+    TicketsCancelled,
     TicketsIssued,
     parse,
 )
@@ -28,8 +32,12 @@ EXPECTED_MODEL = {
     "OrderConfirmed": OrderConfirmed,
     "OrderCancelled": OrderCancelled,
     "TicketsIssued": TicketsIssued,
+    "TicketsCancelled": TicketsCancelled,
+    "OrderRefunded": OrderRefunded,
+    "OrderRefundFailed": OrderRefundFailed,
     "LotOpened": LotOpened,
     "LotSoldOut": LotSoldOut,
+    "TicketCheckedIn": TicketCheckedIn,
 }
 
 EXAMPLES = sorted(path for topic in TOPICS for path in (CONTRACTS / "examples" / topic).glob("*.json"))
@@ -64,6 +72,40 @@ def test_every_projected_type_has_an_example() -> None:
 def _example(name: str) -> dict:
     path = next(path for path in EXAMPLES if path.name == f"{name}.v1.json")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_order_events_carry_the_phase_6_values() -> None:
+    event = parse(json.dumps(_example("OrderConfirmed")).encode())
+    assert event is not None
+    assert isinstance(event.payload, OrderConfirmed)
+    payload = event.payload
+    assert (payload.subtotal, payload.discount_cents, payload.service_fee_cents) == (32000, 3200, 3200)
+    assert (payload.service_fee_paid_by, payload.coupon_code) == ("BUYER", "LANCAMENTO10")
+
+    refunded = parse(json.dumps(_example("OrderRefunded")).encode())
+    assert refunded is not None
+    assert isinstance(refunded.payload, OrderRefunded)
+    assert (refunded.payload.refunded_cents, refunded.payload.reason) == (32000, "ORDER_CANCELLED")
+
+
+def test_orders_published_before_phase_6_are_read_with_the_old_values() -> None:
+    """O replay lê o `order.events` desde o começo: pedido antigo não tem cupom nem taxa."""
+    raw = _example("OrderConfirmed")
+    for field in ("subtotalCents", "discountCents", "serviceFeeCents", "serviceFeePaidBy", "couponId", "couponCode"):
+        del raw["payload"][field]
+    event = parse(json.dumps(raw).encode())
+    assert event is not None
+    assert isinstance(event.payload, OrderConfirmed)
+    payload = event.payload
+    assert (payload.subtotal, payload.discount_cents, payload.service_fee_cents) == (32000, 0, 0)
+    assert (payload.service_fee_paid_by, payload.coupon_code) == ("BUYER", None)
+
+    show = _example("ShowPublished")
+    del show["payload"]["serviceFeePaidBy"]
+    parsed = parse(json.dumps(show).encode())
+    assert parsed is not None
+    assert isinstance(parsed.payload, ShowSnapshot)
+    assert parsed.payload.service_fee_paid_by == "BUYER"
 
 
 def test_order_confirmed_items_carry_sector_lot_seat_and_price() -> None:

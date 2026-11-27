@@ -74,7 +74,14 @@ async def producer_shows(
     statements = {
         doc["_id"]: doc
         async for doc in models.statements.find(
-            {"_id": {"$in": [show["_id"] for show in page]}}, projection={"ticketsSold": 1, "grossSalesCents": 1}
+            {"_id": {"$in": [show["_id"] for show in page]}},
+            projection={
+                "ticketsSold": 1,
+                "ticketsRefunded": 1,
+                "grossSalesCents": 1,
+                "discountsCents": 1,
+                "refundsCents": 1,
+            },
         )
     }
     return schemas.ProducerShowPage(
@@ -104,7 +111,9 @@ async def show_orders(
     show_id: ShowId,
     user: Producer,
     models: Models,
-    status: Annotated[Literal["PENDING", "CONFIRMED", "CANCELLED"] | None, Query()] = None,
+    status: Annotated[
+        Literal["PENDING", "CONFIRMED", "CANCELLED", "REFUNDING", "REFUND_FAILED", "REFUNDED"] | None, Query()
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
 ) -> schemas.OrderPage:
@@ -123,6 +132,18 @@ async def show_orders(
         items=[views.order(doc) for doc in page],
         next_cursor=encode_cursor(page[-1]["_id"]) if len(found) > limit else None,
     )
+
+
+@internal.get("/shows/{showId}/statement", response_model=schemas.InternalStatement)
+async def internal_show_statement(show_id: ShowId, _: Service, models: Models) -> schemas.InternalStatement:
+    """O relatório do show para o PDF do notification-service, com o dono e os dados do show.
+
+    Só para contas de serviço: quem chama confere se o produtor que pediu é o dono (`producerId`).
+    """
+    show = await models.shows.find_one({"_id": show_id})
+    if show is None:
+        raise problems.not_found("Show")
+    return views.internal_statement(show, await models.statements.find_one({"_id": show_id}))
 
 
 def _replay(generation: Generation) -> schemas.Replay:

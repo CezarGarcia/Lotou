@@ -1,10 +1,13 @@
 """O objeto `metrics` do painel, a partir dos read models da geração ativa.
 
 - Totais e setores vêm do `sales_by_sector` (somado por setor no MongoDB), com
-  a capacidade e os nomes da cópia do catálogo. `remaining` é capacidade menos
-  vendidos: reservas seguradas não contam, porque o analytics só vê o pedido
-  confirmado.
-- Pedidos confirmados e cancelados vêm do relatório (`producer_statements`).
+  a capacidade e os nomes da cópia do catálogo. Vendidos e receita são líquidos:
+  pedido reembolsado sai, e a receita é o valor dos ingressos com o desconto do
+  cupom, sem a taxa. `remaining` é capacidade menos vendidos: reservas seguradas
+  não contam, porque o analytics só vê o pedido confirmado.
+- Pedidos confirmados, cancelados e reembolsados vêm do relatório (`producer_statements`).
+- Entradas na portaria vêm do `checkins_by_gate`: o total e por portão, em
+  ordem alfabética do portão.
 - `ordersLastMinute` conta os pedidos com `confirmedAt` no último minuto do
   relógio, pelo índice (showId, confirmedAt) do `order_view`.
 - `currentLot` vem da linha do tempo dos lotes: o lote à venda aberto por
@@ -35,6 +38,7 @@ def assemble(
     lot_docs: Iterable[Doc],
     orders_last_minute: int,
     now: datetime,
+    checkin_docs: Iterable[Doc] = (),
 ) -> dict[str, Any]:
     """`sales_by_sector`: um documento por setor, `{_id: sectorId, ticketsSold, revenueCents}`."""
     sold_by_sector = {doc["_id"]: doc for doc in sales_by_sector}
@@ -55,13 +59,17 @@ def assemble(
                 "currentLot": current_lot(sector, timelines.get(sector["id"], {})),
             }
         )
+    by_gate = sorted(((doc["gate"], int(doc.get("checkedIn", 0))) for doc in checkin_docs), key=lambda g: g[0])
     return {
         "at": iso(now),
         "ticketsSold": sum(int(doc.get("ticketsSold", 0)) for doc in sold_by_sector.values()),
         "revenueCents": sum(int(doc.get("revenueCents", 0)) for doc in sold_by_sector.values()),
         "ordersConfirmed": int(statement["confirmedOrders"]) if statement else 0,
         "ordersCancelled": int(statement["cancelledOrders"]) if statement else 0,
+        "ordersRefunded": int(statement.get("refundedOrders", 0)) if statement else 0,
         "ordersLastMinute": orders_last_minute,
+        "checkedIn": sum(count for _, count in by_gate),
+        "checkinsByGate": [{"gate": gate, "count": count} for gate, count in by_gate],
         "sectors": sectors,
     }
 
@@ -94,13 +102,16 @@ async def compute(models: ReadModels, show_id: str, now: datetime) -> dict[str, 
     show = await models.shows.find_one({"_id": show_id}, projection={"sectors": 1})
     if show is None:
         return None
-    statement, sales, lots, last_minute = await asyncio.gather(
-        models.statements.find_one({"_id": show_id}, projection={"confirmedOrders": 1, "cancelledOrders": 1}),
+    statement, sales, lots, last_minute, checkins = await asyncio.gather(
+        models.statements.find_one(
+            {"_id": show_id}, projection={"confirmedOrders": 1, "cancelledOrders": 1, "refundedOrders": 1}
+        ),
         _sales_by_sector(models, show_id),
         models.lots.find({"showId": show_id}, projection={"sectorId": 1, "lotId": 1, "transitions": 1}).to_list(None),
         models.orders.count_documents({"showId": show_id, "confirmedAt": {"$gte": now - LAST_MINUTE}}),
+        models.checkins.find({"showId": show_id}, projection={"gate": 1, "checkedIn": 1}).to_list(None),
     )
-    return assemble(show, statement, sales, lots, last_minute, now)
+    return assemble(show, statement, sales, lots, last_minute, now, checkins)
 
 
 async def _sales_by_sector(models: ReadModels, show_id: str) -> list[dict[str, Any]]:

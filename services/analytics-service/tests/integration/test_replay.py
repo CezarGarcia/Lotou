@@ -29,7 +29,7 @@ from tests import events
 from tests.events import Message, OrderSpec
 from tests.integration.containers import KafkaKraft, MongoReplicaSet, RedisCore
 from tests.readmodels import assert_same, snapshot
-from tests.scenario import Raw, Scenario, at, build
+from tests.scenario import EXPECTED_STATEMENT_A, EXPECTED_STATEMENT_B, Raw, Scenario, at, build
 from tests.tokens import ISSUER, JWKS_URI, FakeKeycloak
 
 pytestmark = pytest.mark.integration
@@ -161,11 +161,12 @@ async def test_read_models_follow_the_events(service: Service) -> None:
     sales = response.json()
     assert sales["title"] == scenario.new_title
     assert sales["timezone"] == "America/Sao_Paulo"
+    # Vendas líquidas: o pedido reembolsado (o7) não conta, e a receita tem o desconto do cupom.
     assert sales["totals"] == {
         "ticketsSold": 9,
         "capacity": 2080,
         "occupancy": 0.0043,
-        "revenueCents": 128000,
+        "revenueCents": 123000,
         "orders": 3,
     }
     pista, plateia = sales["sectors"]
@@ -173,7 +174,7 @@ async def test_read_models_follow_the_events(service: Service) -> None:
         "Pista",
         7,
         0.0035,
-        96000,
+        36000 + 60000 - 5000,
     )
     assert (plateia["name"], plateia["ticketsSold"], plateia["occupancy"]) == ("Plateia", 2, 0.025)
     lot1, lot2 = pista["lots"]
@@ -181,28 +182,46 @@ async def test_read_models_follow_the_events(service: Service) -> None:
     assert (lot2["ticketsSold"], lot2["status"], lot2["openedAt"]) == (4, "ON_SALE", "2026-11-26T19:20:00Z")
     assert [(h["hour"], h["ticketsSold"], h["revenueCents"], h["orders"]) for h in sales["hourly"]] == [
         ("2026-11-26T18:00:00Z", 5, 68000, 2),
-        ("2026-11-26T19:00:00Z", 4, 60000, 1),
+        ("2026-11-26T19:00:00Z", 4, 55000, 1),
     ]
 
     statement = (await service.http.get(f"/v1/analytics/shows/{a.id}/statement", headers=as_a)).json()
-    assert statement | {"lastEventAt": None} == {
+    assert statement == {
         "showId": a.id,
         "title": scenario.new_title,
         "status": "ON_SALE",
         "partial": True,
         "currency": "BRL",
-        "grossSalesCents": 128000,
-        "discountsCents": 0,
-        "refundsCents": 0,
-        "platformFeeCents": 0,
-        "receivableCents": 128000,
-        "ordersCreated": 5,
-        "confirmedOrders": 3,
-        "cancelledOrders": 2,
-        "cancelledByReason": {"PAYMENT_DECLINED": 1, "RESERVATION_EXPIRED": 1},
-        "ticketsSold": 9,
-        "ticketsIssued": 5,
-        "lastEventAt": None,
+        **EXPECTED_STATEMENT_A,
+        # A última entrada na portaria não mexe no relatório: o último fato é o estorno do o7.
+        "lastEventAt": "2026-11-26T19:52:00Z",
+    }
+    # A receita das vendas é a do relatório: bruto − descontos − reembolsos.
+    assert sales["totals"]["revenueCents"] == (
+        statement["grossSalesCents"] - statement["discountsCents"] - statement["refundsCents"]
+    )
+
+    as_b = service.as_producer(b)
+    statement_b = (await service.http.get(f"/v1/analytics/shows/{b.id}/statement", headers=as_b)).json()
+    assert statement_b == {
+        "showId": b.id,
+        "title": "Samba de Quinta",
+        "status": "ON_SALE",
+        "partial": True,
+        "currency": "BRL",
+        **EXPECTED_STATEMENT_B,
+        "lastEventAt": "2026-11-26T21:00:00Z",
+    }
+
+    # O relatório interno, para o PDF do notification-service: o mesmo, com o dono e o show.
+    internal = await service.http.get(f"/internal/v1/shows/{b.id}/statement", headers=service.as_service())
+    assert internal.status_code == 200, internal.text
+    assert internal.json() == statement_b | {
+        "producerId": b.producer_id,
+        "artist": "Roda do Largo",
+        "startsAt": "2026-12-06T22:00:00Z",
+        "timezone": "America/Sao_Paulo",
+        "venueName": "Teatro Guanabara",
     }
 
     # Paginação por cursor, do pedido mais novo para o mais antigo.
@@ -215,9 +234,38 @@ async def test_read_models_follow_the_events(service: Service) -> None:
         cursor = page["nextCursor"]
         if cursor is None:
             break
-    expected = [scenario.orders[name] for name in ("o5", "o4", "o3", "o2", "o1")]
+    expected = [scenario.orders[name] for name in ("o5", "o4", "o7", "o3", "o2", "o1")]
     assert [order["orderId"] for order in seen] == [order.id for order in expected]
-    assert [order["status"] for order in seen] == ["CONFIRMED", "CANCELLED", "CANCELLED", "CONFIRMED", "CONFIRMED"]
+    assert [order["status"] for order in seen] == [
+        "CONFIRMED",
+        "CANCELLED",
+        "REFUNDED",
+        "CANCELLED",
+        "CONFIRMED",
+        "CONFIRMED",
+    ]
+    o5, o7, o1 = seen[0], seen[2], seen[-1]
+    assert (o5["subtotalCents"], o5["discountCents"], o5["serviceFeeCents"], o5["totalCents"]) == (
+        60000,
+        5000,
+        6000,
+        61000,
+    )
+    assert (o5["serviceFeePaidBy"], o5["couponCode"]) == ("BUYER", "PISTA50")
+    assert (o7["refundedCents"], o7["refundReason"], o7["refundedAt"]) == (
+        16000,
+        "ORDER_CANCELLED",
+        "2026-11-26T19:52:00Z",
+    )
+    assert [ticket["status"] for ticket in o7["tickets"]] == ["CANCELLED"]
+    assert [(ticket["status"], ticket["gate"], ticket["usedAt"]) for ticket in o1["tickets"]] == [
+        ("USED", "Portão A", "2026-11-26T22:01:00Z"),
+        ("USED", "Portão B", "2026-11-26T22:02:00Z"),
+    ]
+    refunded = (
+        await service.http.get(f"/v1/analytics/shows/{a.id}/orders", params={"status": "REFUNDED"}, headers=as_a)
+    ).json()
+    assert [order["orderId"] for order in refunded["items"]] == [o7["orderId"]]
     assert all(order["show"]["title"] == scenario.new_title for order in seen)
     assert "buyerId" not in seen[0]
 
@@ -228,7 +276,7 @@ async def test_read_models_follow_the_events(service: Service) -> None:
 
     # O pedido do show B chegou antes do show, e o título foi preenchido depois.
     orders_b = (await service.http.get(f"/v1/analytics/shows/{b.id}/orders", headers=service.as_producer(b))).json()
-    assert [order["show"]["title"] for order in orders_b["items"]] == ["Samba de Quinta"]
+    assert [order["show"]["title"] for order in orders_b["items"]] == ["Samba de Quinta"] * 4
 
 
 async def test_producer_lists_only_their_shows(service: Service) -> None:
@@ -267,8 +315,9 @@ async def test_producer_lists_only_their_shows(service: Service) -> None:
         "venueName": "Teatro Guanabara",
         "city": "Rio de Janeiro",
         "status": "ON_SALE",
+        # Líquidos, como nas vendas: sem o pedido reembolsado e com o desconto.
         "ticketsSold": 9,
-        "revenueCents": 128000,
+        "revenueCents": 123000,
     }
     assert (by_id[others[0].id]["ticketsSold"], by_id[others[0].id]["revenueCents"]) == (0, 0)
 
@@ -305,6 +354,17 @@ async def test_api_errors_are_problem_details(service: Service) -> None:
             await service.http.post("/internal/v1/replay", headers=service.as_producer(a)),
             403,
             "forbidden",
+        ),
+        # O relatório interno é só para contas de serviço, nem o dono do show o lê.
+        (
+            await service.http.get(f"/internal/v1/shows/{a.id}/statement", headers=service.as_producer(a)),
+            403,
+            "forbidden",
+        ),
+        (
+            await service.http.get(f"/internal/v1/shows/{uuid.uuid4()}/statement", headers=service.as_service()),
+            404,
+            "not-found",
         ),
     ]
     for response, status, slug in cases:
@@ -434,7 +494,7 @@ async def test_replay_rebuilds_the_same_read_models_without_downtime(
     await service.publish([o7.created(at(20, 30)), o7.confirmed(at(20, 31))])
     await service.caught_up()
     statement = (await service.http.get(f"/v1/analytics/shows/{a.id}/statement", headers=service.as_producer(a))).json()
-    assert (statement["confirmedOrders"], statement["grossSalesCents"]) == (4, 128000 + 16000)
+    assert (statement["confirmedOrders"], statement["grossSalesCents"]) == (5, 144000 + 16000)
 
 
 async def test_events_published_during_a_replay_are_not_lost(service: Service) -> None:
@@ -453,7 +513,7 @@ async def test_events_published_during_a_replay_are_not_lost(service: Service) -
 
     a = scenario.show_a
     statement = (await service.http.get(f"/v1/analytics/shows/{a.id}/statement", headers=service.as_producer(a))).json()
-    assert (statement["grossSalesCents"], statement["confirmedOrders"], statement["cancelledOrders"]) == (128000, 3, 2)
+    assert {field: statement[field] for field in EXPECTED_STATEMENT_A} == EXPECTED_STATEMENT_A
 
     first = await service.registry.active_generation()
     assert first is not None

@@ -50,6 +50,7 @@ def to_doc(show: ShowSnapshot) -> dict[str, Any]:
             for sector in show.sectors
         ],
         "updatedAt": show.updated_at,
+        "serviceFeePaidBy": show.service_fee_paid_by,
     }
 
 

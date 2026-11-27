@@ -115,3 +115,24 @@ def test_statement_of_a_show_without_sales_is_zeroed() -> None:
     assert result.gross_sales_cents == 0
     assert result.receivable_cents == 0
     assert result.partial is True
+
+
+def test_internal_statement_carries_the_show_for_the_pdf() -> None:
+    show = SHOW | {
+        "producerId": "produtor",
+        "artist": "Os Tropicais do Asfalto",
+        "startsAt": datetime(2026, 12, 16, 23, 30, tzinfo=UTC),
+        "venue": {"name": "Teatro Guanabara", "city": "Rio de Janeiro", "timezone": "America/Sao_Paulo"},
+        "status": "FINISHED",
+    }
+    body = views.internal_statement(show, None).model_dump(mode="json", by_alias=True)
+    assert body["producerId"] == "produtor"
+    assert (body["artist"], body["venueName"], body["timezone"]) == (
+        "Os Tropicais do Asfalto",
+        "Teatro Guanabara",
+        "America/Sao_Paulo",
+    )
+    assert body["startsAt"] == "2026-12-16T23:30:00Z"
+    # Sem venda nenhuma, sai zerado; o show terminou, então o relatório é final.
+    assert (body["receivableCents"], body["buyerFeesCents"], body["refundedOrders"]) == (0, 0, 0)
+    assert body["partial"] is False

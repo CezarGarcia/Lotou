@@ -142,29 +142,48 @@ def _merge_hours(series: Iterable[list[schemas.HourlySales]]) -> list[schemas.Ho
     ]
 
 
+def _statement_fields(show: Doc, doc: Doc | None) -> dict[str, Any]:
+    current = domain.new(show["_id"]) | dict(doc or {})
+    # O status do show vem do catálogo: o relatório fica final quando o show termina.
+    domain.attach_show(current, show)
+    return {
+        "show_id": show["_id"],
+        "title": show["title"],
+        "status": show["status"],
+        "partial": current["partial"],
+        "currency": current["currency"],
+        "gross_sales_cents": current["grossSalesCents"],
+        "discounts_cents": current["discountsCents"],
+        "refunds_cents": current["refundsCents"],
+        "platform_fee_cents": current["platformFeeCents"],
+        "buyer_fees_cents": current["buyerFeesCents"],
+        "receivable_cents": current["receivableCents"],
+        "orders_created": current["ordersCreated"],
+        "confirmed_orders": current["confirmedOrders"],
+        "cancelled_orders": current["cancelledOrders"],
+        "cancelled_by_reason": current["cancelledByReason"],
+        "refunded_orders": current["refundedOrders"],
+        "tickets_sold": current["ticketsSold"],
+        "tickets_refunded": current["ticketsRefunded"],
+        "tickets_issued": current["ticketsIssued"],
+        "last_event_at": current["lastEventAt"],
+    }
+
+
 def statement(show: Doc, doc: Doc | None) -> schemas.Statement:
     """Relatório do show. Sem venda nenhuma ainda, sai zerado (e parcial)."""
-    current = dict(doc) if doc is not None else domain.new(show["_id"])
-    if doc is None:
-        domain.attach_show(current, show)
-    return schemas.Statement(
-        show_id=show["_id"],
-        title=show["title"],
-        status=show["status"],
-        partial=current["partial"],
-        currency=current["currency"],
-        gross_sales_cents=current["grossSalesCents"],
-        discounts_cents=current["discountsCents"],
-        refunds_cents=current["refundsCents"],
-        platform_fee_cents=current["platformFeeCents"],
-        receivable_cents=current["receivableCents"],
-        orders_created=current["ordersCreated"],
-        confirmed_orders=current["confirmedOrders"],
-        cancelled_orders=current["cancelledOrders"],
-        cancelled_by_reason=current["cancelledByReason"],
-        tickets_sold=current["ticketsSold"],
-        tickets_issued=current["ticketsIssued"],
-        last_event_at=current["lastEventAt"],
+    return schemas.Statement(**_statement_fields(show, doc))
+
+
+def internal_statement(show: Doc, doc: Doc | None) -> schemas.InternalStatement:
+    """O relatório com o dono e os dados do show, para o PDF do notification-service."""
+    return schemas.InternalStatement(
+        **_statement_fields(show, doc),
+        producer_id=show["producerId"],
+        artist=show["artist"],
+        starts_at=show["startsAt"],
+        timezone=show["venue"]["timezone"],
+        venue_name=show["venue"]["name"],
     )
 
 
@@ -175,13 +194,24 @@ def order(doc: Doc) -> schemas.Order:
         show_id=doc["showId"],
         status=doc["status"],
         total_cents=doc["totalCents"],
+        subtotal_cents=doc.get("subtotalCents"),
+        discount_cents=doc.get("discountCents"),
+        service_fee_cents=doc.get("serviceFeeCents"),
+        service_fee_paid_by=doc.get("serviceFeePaidBy"),
+        coupon_code=doc.get("couponCode"),
         items=[schemas.OrderItem.model_validate(item) for item in doc["items"]],
-        tickets=[schemas.Ticket.model_validate(ticket) for ticket in doc["tickets"]],
+        tickets=[schemas.Ticket.model_validate({"status": "VALID"} | ticket) for ticket in doc["tickets"]],
         created_at=doc["createdAt"],
         confirmed_at=doc["confirmedAt"],
         cancelled_at=doc["cancelledAt"],
         cancel_reason=doc["cancelReason"],
         tickets_issued_at=doc["ticketsIssuedAt"],
+        tickets_cancelled_at=doc.get("ticketsCancelledAt"),
+        refund_reason=doc.get("refundReason"),
+        refunded_at=doc.get("refundedAt"),
+        refunded_cents=doc.get("refundedCents"),
+        refund_failed_at=doc.get("refundFailedAt"),
+        refund_attempts=doc.get("refundAttempts"),
         timeline=[
             schemas.TimelineEntry(status=entry["status"], at=entry["at"], reason=entry.get("reason"))
             for entry in doc["timeline"]
@@ -201,6 +231,6 @@ def producer_show(show: Doc, statement: Doc | None) -> schemas.ProducerShow:
         venue_name=show["venue"]["name"],
         city=show["venue"]["city"],
         status=show["status"],
-        tickets_sold=statement["ticketsSold"] if statement else 0,
-        revenue_cents=statement["grossSalesCents"] if statement else 0,
+        tickets_sold=domain.net_tickets(statement) if statement else 0,
+        revenue_cents=domain.net_revenue_cents(statement) if statement else 0,
     )

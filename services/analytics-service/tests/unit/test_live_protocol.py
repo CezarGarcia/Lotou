@@ -7,7 +7,7 @@ import pytest
 
 from analytics.contracts import Event, parse
 from analytics.live import protocol
-from analytics.live.activity import ActivityEntry, decode, lot_entry, order_entry
+from analytics.live.activity import ActivityEntry, checkin_entry, decode, lot_entry, order_entry
 from analytics.live.protocol import Auth, BadMessage, Subscribe, Unsubscribe
 from tests import events
 from tests.events import Message
@@ -107,7 +107,8 @@ def test_order_confirmed_entry_has_no_buyer() -> None:
         "orderId": o2.id,
         "sectorName": "Pista",
         "quantity": 3,
-        "totalCents": 36000,
+        # O total cobrado: 3 x 120,00 + a taxa de 10%, que o show A repassa ao comprador.
+        "totalCents": 39600,
     }
     serialized = json.dumps(entry.body())
     assert o2.buyer_id not in serialized
@@ -124,9 +125,42 @@ def test_order_cancelled_entry() -> None:
         "at": "2026-11-26T18:20:05Z",
         "orderId": o3.id,
         "reason": "PAYMENT_DECLINED",
-        "totalCents": 24000,
+        "totalCents": 26400,
     }
     assert o3.buyer_id not in json.dumps(entry.body())
+
+
+def test_order_refunded_entry() -> None:
+    o7 = build().orders["o7"]
+    message = o7.refunded(at(19, 52))
+    entry = order_entry(event(message), event(message).payload)  # type: ignore[arg-type]
+    assert entry.body() == {
+        "eventId": message.event_id,
+        "type": "OrderRefunded",
+        "at": "2026-11-26T19:52:00Z",
+        "orderId": o7.id,
+        # 160,00 - 10% do cupom + 16,00 de taxa: o que o comprador pagou volta inteiro.
+        "refundedCents": 16000,
+        "reason": "ORDER_CANCELLED",
+    }
+    assert o7.buyer_id not in json.dumps(entry.body())
+
+
+def test_check_in_entry_has_the_sector_and_the_gate_only() -> None:
+    o1 = build().orders["o1"]
+    message = o1.checked_in(0, "Portão A", at(22, 1))
+    entry = checkin_entry(event(message), event(message).payload)  # type: ignore[arg-type]
+    assert entry.show_id == o1.show_id
+    assert entry.body() == {
+        "eventId": message.event_id,
+        "type": "TicketCheckedIn",
+        "at": "2026-11-26T22:01:00Z",
+        "sectorName": "Plateia",
+        "gate": "Portão A",
+    }
+    serialized = json.dumps(entry.body())
+    assert o1.ticket_ids[0] not in serialized
+    assert "A-5" not in serialized
 
 
 def test_lot_entries_take_the_names_from_the_catalog() -> None:
