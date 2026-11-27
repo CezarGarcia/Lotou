@@ -117,6 +117,11 @@ export interface Ticket {
   sectorName: string;
   seat: string | null;
   issuedAt: string;
+  /**
+   * Conteúdo do QR code: `LOTOU1.<ticketId>.<assinatura HMAC>`, conferido na
+   * portaria. Ausente nos ingressos emitidos antes do código assinado.
+   */
+  code?: string | null;
 }
 
 export interface Order {

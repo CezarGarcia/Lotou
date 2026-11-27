@@ -10,6 +10,7 @@ import { TicketStatus } from '../data/sale.models';
 import { Show } from '../data/show.models';
 import { SHOWS_URL } from '../data/shows.api';
 import { ShowHeading } from '../shared/show-heading';
+import { TicketQr } from './ticket-qr';
 import { CANCEL_REASONS, ORDER_STATUS_LABELS, OrderStore } from './order.store';
 
 const TICKET_STATUS: Record<TicketStatus, string> = {
@@ -33,6 +34,7 @@ const TICKET_STATUS: Record<TicketStatus, string> = {
     MoneyPipe,
     ShowDatePipe,
     ShowHeading,
+    TicketQr,
   ],
   providers: [OrderStore],
   templateUrl: './order.page.html',

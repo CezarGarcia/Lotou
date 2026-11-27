@@ -68,25 +68,33 @@
         <h2 id="tickets-title" class="section-title">Ingressos</h2>
         <ul class="tickets">
           @for (ticket of order.tickets; track ticket.id) {
+            @let place = ticket.seat ? 'Cadeira ' + ticket.seat : 'Sem lugar marcado';
             <li class="ticket" [class.inactive]="ticket.status !== 'VALID'">
-              <div class="where">
-                <strong>{{ ticket.sectorName }}</strong>
-                <span>{{ ticket.seat ? 'Cadeira ' + ticket.seat : 'Sem lugar marcado' }}</span>
-              </div>
-              <div class="code">
-                <small>Código do ingresso</small>
-                <code>{{ ticket.id }}</code>
-              </div>
-              @if (ticket.status !== 'VALID') {
-                <span class="chip">{{ ticketStatus[ticket.status] }}</span>
+              @if (ticket.status !== 'CANCELLED') {
+                <app-ticket-qr
+                  [code]="ticket.code"
+                  [label]="'QR code do ingresso, ' + ticket.sectorName + ', ' + place"
+                />
               }
+              <div class="info">
+                <div class="where">
+                  <strong>{{ ticket.sectorName }}</strong>
+                  <span>{{ place }}</span>
+                </div>
+                <div class="code">
+                  <small>Código do ingresso</small>
+                  <code>{{ ticket.id }}</code>
+                </div>
+                @if (ticket.status !== 'VALID') {
+                  <span class="chip">{{ ticketStatus[ticket.status] }}</span>
+                }
+              </div>
             </li>
           }
         </ul>
         <p class="qr-note">
           <mat-icon aria-hidden="true">qr_code_2</mat-icon>
-          O QR code para a entrada chega numa próxima versão do Lotou. Por enquanto, o código do
-          ingresso fica aqui.
+          Apresente o QR code na entrada. Deixe o brilho da tela alto; não precisa imprimir.
         </p>
       </section>
     }

@@ -54,25 +54,66 @@ describe('OrderPage', () => {
     http.expectOne('/api/v1/shows/s1').flush(SHOW);
     await settle(fixture);
     const element = fixture.nativeElement as HTMLElement;
-    return { element, text: () => element.textContent!.replace(/\s+/g, ' ') };
+    return { element, fixture, text: () => element.textContent!.replace(/\s+/g, ' ') };
   }
 
-  it('lista os ingressos do pedido confirmado e avisa que o QR code vem depois', async () => {
-    const { element, text } = await render(
+  it('lista os ingressos do pedido confirmado, cada um com o seu QR code', async () => {
+    const { element, text, fixture } = await render(
       order({
         tickets: [
-          { id: 't-1', status: 'VALID', sectorName: 'Plateia', seat: 'A-1', issuedAt: '' },
-          { id: 't-2', status: 'USED', sectorName: 'Plateia', seat: 'A-2', issuedAt: '' },
+          {
+            id: 't-1',
+            status: 'VALID',
+            sectorName: 'Plateia',
+            seat: 'A-1',
+            issuedAt: '',
+            code: 'LOTOU1.t-1.assinatura',
+          },
+          {
+            id: 't-2',
+            status: 'USED',
+            sectorName: 'Plateia',
+            seat: 'A-2',
+            issuedAt: '',
+            code: 'LOTOU1.t-2.assinatura',
+          },
         ],
       }),
     );
+    await fixture.whenStable();
+    fixture.detectChanges();
+
     expect(text()).toContain('Compra confirmada!');
     expect(element.querySelectorAll('.ticket').length).toBe(2);
     expect(text()).toContain('Cadeira A-1');
     expect(element.querySelector('.ticket code')!.textContent).toBe('t-1');
     expect(text()).toContain('Utilizado');
-    expect(text()).toContain('QR code');
     expect(text()).toContain('R$');
+    const qrs = element.querySelectorAll('.ticket svg[role="img"]');
+    expect(qrs.length).toBe(2);
+    expect(qrs[0].getAttribute('aria-label')).toBe('QR code do ingresso, Plateia, Cadeira A-1');
+    expect(text()).not.toContain('próxima versão');
+  });
+
+  it('ingresso emitido antes do código assinado mostra "QR indisponível"; cancelado não tem QR', async () => {
+    const { element, text } = await render(
+      order({
+        tickets: [
+          { id: 't-1', status: 'VALID', sectorName: 'Pista', seat: null, issuedAt: '' },
+          {
+            id: 't-2',
+            status: 'CANCELLED',
+            sectorName: 'Pista',
+            seat: null,
+            issuedAt: '',
+            code: 'LOTOU1.t-2.assinatura',
+          },
+        ],
+      }),
+    );
+    expect(element.querySelectorAll('app-ticket-qr').length).toBe(1);
+    expect(text()).toContain('QR indisponível');
+    expect(text()).toContain('Cancelado');
   });
 
   it('explica em palavras simples por que o pedido foi cancelado', async () => {
