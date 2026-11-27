@@ -5,7 +5,7 @@ INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui rab
 
 .DEFAULT_GOAL := help
 .PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \
-	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock \
+	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-checkin-service \
 	test-analytics-service test-notification-service test-web replay-analytics requeue-notifications
 
 help: ## Lista os comandos
@@ -70,7 +70,7 @@ logs: ## Acompanha os logs de todos os serviços
 ps: ## Mostra o estado dos containers
 	$(COMPOSE) ps
 
-test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-analytics-service test-notification-service test-web ## Roda os testes de todos os serviços
+test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-checkin-service test-analytics-service test-notification-service test-web ## Roda os testes de todos os serviços
 
 test-event-service: ## Testes do event-service (unitários e integração com Testcontainers)
 	cd services/event-service && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
@@ -88,6 +88,9 @@ test-order-service: ## Testes do order-service (checkout de ponta a ponta com o 
 
 test-payment-mock: ## Testes do payment-mock (unitários e integração com Postgres e Kafka via Testcontainers)
 	cd services/payment-mock && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
+
+test-checkin-service: ## Testes do checkin-service (unitários e integração com Postgres, Redis e Kafka via Testcontainers)
+	cd services/checkin-service && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
 
 test-analytics-service: ## Testes do analytics-service (lint, tipos, unitários e integração com Kafka, MongoDB e Redis reais)
 	cd services/analytics-service && uv sync --locked && uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest

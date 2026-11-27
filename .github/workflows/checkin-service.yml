@@ -1,0 +1,46 @@
+name: checkin-service
+
+# Só roda quando o serviço, os contratos que ele testa ou este workflow mudam.
+on:
+  push:
+    paths:
+      - services/checkin-service/**
+      - contracts/order.events/**
+      - contracts/checkin.events/**
+      - contracts/shows.catalog/**
+      - contracts/examples/order.events/**
+      - contracts/examples/checkin.events/**
+      - contracts/examples/shows.catalog/**
+      - .github/workflows/checkin-service.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/checkin-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/checkin-service/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run build
+      # Os unitários leem os exemplos e validam os eventos contra os schemas de contracts/.
+      - name: Testes unitários
+        run: npm test
+      # O Testcontainers sobe um Postgres, um Redis e um Kafka reais no Docker do runner.
+      - name: Testes de integração
+        run: npm run test:e2e
