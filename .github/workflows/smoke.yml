@@ -2,6 +2,7 @@ name: smoke
 
 # O ambiente inteiro numa máquina limpa: sobe o Compose, roda o seed e confere
 # que uma compra de ponta a ponta funciona e que os traces chegam completos ao Tempo.
+# Depois, o Playwright faz as compras na loja de verdade, num Chromium.
 # Roda quando muda algo que entra no ambiente.
 on:
   push:
@@ -11,6 +12,7 @@ on:
       - infra/**
       - seed/**
       - scripts/**
+      - e2e/**
       - compose.yaml
       - Makefile
       - .github/workflows/smoke.yml
@@ -29,12 +31,36 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
       - name: Sobe o ambiente
         run: make up
       - name: Carrega os dados fictícios
         run: make seed
       - name: Confere loja, API e trace
         run: make smoke
+      - name: Instala o Playwright e o Chromium
+        working-directory: e2e
+        run: |
+          npm ci
+          npm run typecheck
+          npm run format:check
+          npx playwright install --with-deps chromium
+      - name: Ponta a ponta no navegador (Playwright)
+        run: make e2e
+      - name: Relatório do Playwright em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs --no-color --tail=200
