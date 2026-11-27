@@ -2,7 +2,7 @@
 # por e-mail ao Mailpit (http://localhost:8025), para plantao@lotou.test.
 #
 # As invariantes (venda além da capacidade, entrada dupla, saga presa, reembolso
-# que falhou) consultam os bancos, só leitura; os SLOs e a mensageria, o Prometheus.
+# que falhou) consultam os bancos, só leitura; os SLOs (disponibilidade e latência do checkout) e a mensageria, o Prometheus.
 # Um alerta sem dados fica OK: sem tráfego, não há erro a contar.
 apiVersion: 1
 contactPoints:
@@ -459,6 +459,150 @@ groups:
       description: 'SLO: 99,5% das reservas e pedidos sem erro 5xx em 30 dias (ADR 35). Com 6x de consumo em 6 h, 5% do orçamento
         se foi. A consulta só devolve valor quando as duas janelas passam do limite, e o valor é a taxa de erro da janela
         longa.'
+      dashboard: http://localhost:3000/d/lotou-red
+    labels:
+      severidade: alta
+    isPaused: false
+  - uid: checkout-latencia-rapido
+    title: 'Checkout lento: orçamento de latência queimando rápido'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 3600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource:
+          type: prometheus
+          uid: prometheus
+        expr: (1 - (sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",http_route=~"reserve|place-order",le="1"}[1h]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[1h]))))
+          > 14.4 * 0.01 and (1 - (sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",http_route=~"reserve|place-order",le="1"}[5m]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[5m]))))
+          > 14.4 * 0.01
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    for: 2m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Reservas e pedidos acima de 1 s consomem o orçamento do mês 14,4 vezes mais rápido que o aceitável
+      description: 'SLO de latência: 99% das reservas e pedidos respondidos em menos de 1 s, em 30 dias (ADR 35). Com 14,4x
+        de consumo em 1h (e ainda em 5m), 2% do orçamento do mês se foi. Abra os traces lentos do api-gateway no Tempo: o
+        span mais longo aponta o gargalo.'
+      dashboard: http://localhost:3000/d/lotou-red
+    labels:
+      severidade: critica
+    isPaused: false
+  - uid: checkout-latencia-lento
+    title: 'Checkout lento: orçamento de latência queimando devagar'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 21600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        datasource:
+          type: prometheus
+          uid: prometheus
+        expr: (1 - (sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",http_route=~"reserve|place-order",le="1"}[6h]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[6h]))))
+          > 6 * 0.01 and (1 - (sum(rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",http_route=~"reserve|place-order",le="1"}[30m]))
+          / sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_route=~"reserve|place-order"}[30m]))))
+          > 6 * 0.01
+        instant: true
+        range: false
+        intervalMs: 15000
+        maxDataPoints: 43200
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: B
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: reduce
+        expression: A
+        reducer: last
+        settings:
+          mode: replaceNN
+          replaceWithValue: 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: __expr__
+      model:
+        refId: C
+        datasource:
+          type: __expr__
+          uid: __expr__
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+        intervalMs: 1000
+        maxDataPoints: 43200
+    for: 15m
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      summary: Reservas e pedidos acima de 1 s consomem o orçamento do mês 6 vezes mais rápido que o aceitável
+      description: 'SLO de latência: 99% das reservas e pedidos respondidos em menos de 1 s, em 30 dias (ADR 35). Com 6x de
+        consumo em 6h (e ainda em 30m), 5% do orçamento do mês se foi. Abra os traces lentos do api-gateway no Tempo: o span
+        mais longo aponta o gargalo.'
       dashboard: http://localhost:3000/d/lotou-red
     labels:
       severidade: alta

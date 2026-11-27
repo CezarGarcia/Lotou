@@ -250,7 +250,7 @@ ORDER BY c.created_at DESC LIMIT 50""", "pg-orders"), 24, 8)
 
 def red() -> Board:
     b = Board("lotou-red", "RED por serviço e SLO do checkout",
-              "Taxa, erros e duração de cada rota, por serviço, e o SLO de disponibilidade do checkout (ADR 35).")
+              "Taxa, erros e duração de cada rota, por serviço, e os SLOs de disponibilidade e latência do checkout (ADR 35).")
     b.variables.append({"name": "service", "label": "Serviço", "type": "query", "datasource": PROM,
                         "query": {"query": "label_values(http_server_request_duration_seconds_count, service_name)", "refId": "V"},
                         "refresh": 2, "includeAll": False, "multi": False, "sort": 1,
@@ -269,6 +269,16 @@ def red() -> Board:
                f'sum(rate(http_server_request_duration_seconds_count{{{checkout}}}[1h]))) / 0.005', "short", decimals=1,
                steps=[{"color": "green", "value": None}, {"color": "orange", "value": 6}, {"color": "red", "value": 14.4}],
                description="1 = consome o orçamento exatamente em 30 dias. O alerta rápido dispara acima de 14,4 (em 1 h e 5 min)."), 8, 4)
+    fast = f'sum(increase(http_server_request_duration_seconds_bucket{{{checkout},le="1"}}[30d]))'
+    b.row("SLO de latência do checkout: 99% das reservas e pedidos em menos de 1 s, em 30 dias")
+    b.add(stat("Abaixo de 1 s (30 dias)", f"{fast} / {tot}", "percentunit", decimals=3,
+               steps=[{"color": "red", "value": None}, {"color": "green", "value": 0.99}]), 8, 4)
+    b.add(stat("Orçamento de latência restante", f"1 - ((1 - {fast} / {tot}) / 0.01)", "percentunit", decimals=1,
+               steps=[{"color": "red", "value": None}, {"color": "orange", "value": 0.25}, {"color": "green", "value": 0.5}]), 8, 4)
+    b.add(stat("Burn rate de latência (1 h)",
+               f'(1 - sum(rate(http_server_request_duration_seconds_bucket{{{checkout},le="1"}}[1h])) / '
+               f'sum(rate(http_server_request_duration_seconds_count{{{checkout}}}[1h]))) / 0.01', "short", decimals=1,
+               steps=[{"color": "green", "value": None}, {"color": "orange", "value": 6}, {"color": "red", "value": 14.4}]), 8, 4)
     sel = 'service_name="$service"'
     b.row("$service")
     b.add(timeseries("Requisições por rota", [target(f"sum by (http_route) (rate(http_server_request_duration_seconds_count{{{sel}}}[$__rate_interval]))", "{{http_route}}")],

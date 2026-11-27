@@ -652,13 +652,13 @@ Provisionados no Grafana do Compose (pasta Lotou), gerados por `infra/grafana/da
 
 ### Alertas
 
-Regras do Grafana provisionadas em `infra/grafana/provisioning/alerting/lotou.yaml`, avaliadas a cada minuto, com e-mail para o Mailpit (ADR 35). O SLO do checkout é 99,5% das reservas e dos pedidos sem erro 5xx, em 30 dias.
+Regras do Grafana provisionadas em `infra/grafana/provisioning/alerting/lotou.yaml`, avaliadas a cada minuto, com e-mail para o Mailpit (ADR 35). Os SLOs do checkout são 99,5% das reservas e dos pedidos sem erro 5xx e 99% deles respondidos em menos de 1 s, em 30 dias.
 
 | Alerta | Condição | Por quê |
 | --- | --- | --- |
 | Venda além da capacidade | ingressos emitidos acima da capacidade de um setor, ou um assento com dois ingressos | é a invariante do sistema |
 | Entrada dupla | dois check-ins para o mesmo ingresso | a outra invariante, agora na portaria |
-| Burn rate do checkout | orçamento de erro consumido 14× mais rápido em 1 h (janelas múltiplas) | alerta sobre o SLO, não sobre ruído |
+| Burn rate do checkout | orçamento de erro ou de latência consumido 14,4× mais rápido em 1 h e em 5 min, ou 6× em 6 h e em 30 min | alerta sobre o SLO, não sobre ruído |
 | Portaria lenta | p99 do check-in acima de 200 ms por 5 min | fila na porta do show |
 | Consumer lag | lag de `order.events` acima de 1.000 por 2 min | consumidor não acompanha; na portaria, ingresso recém-comprado ainda não seria aceito |
 | DLQ | qualquer mensagem em `notifications.email.dlq` | ingresso que não chegou ao comprador |
@@ -775,7 +775,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
 | 32 | Painel com várias instâncias: interesse num ZSET com prazo, o segundo de cada show disputado num script Lua e o feed registrado uma vez por `eventId`, fora das gerações | líder eleito calculando tudo; calcular em toda instância | sem failover nem trabalho repetido; o replay não repete linhas no feed |
 | 33 | Uso do cupom contado no Postgres, na mesma transação que cria o pedido | contador num script Lua no Redis | pedido e uso no mesmo banco, sem reconciliação; o update condicional garante o limite exato |
-| 35 | SLO do checkout (99,5% sem 5xx em 30 dias) com alerta de burn rate em janelas múltiplas; alertas no Grafana, com as invariantes consultadas nos bancos | regras no Prometheus com Alertmanager; métrica de invariante emitida pelo serviço | menos componentes, e a invariante é conferida na fonte da verdade, não pelo serviço que poderia ter errado |
+| 35 | SLOs do checkout (99,5% sem 5xx e 99% abaixo de 1 s, em 30 dias) com alerta de burn rate em janelas múltiplas; alertas no Grafana, com as invariantes consultadas nos bancos | regras no Prometheus com Alertmanager; métrica de invariante emitida pelo serviço | menos componentes, e a invariante é conferida na fonte da verdade, não pelo serviço que poderia ter errado |
 | 34 | Reembolso em massa com fila em `refunds` e um job que começa N por segundo | mandar todos os estornos de uma vez; fila no RabbitMQ | o gateway de pagamento não recebe milhares de estornos de uma vez; o estado do reembolso fica junto do pedido |
 
 ## Testes, carga e caos

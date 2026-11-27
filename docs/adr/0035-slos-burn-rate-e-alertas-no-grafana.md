@@ -14,7 +14,8 @@ Alguns alertas dependem de métricas (latência, erros, lag, filas). As invarian
 - **Alertas no Grafana**, provisionados por arquivo (`infra/grafana/provisioning/alerting/lotou.yaml`), avaliados a cada minuto. O contato é um e-mail para `plantao@lotou.test`, que chega ao Mailpit do Compose. Sem Alertmanager separado: o `grafana/otel-lgtm` já traz o Grafana, e as regras gerenciadas por ele consultam qualquer fonte de dados.
 - **Invariantes consultadas nos bancos**, com um usuário só de leitura (`observer`, com `pg_monitor` e `pg_read_all_data`): lote ou setor com mais reservas ativas que ingressos e cadeira em duas reservas (inventory), dois check-ins do mesmo ingresso (checkin), pedido em PENDING há mais de 15 minutos e pedido em REFUND\_FAILED (orders). São as mesmas consultas do `make load-check`.
 - **SLO do checkout:** 99,5% das reservas e dos pedidos (rotas `reserve` e `place-order` do gateway) sem resposta 5xx, em 30 dias. O orçamento de erro é 0,5%. Respostas 4xx (cupom inválido, reserva expirada, rate limit) são o sistema funcionando e não contam.
-- **Burn rate em janelas múltiplas**, como no livro de SRE do Google: alerta crítico quando o consumo passa de 14,4 vezes o aceitável em 1 hora **e** em 5 minutos (2% do orçamento do mês numa hora), e alerta alto com 6 vezes em 6 horas e 30 minutos. A janela curta faz o alerta parar logo que o problema para; a longa evita alertar num pico de segundos.
+- **SLO de latência do checkout:** 99% das reservas e dos pedidos respondidos em menos de 1 s, em 30 dias (orçamento de 1%), medido pelo histograma do gateway (bucket de 1 s). Ele nasceu do experimento de caos com o Postgres lento: com 500 ms em cada consulta, o pedido levou 8 s e nenhum deu erro, e o SLO de disponibilidade sozinho não perceberia.
+- **Burn rate em janelas múltiplas**, nos dois SLOs, como no livro de SRE do Google: alerta crítico quando o consumo passa de 14,4 vezes o aceitável em 1 hora **e** em 5 minutos (2% do orçamento do mês numa hora), e alerta alto com 6 vezes em 6 horas e 30 minutos. A janela curta faz o alerta parar logo que o problema para; a longa evita alertar num pico de segundos.
 - **Portaria lenta** é um alerta de limite simples (p99 do check-in acima de 200 ms por 5 minutos), porque a meta da portaria é de latência, não de disponibilidade.
 - Alerta sem dados fica OK: sem tráfego não há erro a contar.
 
@@ -28,4 +29,5 @@ Alguns alertas dependem de métricas (latência, erros, lag, filas). As invarian
 
 - Os alertas chegam ao Mailpit e cada um aponta o dashboard que ajuda a investigar.
 - As consultas SQL rodam a cada minuto nos bancos dos serviços. São pequenas (índices de status e chaves estrangeiras), mas num ambiente grande teriam de ir para uma réplica de leitura.
-- O SLO é medido no gateway, então conta só o que o comprador vê; um erro interno recuperado pela saga não gasta orçamento.
+- Os SLOs são medidos no gateway, então contam só o que o comprador vê; um erro interno recuperado pela saga não gasta orçamento.
+- A latência do pedido no SLO é a da resposta do `POST /orders` (o pedido PENDING); o tempo da saga, assíncrono, fica no dashboard de negócio (`saga_duration_seconds`).

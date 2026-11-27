@@ -166,14 +166,25 @@ async function prometheus(query) {
 
 async function mails(query) {
   const url = `${MAILPIT}/api/v1/search?query=${encodeURIComponent(query)}&limit=200`;
-  return (await (await fetch(url)).json()).messages_count ?? 0;
+  // O Mailpit pode piscar quando um serviço volta e reconecta: tenta de novo antes de desistir.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return (await (await fetch(url)).json()).messages_count ?? 0;
+    } catch (error) {
+      if (attempt === 5) throw error;
+      await sleep(2_000);
+    }
+  }
 }
 
 /** Espera o e-mail de um alerta do Grafana chegar ao Mailpit. */
 async function alertMail(title, since, timeoutMs = 4 * 60_000) {
   return until(`e-mail do alerta "${title}"`, async () => {
     const url = `${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:plantao@lotou.test subject:"${title}"`)}`;
-    const found = (await (await fetch(url)).json()).messages ?? [];
+    const found = await fetch(url)
+      .then((response) => response.json())
+      .then((body) => body.messages ?? [])
+      .catch(() => []);
     return found.find((message) => Date.parse(message.Created) >= since);
   }, { timeoutMs, intervalMs: 5_000 });
 }
@@ -256,7 +267,6 @@ const experiments = {
 
   async 'estorno-falhando'() {
     const buyer = await token('comprador');
-    const producer = await token('produtor');
     const target = await farShow();
     const since = Date.now();
     step('payment-mock falhando todos os estornos');
@@ -278,7 +288,8 @@ const experiments = {
     } finally {
       recreate('payment-mock');
     }
-    const retry = await api('POST', `/orders/${failed.id}/refund/retry`, { token: producer });
+    // O token dura 5 minutos e a espera pelas falhas passa disso: pede outro.
+    const retry = await api('POST', `/orders/${failed.id}/refund/retry`, { token: await token('produtor') });
     expect(retry.status === 202, `reprocessamento recusado: ${retry.status}`);
     const done = await until('pedido ser reembolsado depois do reprocessamento', async () => {
       const current = await order(buyer, failed.id);
@@ -381,9 +392,9 @@ const experiments = {
   },
 
   async 'postgres-lento'() {
-    const buyer = await token('comprador');
     const target = await farShow();
-    step('Toxiproxy entre o order-service e o Postgres, com 500 ms de latência');
+    const since = Date.now();
+    step('Toxiproxy entre o order-service e o Postgres, com 500 ms de latência, por 4 minutos');
     compose('--profile chaos up -d --wait toxiproxy');
     await fetch(`${TOXIPROXY}/proxies/postgres-orders`, { method: 'DELETE' });
     await fetch(`${TOXIPROXY}/proxies`, {
@@ -398,39 +409,49 @@ const experiments = {
     const timings = [];
     let errors = 0;
     try {
+      // Oito compradores ao mesmo tempo (o gateway limita cada usuário; o token é renovado a cada volta).
       const started = Date.now();
-      while (Date.now() - started < 60_000) {
-        const reservation = await api('POST', '/reservations', {
-          token: buyer,
-          body: { showId: target.show.id, sectorId: target.sector.id, quantity: 1, cpf: cpf() },
-        });
-        const t0 = Date.now();
-        const created = await api('POST', '/orders', { token: buyer, body: { reservationId: reservation.body.id } });
-        timings.push(Date.now() - t0);
-        if (created.status >= 500) errors++;
-        await sleep(500);
-      }
+      await Promise.all(Array.from({ length: 8 }, async () => {
+        while (Date.now() - started < 4 * 60_000) {
+          const buyer = await token('comprador');
+          const reservation = await api('POST', '/reservations', {
+            token: buyer,
+            body: { showId: target.show.id, sectorId: target.sector.id, quantity: 1, cpf: cpf() },
+          });
+          if (reservation.status !== 201) {
+            await sleep(500);
+            continue;
+          }
+          const t0 = Date.now();
+          const created = await api('POST', '/orders', { token: buyer, body: { reservationId: reservation.body.id } });
+          timings.push(Date.now() - t0);
+          if (created.status >= 500) errors++;
+        }
+      }));
+      timings.sort((a, b) => a - b);
+      const p50 = timings[Math.floor(timings.length / 2)];
+      const p99 = timings[Math.floor(timings.length * 0.99)];
+      step(`${timings.length} pedidos em 4 minutos: p50 ${p50} ms, p99 ${p99} ms, ${errors} com erro 5xx`);
+      // O trace lento fica no Tempo (tail sampling guarda tudo acima de 500 ms): o span mais longo é o do banco.
+      const now = Math.floor(Date.now() / 1000);
+      const search = await (await fetch(
+        `${GRAFANA}/api/datasources/proxy/uid/tempo/api/search?tags=${encodeURIComponent('service.name=order-service')}&minDuration=2s&limit=1&start=${now - 600}&end=${now}`,
+      )).json();
+      const trace = search.traces?.[0];
+      expect(trace, 'nenhum trace lento do order-service no Tempo');
+      const detail = await (await fetch(`${GRAFANA}/api/datasources/proxy/uid/tempo/api/traces/${trace.traceID}`)).json();
+      const spans = detail.batches.flatMap((batch) => batch.scopeSpans.flatMap((scope) => scope.spans));
+      const database = spans.filter((span) => span.attributes?.some((attribute) => attribute.key === 'db.system.name' || attribute.key === 'db.system'));
+      const dbTime = database.reduce((total, span) => total + (Number(span.endTimeUnixNano) - Number(span.startTimeUnixNano)) / 1e6, 0);
+      step(`trace ${trace.traceID}: ${trace.durationMs} ms, dos quais ${Math.round(dbTime)} ms em ${database.length} consultas ao Postgres`);
+      expect(dbTime > trace.durationMs * 0.5, 'o trace deveria apontar o Postgres como gargalo');
+      const mail = await alertMail('Checkout lento: orçamento de latência queimando rápido', since, 6 * 60_000);
+      step(`alerta de burn rate de latência chegou ao Mailpit às ${new Date(mail.Created).toLocaleTimeString('pt-BR')}`);
     } finally {
-      await fetch(`${TOXIPROXY}/proxies/postgres-orders/toxics/latencia`, { method: 'DELETE' });
+      await fetch(`${TOXIPROXY}/proxies/postgres-orders/toxics/latencia`, { method: 'DELETE' }).catch(() => {});
       recreate('order-service');
       compose('--profile chaos stop toxiproxy');
     }
-    timings.sort((a, b) => a - b);
-    const p50 = timings[Math.floor(timings.length / 2)];
-    const p99 = timings[Math.floor(timings.length * 0.99)];
-    step(`${timings.length} pedidos em 1 minuto: p50 ${p50} ms, p99 ${p99} ms, ${errors} com erro 5xx`);
-    // O trace lento fica no Tempo (tail sampling guarda tudo acima de 500 ms): o span mais longo é o do banco.
-    const search = await (await fetch(
-      `${GRAFANA}/api/datasources/proxy/uid/tempo/api/search?tags=${encodeURIComponent('service.name=order-service http.route=/v1/orders')}&minDuration=1s&limit=1&start=${Math.floor(Date.now() / 1000) - 600}&end=${Math.floor(Date.now() / 1000)}`,
-    )).json();
-    const trace = search.traces?.[0];
-    expect(trace, 'nenhum trace lento do POST /v1/orders no Tempo');
-    const detail = await (await fetch(`${GRAFANA}/api/datasources/proxy/uid/tempo/api/traces/${trace.traceID}`)).json();
-    const spans = detail.batches.flatMap((batch) => batch.scopeSpans.flatMap((scope) => scope.spans));
-    const database = spans.filter((span) => span.attributes?.some((attribute) => attribute.key === 'db.system.name' || attribute.key === 'db.system'));
-    const dbTime = database.reduce((total, span) => total + (Number(span.endTimeUnixNano) - Number(span.startTimeUnixNano)) / 1e6, 0);
-    step(`trace ${trace.traceID}: ${trace.durationMs} ms, dos quais ${Math.round(dbTime)} ms em ${database.length} consultas ao Postgres`);
-    expect(dbTime > trace.durationMs * 0.5, 'o trace deveria apontar o Postgres como gargalo');
   },
 
   async 'mensagem-malformada'() {
