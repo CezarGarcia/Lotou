@@ -8,7 +8,7 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 
 ## Onde o projeto está
 
-**Fases 0 a 4 concluídas.** O que já funciona:
+**Fases 0 a 4 e 6 concluídas.** O que já funciona:
 
 - o ambiente inteiro sobe com um comando;
 - o produtor cadastra e publica shows pela API, e a loja busca e exibe;
@@ -18,7 +18,8 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 - **o pagamento é uma saga pelo Kafka:** pedido, pagamento e confirmação da reserva trocam comandos e eventos com outbox, e um pagamento recusado ou uma reserva expirada são compensados sem deixar ingresso preso;
 - **o comprador recebe o ingresso por e-mail:** um PDF com o QR code assinado de cada ingresso, gerado e enviado por workers no RabbitMQ, com retry, prioridade e DLQ;
 - **o produtor acompanha a venda ao vivo:** um painel por WebSocket mostra vendas por setor, receita e um feed de atividade, e uma venda aparece nele menos de meio segundo depois do clique em pagar;
-- o produtor vê as vendas e o relatório de cada show em read models que se reconstroem do zero, sem parar, a partir do Kafka;
+- **o ciclo do ingresso fecha:** taxa de serviço e cupons no pagamento, cancelamento com reembolso integral (o ingresso volta à venda e o uso do cupom também), show cancelado com reembolso em massa sob controle de vazão, e a portaria lendo o QR no celular e barrando a segunda entrada;
+- o produtor vê as vendas, os cupons e o relatório financeiro de cada show (com PDF por e-mail) em read models que se reconstroem do zero, sem parar, a partir do Kafka;
 - cada requisição gera um trace que atravessa os serviços, o Kafka, o banco e o Redis.
 
 | Fase | Entrega | Estado |
@@ -29,8 +30,8 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 | 3. Kafka e saga | outbox, saga com pagamento simulado e read models | concluída |
 | 4. RabbitMQ e tempo real | ingresso com QR code, DLQ e painel ao vivo | concluída |
 | 5. Agente de IA | assistente do produtor com LangGraph | por último, como complemento |
-| 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | próxima |
-| 7. Vitrine | testes de carga e caos, SLOs e vídeo | |
+| 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | concluída |
+| 7. Vitrine | testes de carga e caos, SLOs e vídeo | próxima |
 
 A fase 1 reservou com lock no Postgres de propósito: ela é a linha de base que a reserva no Redis superou na fase 2. Os dois motores continuam no código, e o teste de carga compara um com o outro.
 
@@ -68,9 +69,17 @@ Entre na loja com `comprador` / `lotou123`, abra um show em venda e escolha o se
 
 ![Reserva com cronômetro de 10 minutos](docs/img/loja-reserva.png)
 
+No pagamento, o resumo vem da cotação do order-service: ingressos, desconto do cupom (só sobre os ingressos) e a taxa de serviço de 10%, quando o show a repassa ao comprador. No seed não há cupom pronto: crie um na aba **Cupons** do painel do produtor.
+
+![Pagamento com cupom e taxa de serviço](docs/img/loja-cupom-e-taxa.png)
+
 Depois do pagamento, a página do pedido mostra o QR code de cada ingresso, e o mesmo QR chega por e-mail num PDF (veja no Mailpit).
 
 ![Pedido confirmado com o QR code do ingresso](docs/img/pedido-qr.png)
+
+Até 7 dias depois da compra, e com mais de 48 horas para o show, o comprador cancela o pedido inteiro e recebe tudo de volta, taxa incluída. O ingresso é cancelado na hora (a portaria passa a barrá-lo), o pagamento é estornado pela saga de reembolso, o ingresso volta à venda e chega o e-mail de reembolso.
+
+![Pedido reembolsado](docs/img/pedido-reembolsado.png)
 
 Num show de alta demanda (no seed, "Nação Coral"), a compra passa antes pela fila virtual: a sala de espera abre 30 minutos antes das vendas, as posições de quem estava na sala são sorteadas na abertura e o checkout admite um número fixo de pessoas por segundo.
 
@@ -79,6 +88,18 @@ Num show de alta demanda (no seed, "Nação Coral"), a compra passa antes pela f
 Entre com `produtor` / `lotou123` (os shows do seed são dele) e abra **Painel**. O painel de cada show recebe por WebSocket, do analytics-service, as vendas por setor e a receita a cada segundo e um feed de atividade (pedido confirmado ou cancelado, lote aberto ou esgotado). Uma compra na loja aparece no painel em menos de meio segundo, contando a saga inteira.
 
 ![Painel ao vivo do produtor](docs/img/painel-ao-vivo.png)
+
+A aba **Financeiro** mostra o valor a receber (vendas brutas − descontos − reembolsos − taxa absorvida), com a conta aberta, os reembolsos que falharam para tentar de novo e um botão que manda o relatório em PDF por e-mail. A aba **Cupons** cria, pausa e acompanha os cupons do show. **Cancelar show** reembolsa todos os pedidos confirmados, 20 por segundo, para não sobrecarregar o pagamento.
+
+![Relatório financeiro do produtor](docs/img/painel-financeiro.png)
+
+## A portaria
+
+Entre com `portaria` / `lotou123` no celular e abra **Portaria**: escolha o show e o portão, e o leitor usa a câmera traseira (ou um leitor USB, ou o código digitado). O seed cria todo dia um show de hoje, "Ensaio Aberto", com os portões já abertos. A primeira leitura de um ingresso fica verde; a segunda, em qualquer portão, fica amarela e diz quando e por onde ele entrou; QR forjado ou ingresso cancelado ficam vermelhos.
+
+![Portaria: escolha do portão, leitor, entrada liberada e ingresso já utilizado](docs/img/portaria.png)
+
+O checkin-service tem a própria cópia dos ingressos, alimentada pelo Kafka, e continua funcionando com o order-service fora do ar ([ADR 14](docs/adr/0014-portaria-com-copia-local-dos-ingressos.md)).
 
 ## Abertura de vendas sob carga
 
@@ -188,14 +209,15 @@ Durante a venda, o `redis-core` decide a reserva, e o Postgres recebe o resultad
 
 | Pasta | Stack | Responsabilidade |
 | --- | --- | --- |
-| [`apps/web`](apps/web) | Angular 22 | loja: busca, página do show, login, fila, checkout com mapa de cadeiras e meus ingressos |
+| [`apps/web`](apps/web) | Angular 22 | loja (busca, show, fila, checkout com mapa de cadeiras, cupom, meus ingressos e cancelamento), painel do produtor e portaria |
 | [`services/api-gateway`](services/api-gateway) | Java 21, Spring Cloud Gateway, Redis | roteamento, validação do JWT e rate limit da compra |
 | [`services/event-service`](services/event-service) | Node, NestJS 12, MongoDB, Redis, Kafka | shows, locais, setores e busca, com cache e rate limit; publica o catálogo |
 | [`services/inventory-service`](services/inventory-service) | Java 21, Spring Boot 4, Redis, Kafka, Postgres | lotes, disponibilidade, reservas, fila virtual e mapa de assentos ao vivo |
-| [`services/order-service`](services/order-service) | Java 21, Spring Boot 4, Kafka, Postgres | pedidos, ingressos e a saga de compra |
+| [`services/order-service`](services/order-service) | Java 21, Spring Boot 4, Kafka, Postgres | pedidos, ingressos, taxa e cupons, e as sagas de compra e de reembolso |
+| [`services/checkin-service`](services/checkin-service) | Node, NestJS 12, Postgres, Redis, Kafka | portaria: confere o QR e barra a entrada dupla, com cópia local dos ingressos |
 | [`services/payment-mock`](services/payment-mock) | Node, NestJS 12, Kafka, Postgres | gateway de pagamento simulado: recusa, estorno e latência configuráveis |
-| [`services/analytics-service`](services/analytics-service) | Python 3.13, FastAPI, Kafka, MongoDB, Redis | vendas, relatório e pedidos de cada show para o produtor, com replay; painel ao vivo por WebSocket |
-| [`services/notification-service`](services/notification-service) | Python 3.13, FastAPI, Kafka, RabbitMQ | PDF dos ingressos com QR code e e-mails, com retry e DLQ |
+| [`services/analytics-service`](services/analytics-service) | Python 3.13, FastAPI, Kafka, MongoDB, Redis | vendas, relatório financeiro e pedidos de cada show para o produtor, com replay; painel ao vivo por WebSocket |
+| [`services/notification-service`](services/notification-service) | Python 3.13, FastAPI, Kafka, RabbitMQ | PDF dos ingressos com QR code, relatório financeiro em PDF e e-mails, com retry e DLQ |
 
 Cada pasta tem seu README, com a API, a estrutura e os comandos.
 
@@ -243,6 +265,9 @@ lotou/
 - **Outbox em três bancos.** No Postgres do order-service e do payment-mock, gravado com a mudança; no inventory, por trigger, para nenhum dos dois motores de reserva esquecer de publicar; no MongoDB do event-service, com transações Kafka para um relay atrasado não publicar uma versão velha ([ADR 8](docs/adr/0008-outbox-transacional.md), [ADR 29](docs/adr/0029-outbox-do-event-service-no-mongodb.md)).
 - **Read models que se reconstroem sem parar.** O replay monta uma geração nova a partir do começo dos tópicos e troca o ponteiro de uma vez; o painel responde o tempo todo ([ADR 30](docs/adr/0030-replay-dos-read-models.md)).
 - **E-mail que não se perde.** O ingresso passa do Kafka para o RabbitMQ só depois da confirmação do broker; uma falha de envio tenta de novo em 10 s, 1 min e 5 min, por filas com TTL, e a quarta falha vai para a DLQ, de onde volta com um comando ([ADR 2](docs/adr/0002-rabbitmq-para-ingressos-e-e-mails.md)).
+- **Limite exato sob disputa, sem Redis.** O uso do cupom é contado com um `UPDATE` condicional na transação que cria o pedido: 12 compradores disputando 3 usos, exatamente 3 levam ([ADR 33](docs/adr/0033-uso-do-cupom-contado-no-postgres.md)).
+- **Entrada dupla barrada.** Na portaria, um `SET NX` no Redis decide qual portão chegou primeiro e uma constraint única no Postgres tem a palavra final; com 10 portões lendo o mesmo ingresso, 1 entra ([`checkin.service.ts`](services/checkin-service/src/checkin/checkin.service.ts)).
+- **Reembolso em massa com vazão.** Cancelar um show põe os pedidos numa fila no Postgres, e um job começa N estornos por segundo ([ADR 34](docs/adr/0034-reembolso-em-massa-com-fila-e-vazao.md)).
 - **QR que a portaria confere sem banco.** O código do ingresso é assinado com HMAC; um QR forjado é recusado antes de qualquer consulta ([ADR 15](docs/adr/0015-qr-code-assinado-com-hmac.md)).
 - **Tempo real com várias instâncias.** Cada métrica do painel é calculada uma vez por segundo por show, por quem ganha a disputa daquele segundo no Redis, e todas as instâncias repassam aos seus WebSockets ([ADR 32](docs/adr/0032-painel-ao-vivo-com-varias-instancias.md)).
 - **Última defesa no banco.** Um `CHECK` impede contador de estoque negativo, e um índice único parcial impede dois ingressos ativos para a mesma cadeira ([ADR 4](docs/adr/0004-constraint-unica-de-show-e-assento.md)).
@@ -264,13 +289,14 @@ make test
 | event-service | testes unitários das regras de domínio e testes de integração da aplicação inteira contra MongoDB e Redis reais (Testcontainers) |
 | api-gateway | regras de acesso e roteamento, rate limit num Redis real e um teste com um Keycloak real (Testcontainers) usando o mesmo realm do Compose |
 | inventory-service | regras de lote sem banco; testes de concorrência, de ciclo das vendas, de API, da fila e da reconstrução do Redis num Postgres e num Redis reais (Testcontainers), cada cenário contra os dois motores de reserva |
-| order-service | a saga passo a passo com Kafka e Postgres reais e dublês dos outros participantes, e o checkout de ponta a ponta com o inventory-service de verdade (a imagem Docker dele), incluindo 30% de pagamentos recusados |
+| order-service | a saga de compra passo a passo e a de reembolso (falhas, reprocessamento e show cancelado) com Kafka e Postgres reais e dublês dos outros participantes; cupons sob disputa; o checkout e o cancelamento de ponta a ponta com o inventory-service de verdade (a imagem Docker dele), incluindo 30% de pagamentos recusados |
+| checkin-service | HMAC do QR, regras da portaria, 10 portões disputando o mesmo ingresso (com e sem Redis) e a cópia local pelo Kafka, contra Postgres, Redis e Kafka reais |
 | payment-mock | decisões, estornos, idempotência e DLT, contra Postgres e Kafka reais |
 | analytics-service | read models, idempotência, chegada fora de ordem e o replay comparando a geração nova com a anterior, contra MongoDB e Kafka reais; o painel ao vivo com duas instâncias, medindo o evento chegando em menos de 2 s |
 | notification-service | PDF e QR, prioridade, deduplicação, retry e DLQ (com a requeue) e serviço parado sem perder mensagem, contra Kafka, RabbitMQ, Redis e Mailpit reais |
 | contratos | cada mensagem publicada é conferida contra o JSON Schema de `contracts/`, e o CI confere os exemplos |
-| web | testes unitários de estado, componentes, login, leitor de SSE e mapa de cadeiras |
-| ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta pela saga e os traces no Tempo |
+| web | testes unitários de estado, componentes, login, leitor de SSE, mapa de cadeiras, cupom, cancelamento, leitor da portaria e telas do produtor |
+| ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo |
 
 Os testes de integração usam as dependências reais, não mocks de banco. No GitHub Actions cada serviço tem seu workflow, que só roda quando a pasta dele muda; um workflow à parte sobe o ambiente inteiro numa máquina limpa.
 

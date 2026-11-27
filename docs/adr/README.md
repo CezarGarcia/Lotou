@@ -36,6 +36,7 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0010](0010-duas-instancias-de-redis.md) | Duas instâncias de Redis | aceita |
 | [0011](0011-pubsub-streams-e-kafka.md) | Pub/sub para o mapa, Streams para as reservas, Kafka para fatos de domínio | aceita |
 | [0013](0013-fila-virtual-so-em-shows-de-alta-demanda.md) | Fila virtual só em shows de alta demanda | aceita |
+| [0014](0014-portaria-com-copia-local-dos-ingressos.md) | Portaria com cópia local dos ingressos | aceita |
 | [0015](0015-qr-code-assinado-com-hmac.md) | QR code do ingresso assinado com HMAC | aceita |
 | [0017](0017-sse-na-loja-websocket-no-painel.md) | SSE na loja, WebSocket no painel | aceita |
 | [0018](0018-um-banco-por-servico.md) | Um banco por serviço | aceita |
@@ -54,3 +55,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0031](0031-hub-de-tempo-real-so-para-o-painel.md) | O analytics é o hub de tempo real do painel; o SSE da loja fica no inventory | aceita |
 | [0032](0032-painel-ao-vivo-com-varias-instancias.md) | Painel ao vivo com várias instâncias: interesse em ZSET, um cálculo por show por segundo e feed sem repetição | aceita |
 | [0033](0033-uso-do-cupom-contado-no-postgres.md) | Uso do cupom contado no Postgres, na transação do pedido | aceita |
+| [0034](0034-reembolso-em-massa-com-fila-e-vazao.md) | Reembolso em massa com fila no Postgres e vazão controlada | aceita |

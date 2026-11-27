@@ -150,6 +150,8 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 ### Financeiro
 
 - Valor a receber = vendas brutas − descontos de cupom − reembolsos − taxa de serviço (quando absorvida pelo produtor).
+- Um pedido reembolsado continua nas vendas brutas e nos descontos e entra inteiro nos reembolsos (ingressos menos desconto); a taxa absorvida dele sai da conta, porque o comprador recebe tudo de volta. Assim um pedido reembolsado soma exatamente zero no valor a receber.
+- A taxa paga pelos compradores aparece no relatório como informação: ela fica com a plataforma e não entra no valor a receber.
 - O relatório é parcial durante as vendas e vira final quando o show termina.
 
 ## Estados
@@ -766,6 +768,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
 | 32 | Painel com várias instâncias: interesse num ZSET com prazo, o segundo de cada show disputado num script Lua e o feed registrado uma vez por `eventId`, fora das gerações | líder eleito calculando tudo; calcular em toda instância | sem failover nem trabalho repetido; o replay não repete linhas no feed |
 | 33 | Uso do cupom contado no Postgres, na mesma transação que cria o pedido | contador num script Lua no Redis | pedido e uso no mesmo banco, sem reconciliação; o update condicional garante o limite exato |
+| 34 | Reembolso em massa com fila em `refunds` e um job que começa N por segundo | mandar todos os estornos de uma vez; fila no RabbitMQ | o gateway de pagamento não recebe milhares de estornos de uma vez; o estado do reembolso fica junto do pedido |
 
 ## Testes, carga e caos
 
@@ -947,6 +950,30 @@ O que ficou para as fases seguintes, de propósito:
 - Entradas na portaria e o tamanho da fila no painel: chegam com o checkin-service (fase 6) e quando o inventory publicar a fila.
 - Métricas do RabbitMQ no Grafana (o plugin Prometheus já está ligado na imagem, falta o Collector ler) e o alerta de DLQ (fase 7).
 - E-mails de reembolso e o PDF do relatório financeiro (fase 6).
+
+### Fase 6 (produto completo)
+
+Fase concluída em 27/11/2026. Critérios de pronto atingidos:
+
+- **Portaria barra entrada dupla:** com 10 portões lendo o mesmo ingresso ao mesmo tempo, 1 entra e 9 recebem "já utilizado" com o portão e o horário da primeira entrada; com o Redis fora do ar, a constraint única decide sozinha. Coberto pelos testes do checkin-service e repetido no Compose pelo `make smoke` e no navegador (leitor da portaria no celular: verde, depois amarelo).
+- **Reembolso devolve ingresso e cupom:** o comprador cancela, o pagamento é estornado, o inventory devolve o ingresso à venda (a reserva vira RETURNED) e o uso do cupom volta. Coberto por teste de ponta a ponta com o inventory de verdade e conferido no Compose: estoque 2499 → 2500 e cupom de volta a zero usos.
+
+- [x] Taxa de serviço de 10% por show, repassada ao comprador ou absorvida pelo produtor, com cotação antes do pagamento (`POST /orders/quote`)
+- [x] Cupons percentuais ou de valor fixo, com limite de usos exato sob disputa (12 compradores, 3 usos, exatamente 3 levam), validade e setores (ADR 33)
+- [x] Cancelamento pelo comprador (7 dias, 48 h antes do show, sem ingresso usado) e a saga de reembolso em `refunds`, com 5 falhas levando a REFUND\_FAILED e o reprocessamento pelo produtor
+- [x] Show cancelado pelo produtor reembolsa todos os pedidos confirmados, com controle de vazão (ADR 34)
+- [x] Inventory devolve à venda os ingressos de um pedido cancelado (`ReturnTickets`, reserva RETURNED), nos dois motores de reserva
+- [x] checkin-service: cópia local dos ingressos, QR conferido por HMAC antes de qualquer consulta, `SET NX` no `redis-core` e constraint única para a primeira entrada, `TicketCheckedIn` pelo outbox (ADR 14)
+- [x] Relatório financeiro no analytics, com PDF enviado por e-mail pelo notification-service (fila `reports.generate`), e o e-mail de reembolso concluído
+- [x] Loja: cupom e taxa no pagamento, cancelamento e reembolso em "Meus ingressos", leitor da portaria (`/portaria`, câmera ou leitor USB) e as abas Financeiro e Cupons no painel do produtor
+- [x] `make smoke` confere cancelamento com reembolso e portaria; o seed cria um show de hoje com os portões abertos
+
+Decisões da fase que viraram ADR: portaria com cópia local dos ingressos (14), uso do cupom contado no Postgres (33) e reembolso em massa com fila e vazão controlada (34).
+
+O que ficou para as fases seguintes, de propósito:
+
+- O leitor da portaria sem internet (fila local de leituras para sincronizar depois) segue como questão em aberto.
+- O teste de carga do cupom (mil compradores disputando 100 usos) e o alerta de REFUND\_FAILED entram na fase 7, com os SLOs.
 
 ## Questões em aberto
 
