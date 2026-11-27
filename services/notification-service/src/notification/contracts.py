@@ -27,9 +27,7 @@ UtcDatetime = Annotated[AwareDatetime, AfterValidator(lambda value: value.astime
 # antigos (ADR 15): o order-service assina, aqui só vira QR code.
 TicketCode = Annotated[
     str,
-    StringConstraints(
-        pattern=r"^(LOTOU2\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{86}|LOTOU1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43})$"
-    ),
+    StringConstraints(pattern=r"^(LOTOU2\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{86}|LOTOU1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43})$"),
 ]
 
 
