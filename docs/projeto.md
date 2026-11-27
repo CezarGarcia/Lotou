@@ -348,6 +348,7 @@ lotou/
 │   └── grafana/dashboards/
 ├── seed/                      # shows, locais e compradores fictícios
 ├── scripts/                   # verificação do ambiente (smoke)
+├── e2e/                       # Playwright: a loja no navegador, contra o ambiente no ar
 ├── load-tests/                # k6
 ├── chaos/                     # roteiros dos experimentos
 ├── docs/
@@ -786,7 +787,7 @@ Os testes de carga e caos são a vitrine: cada um gera um print do Grafana e um 
 - **Unitários:** regras de domínio, script Lua (com Redis real) e passos da saga.
 - **Integração com Testcontainers:** Kafka, Redis, Postgres, MongoDB e RabbitMQ reais em cada serviço.
 - **Contratos de eventos:** produtor e consumidor validam contra o mesmo JSON Schema no CI.
-- **Ponta a ponta:** Playwright faz a compra completa na loja Angular.
+- **Ponta a ponta:** Playwright faz a compra completa na loja Angular, contra o ambiente do Compose no ar e com o login real no Keycloak (`make e2e`, em `e2e/`): pista com cupom, cadeira escolhida no mapa, cancelamento até o reembolso, cupom e financeiro no painel do produtor e a portaria no celular (verde, amarelo e vermelho). O CI roda a suíte depois do `make smoke`.
 - **CI:** GitHub Actions roda tudo a cada push.
 
 ### Carga (k6)

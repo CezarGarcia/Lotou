@@ -4,12 +4,12 @@ COMPOSE ?= docker compose
 INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui rabbitmq mailpit keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
-.PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \
+.PHONY: help up infra down clean seed smoke e2e logs ps test load-opening load-contention load-show-page load-check \
 	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-checkin-service \
 	test-analytics-service test-notification-service test-web replay-analytics requeue-notifications
 
 help: ## Lista os comandos
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 up: ## Sobe o ambiente inteiro e espera ficar saudável
 	$(COMPOSE) up -d --build --wait
@@ -37,6 +37,10 @@ seed: ## Carrega locais e shows fictícios (pode rodar mais de uma vez)
 
 smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
 	$(COMPOSE) run --rm smoke
+
+# Roda no host, contra o ambiente no ar. Na primeira vez: `cd e2e && npx playwright install chromium`.
+e2e: ## Ponta a ponta no navegador (Playwright): compra, cupom, cancelamento, painel e portaria
+	cd e2e && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npx playwright test
 
 # Testes de carga (k6, dentro do Compose). ENGINE escolhe o motor de reserva do inventory.
 ENGINE ?= redis

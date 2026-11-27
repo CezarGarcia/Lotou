@@ -44,6 +44,7 @@ Você precisa de Docker (com Compose) e `make`. O ambiente usa cerca de 5,5 GB d
 make up     # sobe tudo e espera ficar saudável (a primeira vez constrói as imagens)
 make seed   # cria cinco locais e cinco shows fictícios
 make smoke  # compra um ingresso de ponta a ponta e confere os traces
+make e2e    # as mesmas compras pela loja, num navegador (Playwright)
 ```
 
 | O quê | Onde |
@@ -242,6 +243,7 @@ lotou/
 │   ├── keycloak/            # realm importado na subida
 │   └── postgres/            # criação dos bancos
 ├── seed/                    # locais e shows fictícios
+├── e2e/                    # testes ponta a ponta com Playwright, contra o ambiente no ar
 ├── load-tests/              # testes de carga com k6 e conferência das invariantes
 ├── scripts/                 # verificação do ambiente
 ├── docs/
@@ -298,6 +300,7 @@ make test
 | contratos | cada mensagem publicada é conferida contra o JSON Schema de `contracts/`, e o CI confere os exemplos |
 | web | testes unitários de estado, componentes, login, leitor de SSE, mapa de cadeiras, cupom, cancelamento, leitor da portaria e telas do produtor |
 | ambiente | `make smoke`: Compose de pé, seed, uma compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo |
+| navegador | `make e2e`: Playwright na loja de verdade, com login no Keycloak: compra de pista com cupom (desconto, taxa e total conferidos), cadeira escolhida no mapa, cancelamento até o reembolso, cupom e financeiro no painel do produtor e a portaria no celular liberando, barrando a segunda entrada e recusando um código adulterado ([`e2e/`](e2e/README.md)) |
 
 Os testes de integração usam as dependências reais, não mocks de banco. No GitHub Actions cada serviço tem seu workflow, que só roda quando a pasta dele muda; um workflow à parte sobe o ambiente inteiro numa máquina limpa.
 
