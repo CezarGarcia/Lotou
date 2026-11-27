@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Observabilidade: um trace da compra</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      :root {
+        --sync: #59c3ff;
+        --db: #b6a4ff;
+      }
+      .trace {
+        border: 1px solid var(--line-strong);
+        border-radius: 18px;
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .bar-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line-strong);
+        background: var(--raised);
+      }
+      .bar-head .title {
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .bar-head .spacer {
+        flex: 1;
+      }
+      .rows {
+        position: relative;
+      }
+      .row,
+      .axis {
+        display: grid;
+        grid-template-columns: 420px 1fr;
+      }
+      .axis {
+        height: 34px;
+        border-bottom: 1px solid var(--line);
+      }
+      .axis .lbl {
+        display: flex;
+        align-items: center;
+        padding-left: 18px;
+      }
+      .axis .ticks,
+      .row .tl {
+        position: relative;
+        margin-right: 30px;
+        margin-left: 14px;
+      }
+      .tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        transform: translateX(-50%);
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .grid-lines {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: calc(420px + 14px);
+        right: 30px;
+        pointer-events: none;
+      }
+      .grid-lines span {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-left: 1px solid var(--line);
+      }
+      .row {
+        min-height: 50px;
+        border-bottom: 1px solid var(--line);
+      }
+      .row:last-child {
+        border-bottom: 0;
+      }
+      .row .info {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 3px;
+        padding: 7px 10px 7px 18px;
+        border-right: 1px solid var(--line);
+      }
+      .row .info .l1 {
+        font-size: 13.5px;
+        line-height: 1.25;
+        white-space: nowrap;
+      }
+      .row .info .svc {
+        font-weight: 700;
+      }
+      .row .info .op {
+        color: var(--muted);
+      }
+      .row .info .l2 {
+        display: flex;
+      }
+      .hop {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        padding: 0 7px;
+        border-radius: 999px;
+        border: 1px solid currentColor;
+      }
+      .hop.kafka {
+        color: var(--kafka);
+      }
+      .hop.rabbit {
+        color: var(--rabbit);
+      }
+      .span {
+        position: absolute;
+        top: 50%;
+        height: 16px;
+        margin-top: -8px;
+        border-radius: 4px;
+        min-width: 5px;
+      }
+      .span.sync { background: var(--sync); }
+      .span.db { background: var(--db); }
+      .span.kafka { background: var(--kafka); }
+      .span.rabbit { background: var(--rabbit); }
+      .dur {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-left: 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text-2);
+        white-space: nowrap;
+      }
+      .wait {
+        position: absolute;
+        top: 50%;
+        border-top: 2px dashed;
+        opacity: 0.75;
+      }
+      .wait.kafka { border-color: var(--kafka); }
+      .wait.rabbit { border-color: var(--rabbit); }
+      .callout {
+        position: absolute;
+        width: 300px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--sync);
+        background: var(--bg);
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--text-2);
+      }
+      .callout strong {
+        color: var(--sync);
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        margin-top: 16px;
+        font-size: 13px;
+        color: var(--text-2);
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .legend i {
+        display: inline-block;
+        width: 22px;
+        height: 10px;
+        border-radius: 3px;
+      }
+      .legend i.dash {
+        height: 0;
+        border-top: 2px dashed var(--muted);
+        border-radius: 0;
+      }
+      .notes {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Observabilidade · traces no Tempo</span>
+        <h1>Uma compra, um trace só</h1>
+        <p class="lede">
+          O cabeçalho <code>traceparent</code> leva o id do trace no HTTP e nas mensagens do Kafka e
+          do RabbitMQ. Do clique no Angular ao e-mail enviado, tudo aparece numa árvore só, como no
+          Explore do Grafana.
+        </p>
+      </div>
+
+      <div class="trace">
+        <div class="bar-head">
+          <span class="title">Clique em Pagar</span>
+          <span class="chip">11 spans</span>
+          <span class="chip">7 serviços e o Postgres</span>
+          <span class="spacer"></span>
+          <span class="chip is-warn solid">tempos ilustrativos</span>
+        </div>
+        <div class="rows" id="rows">
+          <div class="axis">
+            <div class="lbl label">Serviço e operação</div>
+            <div class="ticks" id="ticks"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i style="background: var(--sync)"></i>na mesma requisição HTTP</span>
+        <span><i style="background: var(--db)"></i>no banco</span>
+        <span><i style="background: var(--kafka)"></i>chegou pelo Kafka</span>
+        <span><i style="background: var(--rabbit)"></i>chegou pelo RabbitMQ</span>
+        <span><i class="dash"></i>a mensagem esperando no broker</span>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Como achar um trace:</strong> em Explore → Tempo. O <code>make smoke</code> imprime
+          o id do trace da compra, e os logs em JSON levam <code>trace_id</code> e
+          <code>span_id</code>: do log de um erro, um clique leva ao trace.
+        </div>
+        <div class="note">
+          <strong>Nem todo trace fica:</strong> o Collector guarda sempre os com erro, os acima de
+          500 ms e os do <code>make smoke</code> e dos testes ponta a ponta; do resto, 10%.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · observabilidade</span>
+      </div>
+    </div>
+    <script>
+      // Tempos ilustrativos, em milissegundos desde o clique.
+      const MAX = 1000;
+      const spans = [
+        { d: 0, svc: 'Angular', op: 'clique em Pagar', t: [0, 62], k: 'sync' },
+        { d: 1, svc: 'api-gateway', op: 'POST /orders', t: [6, 58], k: 'sync' },
+        { d: 2, svc: 'order-service', op: 'cria o pedido e o outbox', t: [12, 52], k: 'sync' },
+        { d: 3, svc: 'Postgres', op: 'INSERT orders, outbox', t: [22, 40], k: 'db' },
+        { d: 3, svc: 'payment-mock', op: 'autoriza', t: [140, 205], k: 'kafka', hop: 'AuthorizePayment', from: 52 },
+        { d: 4, svc: 'order-service', op: 'pede a confirmação da reserva', t: [252, 274], k: 'kafka', hop: 'PaymentAuthorized', from: 205 },
+        { d: 5, svc: 'inventory', op: 'confirma no Redis e no Postgres', t: [320, 356], k: 'kafka', hop: 'ConfirmReservation', from: 274 },
+        { d: 6, svc: 'order-service', op: 'confirma e emite os ingressos', t: [402, 452], k: 'kafka', hop: 'ReservationConfirmed', from: 356 },
+        { d: 7, svc: 'analytics', op: 'atualiza o painel', t: [498, 514], k: 'kafka', hop: 'TicketsIssued', from: 452 },
+        { d: 7, svc: 'notification', op: 'gera o PDF', t: [506, 790], k: 'kafka', hop: 'TicketsIssued', from: 452 },
+        { d: 8, svc: 'notification', op: 'envia o e-mail', t: [836, 904], k: 'rabbit', hop: 'tarefa de e-mail', from: 790 },
+      ];
+      const pct = (ms) => `${(ms / MAX) * 100}%`;
+      const ticks = document.getElementById('ticks');
+      const rows = document.getElementById('rows');
+      const lines = document.createElement('div');
+      lines.className = 'grid-lines';
+      for (let ms = 0; ms <= MAX; ms += 200) {
+        ticks.insertAdjacentHTML('beforeend', `<span class="tick" style="left:${pct(ms)}">${ms} ms</span>`);
+        lines.insertAdjacentHTML('beforeend', `<span style="left:${pct(ms)}"></span>`);
+      }
+      for (const s of spans) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const hop = s.hop
+          ? `<div class="l2" style="padding-left:${s.d * 14}px"><span class="hop ${s.k}">${s.k === 'kafka' ? 'Kafka' : 'RabbitMQ'} · ${s.hop}</span></div>`
+          : '';
+        const wait = s.hop
+          ? `<div class="wait ${s.k}" style="left:${pct(s.from)};width:${pct(s.t[0] - s.from)}"></div>`
+          : '';
+        row.innerHTML = `
+          <div class="info">
+            <div class="l1" style="padding-left:${s.d * 14}px"><span class="svc">${s.svc}</span> <span class="op">· ${s.op}</span></div>
+            ${hop}
+          </div>
+          <div class="tl">
+            ${wait}
+            <div class="span ${s.k}" style="left:${pct(s.t[0])};width:${pct(s.t[1] - s.t[0])}"></div>
+            <span class="dur" style="left:${pct(s.t[1])}">${s.t[1] - s.t[0]} ms</span>
+          </div>`;
+        rows.appendChild(row);
+      }
+      rows.prepend(lines);
+      const callout = document.createElement('div');
+      callout.className = 'callout';
+      callout.innerHTML =
+        '<strong>O comprador já tem a resposta aqui:</strong> o pedido criado, ainda PENDING. O resto segue por mensagens, sem prender a tela.';
+      callout.style.left = 'calc(420px + 14px + (100% - 420px - 44px) * 0.24)';
+      callout.style.top = '42px';
+      rows.appendChild(callout);
+    </script>
+  </body>
+</html>

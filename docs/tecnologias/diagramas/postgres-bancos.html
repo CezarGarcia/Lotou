@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Postgres: um banco por serviço</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .cols {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        column-gap: 20px;
+      }
+      .svc {
+        text-align: center;
+        padding: 12px 10px;
+      }
+      .svc .name {
+        font-size: 15px;
+      }
+      .svc .tag {
+        color: var(--muted);
+      }
+      .instance {
+        margin-top: 64px;
+        border-color: var(--pg);
+        padding: 30px 18px 26px;
+      }
+      .instance > .group-title {
+        top: auto;
+        bottom: -10px;
+        left: auto;
+        right: 18px;
+        color: var(--pg);
+      }
+      .pad {
+        padding: 0 19.5px;
+      }
+      .db {
+        position: relative;
+        padding: 26px 14px 16px;
+        border: 2px solid var(--pg);
+        border-radius: 18px / 22px;
+        background: var(--surface);
+        min-height: 150px;
+      }
+      .db::before {
+        /* a tampa do cilindro */
+        content: '';
+        position: absolute;
+        left: -2px;
+        right: -2px;
+        top: -2px;
+        height: 18px;
+        border: 2px solid var(--pg);
+        border-radius: 50%;
+        background: var(--raised);
+      }
+      .db .dbname {
+        font-family: var(--mono);
+        font-size: 17px;
+        font-weight: 500;
+        color: var(--pg);
+      }
+      .db .what {
+        margin-top: 6px;
+        font-size: 13px;
+        line-height: 1.35;
+        color: var(--muted);
+      }
+      .db.kc {
+        border-color: var(--keycloak);
+      }
+      .db.kc::before {
+        border-color: var(--keycloak);
+      }
+      .db.kc .dbname {
+        color: var(--keycloak);
+      }
+      .obs-row {
+        margin-top: 70px;
+      }
+      .obs {
+        grid-column: 1 / span 4;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+      .obs .anchors {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        column-gap: 20px;
+      }
+      .obs .anchors span {
+        height: 1px;
+      }
+      .obs-side {
+        grid-column: 5;
+        align-self: stretch;
+      }
+      .ro {
+        color: var(--orange);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Postgres · um banco por serviço</span>
+        <h1>Uma instância, cinco bancos, nenhum vizinho</h1>
+        <p class="lede">
+          Cada serviço tem o próprio banco e o próprio usuário, e não consegue ler o banco de outro.
+          Quando precisa de um dado alheio, recebe pelo Kafka e guarda uma cópia (ADR 18).
+        </p>
+      </div>
+
+      <div class="cols pad">
+        <div class="node svc" id="s-inv"><span class="tag">Java</span><div class="name">inventory-service</div></div>
+        <div class="node svc" id="s-ord"><span class="tag">Java</span><div class="name">order-service</div></div>
+        <div class="node svc" id="s-pay"><span class="tag">Node</span><div class="name">payment-mock</div></div>
+        <div class="node svc" id="s-ck"><span class="tag">Node</span><div class="name">checkin-service</div></div>
+        <div class="node svc outline is-keycloak" id="s-kc"><span class="tag">identidade</span><div class="name">Keycloak</div></div>
+      </div>
+
+      <div class="group instance">
+        <span class="group-title">Postgres 18 · uma instância</span>
+        <div class="cols">
+          <div class="db" id="d-inv">
+            <div class="dbname">inventory</div>
+            <div class="what">lotes, cadeiras, reservas, limite por CPF, outbox</div>
+          </div>
+          <div class="db" id="d-ord">
+            <div class="dbname">orders</div>
+            <div class="what">pedidos, ingressos, cupons, reembolsos, saga, outbox</div>
+          </div>
+          <div class="db" id="d-pay">
+            <div class="dbname">payments</div>
+            <div class="what">tentativas e estornos</div>
+          </div>
+          <div class="db" id="d-ck">
+            <div class="dbname">checkin</div>
+            <div class="what">ingressos válidos, entradas, leituras recusadas, outbox</div>
+          </div>
+          <div class="db kc" id="d-kc">
+            <div class="dbname">keycloak</div>
+            <div class="what">usuários e sessões</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols pad obs-row">
+        <div class="node outline is-otel obs" id="obs">
+          <div class="anchors">
+            <span id="a-inv"></span><span id="a-ord"></span><span></span><span id="a-ck"></span>
+          </div>
+          <div>
+            <span class="tag">Grafana · usuário <span class="ro">observer</span></span>
+            <div class="name">Só leitura: as consultas dos alertas de invariante</div>
+            <div class="desc">
+              A cada minuto: algum setor com mais ingressos que lugares? Algum ingresso com duas
+              entradas? Não escreve em nada.
+            </div>
+          </div>
+        </div>
+        <div class="note obs-side">
+          <strong>Tabelas por migração:</strong> Flyway nos serviços Java, scripts SQL nos serviços
+          Node, na subida de cada um.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · postgres</span>
+      </div>
+    </div>
+    <script>
+      for (const id of ['inv', 'ord', 'pay', 'ck']) {
+        Diagrama.link(`#s-${id}`, `#d-${id}`, { from: 'bottom', to: 'top', straight: true });
+      }
+      Diagrama.link('#s-kc', '#d-kc', { from: 'bottom', to: 'top', straight: true, color: 'sky' });
+      for (const id of ['inv', 'ord', 'ck']) {
+        Diagrama.link(`#a-${id}`, `#d-${id}`, {
+          from: 'top',
+          to: 'bottom',
+          straight: true,
+          dashed: true,
+          color: 'orange',
+        });
+      }
+    </script>
+  </body>
+</html>

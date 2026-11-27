@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keycloak: duas conferências do token</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 216px 316px 316px;
+        column-gap: 124px;
+        row-gap: 70px;
+        align-items: center;
+      }
+      .kc {
+        grid-column: 2 / span 2;
+        justify-self: center;
+        width: 420px;
+        text-align: center;
+      }
+      .check {
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 13.5px;
+        color: var(--text-2);
+      }
+      .check li {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .check li::before {
+        content: '✓';
+        color: var(--green);
+        font-weight: 700;
+      }
+      .check li.no::before {
+        content: '✕';
+        color: var(--red);
+      }
+      .order {
+        display: inline-block;
+        margin-left: 6px;
+        font-family: var(--display);
+        font-size: 22px;
+        font-weight: 900;
+        color: var(--yellow);
+        vertical-align: -2px;
+      }
+      .split {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line-strong);
+      }
+      .bad-row {
+        grid-column: 1 / span 2;
+      }
+      .attacker {
+        width: 460px;
+      }
+      .r401 {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        font-size: 13.5px;
+        color: var(--text-2);
+      }
+      .notes {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Keycloak · segurança em camadas</span>
+        <h1>O token é conferido duas vezes</h1>
+        <p class="lede">
+          O gateway barra antes quem não fez login, e o serviço confere de novo. Assim, quem chega ao
+          serviço por outro caminho, sem passar pelo gateway, leva 401 do mesmo jeito (ADR 21).
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="node outline is-keycloak kc" id="kc">
+          <span class="tag">Keycloak</span>
+          <div class="name">Assina os tokens</div>
+          <div class="desc">a chave pública basta para conferir, sem perguntar nada a ele a cada requisição</div>
+        </div>
+
+        <div class="node" id="nav">
+          <span class="tag">navegador</span>
+          <div class="name">Loja Angular</div>
+          <div class="desc">manda o token em <code>Authorization: Bearer</code></div>
+        </div>
+
+        <div class="node outline is-ok" id="gw">
+          <span class="tag">api-gateway</span>
+          <div class="name">Conferência<span class="order">1</span></div>
+          <ul class="check">
+            <li><span>assinatura, emissor e validade</span></li>
+            <li><span>papel exigido pela rota</span></li>
+            <li><span>rate limit por usuário</span></li>
+          </ul>
+        </div>
+
+        <div class="node outline is-ok" id="svc">
+          <span class="tag">serviço (order, inventory, ...)</span>
+          <div class="name">Conferência<span class="order">2</span></div>
+          <ul class="check">
+            <li><span>assinatura, emissor, audiência e validade</span></li>
+            <li><span>papel da rota: a regra que vale</span></li>
+            <li><span>quem é vem do <code>sub</code>, nunca de cabeçalho</span></li>
+          </ul>
+          <div class="split">
+            <span class="r401"><span class="chip is-danger solid">401</span> sem token válido, não
+              entra</span>
+          </div>
+        </div>
+
+        <div class="bad-row">
+          <div class="node outline is-danger attacker" id="atk">
+            <span class="tag">rede interna</span>
+            <div class="name">Alguém que pula o gateway</div>
+            <div class="desc">
+              Um serviço exposto por engano, uma chamada direta dentro da rede: sem a segunda
+              conferência, entraria.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>A tela é só conveniência:</strong> a loja esconde o que o papel não permite, mas
+          quem decide é o servidor, nas duas conferências.
+        </div>
+        <div class="note">
+          <strong>Rotas internas:</strong> <code>/internal/**</code> nem existe no gateway. Só é
+          alcançável dentro da rede do Compose e exige o papel <code>service</code>.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · keycloak-e-seguranca</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#nav', '#gw', { label: 'token' });
+      Diagrama.link('#gw', '#svc', { label: 'mesmo token', color: 'green' });
+      Diagrama.link('#kc', '#gw', { from: 'bottom', to: 'top', fromAt: 0.2, dashed: true, color: 'sky', label: 'chave pública', labelColor: 'sky' });
+      Diagrama.link('#kc', '#svc', { from: 'bottom', to: 'top', fromAt: 0.8, dashed: true, color: 'sky' });
+      Diagrama.link('#atk', '#svc', {
+        from: 'right',
+        to: 'bottom',
+        dashed: true,
+        color: 'red',
+        label: 'sem token válido',
+        labelColor: 'red',
+        elbow: true,
+      });
+    </script>
+  </body>
+</html>

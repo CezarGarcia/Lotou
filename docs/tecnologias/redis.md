@@ -4,22 +4,7 @@ O Redis guarda dados em memória e responde em microssegundos. No Lotou ele é a
 
 ## Duas instâncias, duas regras
 
-```mermaid
-flowchart LR
-    subgraph cache["redis-cache: pode perder"]
-        c1["páginas de show já prontas<br/>resultados de busca"]
-    end
-    subgraph core["redis-core: não pode perder"]
-        k1["estoque, cadeiras, reservas,<br/>fila virtual, limites por CPF,<br/>check-in, rate limit, locks"]
-    end
-    ev["event-service"] --> cache
-    gw["gateway"] --> core
-    inv["inventory"] --> core
-    ord["order"] --> core
-    an["analytics"] --> core
-    ck["checkin"] --> core
-    nt["notification"] --> core
-```
+![Duas instâncias de Redis lado a lado. À esquerda, o redis-cache, que pode perder: quando a memória enche apaga as chaves menos usadas (allkeys-lru), não grava nada em disco e, se perder tudo, a próxima leitura busca de novo no MongoDB; guarda a página do show e a busca, e só o event-service usa. À direita, o redis-core, que não pode perder: recusa escrever quando a memória enche (noeviction), grava AOF a cada segundo e, se perdesse tudo, seria um bug, com ingresso vendido duas vezes e fila perdida; guarda estoque, cadeiras, reservas, fila virtual, limites por CPF, check-in, rate limit, locks e o painel ao vivo, e é usado pelo event-service (rate limit do catálogo), gateway, inventory, checkin, analytics e notification.](img/redis-instancias.png)
 
 | | `redis-cache` | `redis-core` |
 | --- | --- | --- |
@@ -37,24 +22,9 @@ Na abertura das vendas, um job carrega no `redis-core` tudo o que a venda precis
 
 Uma reserva é um **script Lua**: o Redis roda o script inteiro sem intercalar nenhum outro comando, então duas pessoas nunca pegam o último ingresso ao mesmo tempo (ADR 3).
 
-```mermaid
-flowchart TB
-    start["Reserva: 2 ingressos na pista"] --> s{{"Script Lua, atômico"}}
-    s --> a{"Token de admissão válido?<br/>(só em show de alta demanda)"}
-    a -- não --> x1["409: entre na fila virtual"]
-    a -- sim --> b{"CPF passa de 4 ingressos?"}
-    b -- sim --> x2["422: limite por CPF"]
-    b -- não --> c{"Lote à venda e<br/>estoque ≥ 2?"}
-    c -- não --> x3["409: esgotado"]
-    c -- sim --> d["DECRBY lot:{id}:stock 2<br/>cria res:{id}<br/>soma no limite do CPF"]
-    d --> e{"Estoque chegou a zero?"}
-    e -- sim --> f["lote esgotado, abre o próximo"]
-    e -- não --> g
-    f --> g["XADD stream:reservations<br/>(o estado final, para o Postgres)"]
-    g --> ok["201: reserva por 10 minutos"]
-```
+![A reserva de 2 ingressos na pista como um funil dentro do script Lua atômico. Primeira pergunta: token de admissão válido, só em show de alta demanda; se não, 409, entre na fila virtual. Segunda: o CPF passa de 4 ingressos; se sim, 422, limite por CPF. Terceira: lote à venda e estoque de pelo menos 2; se não, 409, esgotado. Passando nas três, o script segura: DECRBY no estoque do lote, cria a reserva e soma no limite do CPF, abre o próximo lote se o estoque zerou e faz XADD no stream:reservations com o estado final; a resposta é 201, reserva por 10 minutos.](img/redis-reserva-lua.png)
 
-Na cadeira numerada, o script tenta segurar todas as cadeiras escolhidas com `SET NX` (só grava se a chave não existe): segura todas ou nenhuma. Se a pessoa escolheu F12 e F13 e alguém já pegou a F13, nenhuma das duas fica presa.
+Na cadeira numerada, o script confere se alguma das cadeiras escolhidas já tem dono (`EXISTS`) e só então grava todas (`SET`): como nada roda no meio do script, ele segura todas ou nenhuma. Se a pessoa escolheu F12 e F13 e alguém já pegou a F13, nenhuma das duas fica presa.
 
 O teste de carga compara esse script com a mesma reserva feita com lock no Postgres: o Redis é a linha que aguenta a abertura, e o Postgres é a base de comparação (`make load-opening ENGINE=redis|postgres`).
 
@@ -62,35 +32,13 @@ O teste de carga compara esse script com a mesma reserva feita com lock no Postg
 
 Toda reserva feita no script entra, na mesma operação, num **stream** (`stream:reservations`). Um grupo de consumidores do inventory lê o stream e grava no Postgres.
 
-```mermaid
-sequenceDiagram
-    participant L as Script Lua
-    participant S as stream:reservations
-    participant I as inventory (consumidor)
-    participant P as Postgres
-    L->>S: XADD com o estado final do lote, das cadeiras e da reserva
-    I->>S: XREADGROUP
-    S-->>I: entrada 1715...-0
-    I->>P: grava, guardando a posição no stream (redis_seq)
-    I->>S: XACK
-    Note over I,S: se o inventory cair antes do XACK,<br/>XPENDING e XCLAIM pegam a entrada de novo
-```
+![O caminho do Redis ao Postgres. 1: o script Lua da reserva faz XADD no stream:reservations. 2: o inventory, num grupo de consumidores, lê com XREADGROUP. 3: grava no Postgres, cada linha com o redis_seq da entrada. 4: confirma com XACK. O stream mostra entradas já confirmadas, uma pendente sem XACK e novas. Se o inventory cair antes do XACK, XPENDING mostra a entrada parada, XCLAIM faz outra instância assumi-la, e ela grava de novo sem estragar nada, porque cada entrada leva o estado final.](img/redis-stream.png)
 
 Cada entrada leva o **estado final** (o estoque que sobrou, não "menos 2"), e o consumidor nunca aplica uma entrada mais antiga por cima de uma mais nova. Por isso processar a mesma entrada duas vezes não estraga nada.
 
 ### 3. O mapa de cadeiras: bitmap + pub/sub
 
-```mermaid
-flowchart LR
-    subgraph bitmap["seatmap:{show}:{setor}  (bitmap)"]
-        bits["0 0 1 0 1 1 0 0 0 1 ...<br/>um bit por cadeira"]
-    end
-    lua["Script da reserva"] -- "SETBIT" --> bitmap
-    lua -- "PUBLISH seatmap.{show}<br/>'F12 ocupada'" --> ps(("pub/sub"))
-    ps --> inv["inventory"]
-    inv -- "SSE" --> b1["navegador de quem está no mapa"]
-    bitmap -- "GETRANGE: o mapa inteiro<br/>numa leitura" --> inv
-```
+![O mapa de cadeiras ao vivo. O script da reserva grava o bit da cadeira com SETBIT no bitmap seatmap:{show}:{setor}, um bit por cadeira, e publica a mudança no canal pub/sub seatmap.{show}. O inventory assina o canal e repassa por SSE aos navegadores de quem está no mapa, onde a cadeira fica cinza. Ao conectar ou reconectar, o inventory lê o bitmap inteiro com um GET e manda o mapa todo, porque o pub/sub não guarda as mensagens perdidas.](img/redis-mapa-cadeiras.png)
 
 - Um setor com 5 mil cadeiras cabe em cerca de 625 bytes. Quem abre o mapa lê o bitmap inteiro numa leitura só (ADR 5).
 - A cada cadeira segurada, liberada ou vendida, o script publica a mudança num canal **pub/sub**. O inventory repassa por SSE a todos que estão olhando o mapa, e a cadeira fica cinza na tela deles na hora.
@@ -100,37 +48,13 @@ flowchart LR
 
 Só nos shows marcados como de alta demanda (ADR 13).
 
-```mermaid
-sequenceDiagram
-    actor A as Compradores
-    participant Room as queue:{show}:room (set)
-    participant Q as queue:{show} (sorted set)
-    participant Adm as admitted:{show}:{user}
-    A->>Room: 30 min antes: entram na sala de espera
-    Note over Room,Q: na abertura, um script sorteia a ordem da sala
-    Room->>Q: posição sorteada como score
-    A->>Q: quem chega depois: ZADD NX com a hora de chegada
-    loop a cada segundo
-        Q->>Adm: ZPOPMIN admite os próximos 100
-        Note over Adm: token de 5 minutos para comprar
-    end
-    A->>Q: ZRANK: "você é o 1.523º", por SSE
-```
+![A fila virtual em três momentos. Trinta minutos antes, quem chega entra na sala de espera, um set sem ordem. Na abertura, um script sorteia a sala, e a posição sorteada vira o score no sorted set queue:{show}. Depois da abertura, quem chega entra com ZADD NX e a hora de chegada como score, sempre atrás dos sorteados. A cada segundo, ZPOPMIN tira os 100 da frente, que recebem um token de admissão de 5 minutos para comprar. Quem espera vê a posição por SSE, calculada com ZRANK.](img/redis-fila-virtual.png)
 
 O sorteio impede que robôs ganhem vantagem chegando antes: todo mundo que estava na sala na hora da abertura tem a mesma chance. O ritmo de admissão (`QUEUE_ADMISSION_RATE`, 100 por segundo) controla quanta gente chega ao checkout ao mesmo tempo.
 
 ### 5. Cache da página do show (cache-aside)
 
-```mermaid
-flowchart LR
-    r["GET /shows/{id}"] --> l1{"L1: memória do processo<br/>(2 s)"}
-    l1 -- achou --> ok["responde"]
-    l1 -- não --> l2{"L2: redis-cache<br/>cache:event:{id}"}
-    l2 -- achou --> ok
-    l2 -- não --> lock{"SET NX cache:lock:event:{id}<br/>sou o único recarregando?"}
-    lock -- sim --> db["MongoDB"] --> grava["grava no cache<br/>10 min + 0 a 60 s"] --> ok
-    lock -- não --> espera["espera um instante<br/>e lê o cache de novo"] --> ok
-```
+![O cache da página do show como uma escada de quatro degraus para GET /shows/{id}. L1, a memória do processo por 2 segundos: se tem, responde. L2, o redis-cache na chave cache:event:{id}, com 10 minutos mais 0 a 60 segundos de jitter: se tem, responde e guarda a cópia no L1. Lock com SET NX em cache:lock:event:{id}: quem não pega o lock espera um instante e lê o cache de novo. Quem pega vai ao MongoDB, grava no cache com 10 minutos mais jitter e responde.](img/redis-cache-show.png)
 
 - **Cache-aside:** o serviço olha o cache; se não tem, busca no MongoDB e guarda.
 - **Contra a avalanche (stampede):** quando a chave de um show disputado vence, milhares de requisições querem recarregar ao mesmo tempo. O lock com `SET NX` deixa só uma ir ao banco.
@@ -157,7 +81,7 @@ O mesmo comando resolve vários problemas de "só o primeiro ganha":
 | Chave | Problema que resolve |
 | --- | --- |
 | `checkin:{ticketId}` | dois portões lendo o mesmo ingresso no mesmo segundo: só o primeiro libera; o segundo vê "já utilizado às 20h31 no portão B" |
-| `idem:{chave}` e `idem:reservation:{hash}` | clique duplo no botão de pagar ou reservar: devolve o mesmo pedido em vez de criar dois |
+| `idem:reservation:{hash}` | clique duplo no botão de reservar: devolve a mesma reserva em vez de criar duas (no pagamento, quem faz isso é a chave única do pedido no Postgres) |
 | `lock:{nome}` | só uma instância roda jobs como a abertura das vendas (liberado por um script Lua que confere o dono) |
 | marcas do notification-service | uma tarefa reentregue não manda o mesmo e-mail duas vezes |
 
@@ -165,18 +89,10 @@ Em todos esses casos o Redis é a primeira linha, não a última: uma constraint
 
 ### 8. O painel ao vivo do produtor
 
-```mermaid
-flowchart LR
-    an1["analytics instância 1"] & an2["analytics instância 2"] --> tick{"SET NX<br/>dashboard:metrics-tick:{show}<br/>quem calcula este segundo?"}
-    tick --> calc["uma instância calcula"]
-    calc -- "PUBLISH dashboard.metrics:{show}" --> ps(("pub/sub"))
-    ps --> ws1["WebSocket do painel A"]
-    ps --> ws2["WebSocket do painel B"]
-    feed["stream:activity:{show}<br/>últimos ~1000 eventos"] --> ws1
-```
+![O painel ao vivo com três instâncias do analytics. No redis-core, dashboard:watched guarda os shows com alguém olhando o painel; a cada segundo, todas as instâncias tentam gravar o segundo em dashboard:metrics-tick:{show}, e só a primeira consegue: ela calcula os números e publica no canal pub/sub dashboard.metrics:{show}, enquanto as outras pulam o show naquele segundo. As métricas e o feed de atividade do stream:activity:{show} chegam por WebSocket aos painéis, cada um pela instância a que está conectado.](img/redis-painel-ao-vivo.png)
 
 - `dashboard:watched` (sorted set) diz quais shows têm alguém olhando o painel; só esses são calculados.
-- Uma vez por segundo, uma única instância calcula os números de cada show (as outras perdem o `SET NX`) e publica por pub/sub. Perder um tick não importa: o próximo chega em 1 s.
+- Uma vez por segundo, uma única instância calcula os números de cada show: um script Lua grava o segundo em `dashboard:metrics-tick:{show}` só se ele for mais novo que o último, e as outras instâncias desistem daquele segundo. A que ganhou publica por pub/sub. Perder um tick não importa: o próximo chega em 1 s.
 - O feed de atividade é um stream curto: quem abre o painel lê os últimos 50 eventos de uma vez (ADR 32).
 
 ## O que não fica no Redis, de propósito

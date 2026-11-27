@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fila virtual</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .phases {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        column-gap: 110px;
+        align-items: stretch;
+      }
+      .when {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .when .label {
+        color: var(--yellow);
+      }
+      .phase .node {
+        height: calc(100% - 34px);
+        padding: 16px 18px;
+      }
+      .phase .name {
+        font-size: 17px;
+      }
+      .people {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .p {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--raised);
+        border: 1.5px solid var(--line-strong);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-2);
+      }
+      .cloud .p:nth-child(3n) {
+        transform: translateY(6px);
+      }
+      .cloud .p:nth-child(4n + 1) {
+        transform: translateY(-3px);
+      }
+      .drawn .p {
+        background: var(--redis);
+        border-color: transparent;
+        color: var(--bg);
+      }
+      .late .p {
+        border-color: var(--sky);
+        color: var(--sky);
+      }
+
+      .queue {
+        margin-top: 74px;
+        border-color: var(--redis);
+        padding: 30px 18px 16px;
+      }
+      .queue > .group-title {
+        color: var(--redis);
+      }
+      .tape {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr) 40px repeat(4, 1.4fr);
+        gap: 6px;
+        align-items: stretch;
+      }
+      .slot {
+        border-radius: 10px;
+        padding: 9px 4px 7px;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.2;
+        background: rgb(255 107 107 / 0.14);
+        border: 1.5px solid var(--redis);
+        color: var(--text);
+      }
+      .slot small {
+        display: block;
+        margin-top: 3px;
+        font-size: 9.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .slot.late {
+        background: rgb(89 195 255 / 0.1);
+        border-color: var(--sky);
+        font-size: 12.5px;
+      }
+      .slot.gap {
+        background: none;
+        border: 0;
+        color: var(--faint);
+        display: grid;
+        place-items: center;
+      }
+      .tape-legend {
+        display: grid;
+        grid-template-columns: 6fr 40px 5.6fr;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .admit {
+        margin-top: 78px;
+        display: grid;
+        grid-template-columns: 300px 300px 1fr;
+        column-gap: 110px;
+        align-items: center;
+      }
+      .admit .node {
+        padding: 16px 18px;
+      }
+      .admit .name {
+        font-size: 17px;
+      }
+      .rate {
+        font-family: var(--display);
+        font-size: 44px;
+        font-weight: 900;
+        line-height: 0.9;
+        color: var(--yellow);
+      }
+      .rate small {
+        font-family: var(--font);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-2);
+        margin-left: 6px;
+      }
+      .phone {
+        justify-self: end;
+        width: 270px;
+        border-radius: 26px;
+        padding: 18px 20px 20px;
+        border: 2px solid var(--line-strong);
+        background: var(--surface);
+      }
+      .phone .big {
+        margin: 8px 0 6px;
+        font-family: var(--display);
+        font-size: 40px;
+        font-weight: 900;
+        line-height: 0.95;
+        text-transform: uppercase;
+      }
+      .phone .big em {
+        font-style: normal;
+        color: var(--yellow);
+      }
+      .bar {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--raised);
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        width: 38%;
+        height: 100%;
+        background: var(--yellow);
+      }
+      .phone .desc {
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .notes {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · fila virtual</span>
+        <h1>Chegar cedo não dá vantagem</h1>
+        <p class="lede">
+          Nos shows de alta demanda, a compra passa por uma fila no Redis. A sala de espera é sorteada
+          na abertura, quem chega depois vai para o fim, e a fila anda 100 por segundo.
+        </p>
+      </div>
+
+      <div class="phases">
+        <div class="phase">
+          <div class="when"><span class="num">1</span><span class="label">30 min antes</span></div>
+          <div class="node" id="room">
+            <span class="tag">set · queue:{show}:room</span>
+            <div class="name">Sala de espera</div>
+            <div class="desc">Quem entra antes da abertura fica aqui, sem ordem nenhuma.</div>
+            <div class="people cloud">
+              <span class="p">M</span><span class="p">J</span><span class="p">A</span
+              ><span class="p">R</span><span class="p">L</span><span class="p">B</span
+              ><span class="p">C</span>
+            </div>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="when"><span class="num">2</span><span class="label">Na abertura</span></div>
+          <div class="node" id="draw">
+            <span class="tag">script Lua · sorteio</span>
+            <div class="name">A sala vira fila, em ordem sorteada</div>
+            <div class="desc">A posição sorteada é o score: 1, 2, 3…</div>
+            <div class="people drawn">
+              <span class="p">L</span><span class="p">C</span><span class="p">M</span
+              ><span class="p">A</span><span class="p">J</span><span class="p">B</span
+              ><span class="p">R</span>
+            </div>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="when"><span class="num">3</span><span class="label">Depois da abertura</span></div>
+          <div class="node" id="late">
+            <span class="tag">ZADD NX</span>
+            <div class="name">Quem chega depois vai para o fim</div>
+            <div class="desc">O score é a hora de chegada, em ms: sempre atrás dos sorteados.</div>
+            <div class="people late">
+              <span class="p">T</span><span class="p">V</span><span class="p">E</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group queue" id="queue">
+        <span class="group-title">queue:{show} · sorted set · menor score na frente</span>
+        <div class="tape">
+          <div class="slot" id="front">1<small>L</small></div>
+          <div class="slot">2<small>C</small></div>
+          <div class="slot">3<small>M</small></div>
+          <div class="slot">4<small>A</small></div>
+          <div class="slot">5<small>J</small></div>
+          <div class="slot" id="s6">6<small>B</small></div>
+          <div class="slot gap">…</div>
+          <div class="slot late" id="late-start">1795…112<small>T</small></div>
+          <div class="slot late">1795…348<small>V</small></div>
+          <div class="slot late">1795…901<small>E</small></div>
+          <div class="slot gap">…</div>
+        </div>
+        <div class="tape-legend">
+          <span style="text-align: center">sorteados na abertura</span>
+          <span></span>
+          <span style="text-align: center">chegaram depois, em ordem de chegada</span>
+        </div>
+      </div>
+
+      <div class="admit">
+        <div class="node outline is-warn" id="gate">
+          <span class="tag">a cada segundo · ZPOPMIN</span>
+          <div class="rate">100<small>da frente saem da fila</small></div>
+          <div class="desc">O ritmo vem de <code>QUEUE_ADMISSION_RATE</code> e controla quanta gente chega ao checkout.</div>
+        </div>
+        <div class="node solid is-ok" id="token">
+          <span class="tag">admitted:{show}:{usuário}</span>
+          <div class="name">Token de 5 minutos para comprar</div>
+          <div class="desc">Sem ele, a reserva responde 409: entre na fila.</div>
+        </div>
+        <div class="phone" id="phone">
+          <span class="label">quem espera vê, por SSE</span>
+          <div class="big">Você é o <em>1.523º</em></div>
+          <div class="bar"><i></i></div>
+          <div class="desc">A posição vem do <code>ZRANK</code> e se atualiza enquanto a fila anda.</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Por que sortear:</strong> robôs que chegam antes não ganham nada. Todo mundo que
+          estava na sala na hora da abertura tem a mesma chance (ADR 13).
+        </div>
+        <div class="note">
+          <strong>Só nos shows de alta demanda:</strong> nos outros, a reserva não pede token e a
+          fila nem existe.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#room', '#draw', { color: 'redis', straight: true });
+      Diagrama.link('#draw', '#s6', { from: 'bottom', to: 'top', fromAt: 0.2, straight: true, color: 'redis' });
+      Diagrama.link('#late', '#late-start', { from: 'bottom', to: 'top', color: 'sky' });
+      {
+        const f = document.querySelector('#front').getBoundingClientRect();
+        const g = document.querySelector('#gate').getBoundingClientRect();
+        const toAt = (f.left + f.width / 2 - g.left) / g.width;
+        Diagrama.link('#front', '#gate', { from: 'bottom', to: 'top', toAt, straight: true, color: 'yellow', label: 'a fila anda', labelColor: 'yellow' });
+      }
+      Diagrama.link('#gate', '#token', { color: 'green', straight: true });
+    </script>
+  </body>
+</html>

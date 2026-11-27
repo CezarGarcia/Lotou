@@ -6,15 +6,7 @@ Todo o uso fica no `notification-service`, que recebe os fatos do Kafka e os tra
 
 ## Os conceitos, em uma imagem
 
-```mermaid
-flowchart LR
-    pub["Quem publica"] -- "routing key<br/>email.ticket.issued" --> ex{{"Exchange<br/>notifications (topic)"}}
-    ex -- "liga email.#" --> q[("Fila<br/>notifications.email")]
-    q -- "entrega, prefetch 10" --> w1["Worker"]
-    w1 -- "ack: feito" --> q
-    w1 -. "falhou: nack" .-> dlx{{"Exchange de mortos"}}
-    dlx --> dlq[("Fila de mortos")]
-```
+![Os conceitos do RabbitMQ. O worker de PDF publica com a routing key email.ticket.issued no exchange notifications, do tipo topic, que entrega à fila notifications.email, ligada por email.#. A fila entrega ao worker de e-mail, com prefetch 10 e ack manual; o ack tira a mensagem da fila. Se falha, o nack manda a mensagem ao exchange de mortos notifications.dlx, que a põe na fila de mortos notifications.email.dlq.](img/rabbitmq-conceitos.png)
 
 - **Exchange:** o carteiro. Recebe a mensagem e decide para quais filas ela vai, pela **routing key**. Um exchange `direct` entrega para a fila com a chave exata; um `topic` aceita padrões (`email.#` pega todo e-mail); um `fanout` entrega para todas as filas ligadas.
 - **Fila:** onde as mensagens esperam um worker. Diferente do Kafka, a mensagem **sai da fila** quando o worker confirma.
@@ -25,28 +17,7 @@ flowchart LR
 
 ## A topologia do Lotou
 
-```mermaid
-flowchart TB
-    kafka[["Kafka: order.events<br/>TicketsIssued, OrderCancelled, OrderRefunded"]] --> cons["notification-service<br/>consumidor do Kafka"]
-    api["POST /reports/statements<br/>o produtor pede o PDF"] --> rep_ex
-
-    cons -- "render" --> tk_ex{{"tickets<br/>direct"}}
-    tk_ex --> render[("tickets.render")]
-    render --> rw["Workers de PDF<br/>prefetch 1, vários em paralelo"]
-
-    cons -- "email.order.cancelled<br/>email.refund.completed" --> nt_ex{{"notifications<br/>topic"}}
-    rw -- "email.ticket.issued<br/>prioridade alta" --> nt_ex
-    nt_ex --> email[("notifications.email<br/>com prioridade 0 a 10")]
-    email --> ew["Worker de e-mail<br/>prefetch 10"]
-    ew --> smtp["SMTP (Mailpit)"]
-
-    rep_ex{{"reports<br/>direct"}} --> reports[("reports.generate")]
-    reports --> repw["Worker de relatório<br/>prefetch 1"]
-    repw -- "e-mail com o PDF" --> nt_ex
-
-    render -. "não dá para gerar" .-> tdlq[("tickets.render.dlq")]
-    reports -. "não dá para gerar" .-> rdlq[("reports.generate.dlq")]
-```
+![A topologia do RabbitMQ no notification-service. Ingressos: o consumidor do Kafka lê TicketsIssued, OrderCancelled e OrderRefunded de order.events e publica no exchange tickets (direct, chave render), que leva à fila tickets.render, consumida pelos workers de PDF com prefetch 1. E-mails: o consumidor publica os de pedido cancelado e reembolso, os workers de PDF publicam email.ticket.issued com prioridade alta e o worker de relatório publica email.report.statement com o PDF, todos no exchange notifications (topic, email.#), que leva à fila notifications.email, com prioridade de 0 a 10; o worker de e-mail, com prefetch 10, envia pelo SMTP ao Mailpit. Relatórios: POST /reports/statements publica no exchange reports (direct, chave statement.pdf), que leva à fila reports.generate, consumida pelo worker de relatório com prefetch 1. As filas de mortos são tickets.render.dlq, notifications.email.dlq e reports.generate.dlq.](img/rabbitmq-topologia.png)
 
 | Fila | Tarefa | Detalhe |
 | --- | --- | --- |
@@ -60,27 +31,7 @@ flowchart TB
 
 Um servidor de e-mail fora do ar por um minuto não pode virar um e-mail perdido. Também não adianta tentar de novo na hora: ele ainda estará fora. O Lotou usa **filas de espera** com TTL:
 
-```mermaid
-sequenceDiagram
-    participant E as notifications.email
-    participant W as Worker de e-mail
-    participant R as Filas de retry
-    participant D as notifications.email.dlq
-
-    E->>W: e-mail do ingresso
-    W--xW: SMTP fora do ar
-    W->>R: publica em retry.10s (tentativa 1)
-    Note over R: a mensagem fica 10 s parada e vence
-    R->>E: o TTL a devolve para a fila principal
-    E->>W: segunda tentativa
-    W--xW: falhou de novo
-    W->>R: retry.1m (tentativa 2), depois retry.5m (tentativa 3)
-    R->>E: volta depois da espera
-    E->>W: quarta tentativa
-    W--xW: falhou de novo
-    W->>D: desiste: vai para a fila de mortos
-    Note over D: alerta no Grafana: e-mail de ingresso não entregue
-```
+![As tentativas com espera crescente. A fila notifications.email entrega ao worker de e-mail; se o envio falha, ele publica uma cópia numa fila de espera de notifications.retry, sem consumidor, com x-attempt mais 1, e confirma a original: retry.10s depois da 1ª falha, retry.1m depois da 2ª e retry.5m depois da 3ª. Quando o TTL vence, a mensagem volta ao exchange notifications e, pela chave email.#, à fila principal. Depois da 4ª falha, vai para notifications.email.dlq e um alerta no Grafana avisa que o e-mail de ingresso não foi entregue.](img/rabbitmq-retry.png)
 
 Ninguém precisa de um agendador: a espera é feita pelo próprio RabbitMQ, com o TTL de cada fila e o dead-letter de volta para a fila principal. Erros que nunca vão dar certo (um show que não existe, uma tarefa ilegível) vão direto para a fila de mortos, sem as tentativas.
 

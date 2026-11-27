@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Keycloak: login com PKCE</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .seq .msg .txt {
+        max-width: 420px;
+      }
+      .seq .self {
+        max-width: 220px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Keycloak · Authorization Code com PKCE</span>
+        <h1>O login, passo a passo</h1>
+        <p class="lede">
+          A senha só é digitada na tela do Keycloak. O código que volta para a loja não serve para
+          nada sem um segredo que só ela tem. Depois, cada chamada à API leva o token, conferido duas
+          vezes.
+        </p>
+      </div>
+
+      <div class="seq" data-seq>
+        <div class="lane">Comprador<small>navegador</small></div>
+        <div class="lane">Loja<small>Angular</small></div>
+        <div class="lane" data-cor="keycloak">Keycloak<small>identidade</small></div>
+        <div class="lane">Gateway<small>Java</small></div>
+        <div class="lane">Serviço<small>order-service</small></div>
+
+        <div class="phase">Login · a senha fica no Keycloak</div>
+        <div class="m" data-de="0" data-para="1">clica em Entrar</div>
+        <div class="m" data-de="1" data-para="1" style="max-width: 320px">
+          gera um segredo, o <code>code_verifier</code>, e o hash dele
+        </div>
+        <div class="m" data-de="1" data-para="2">redireciona para o login, levando só o hash</div>
+        <div class="m hot" data-de="0" data-para="2">usuário e senha, na tela do Keycloak com o visual da loja</div>
+        <div class="m reply" data-de="2" data-para="1">volta para a loja com um código de uso único</div>
+
+        <div class="phase">Tokens · o código sozinho não vale nada</div>
+        <div class="m" data-de="1" data-para="2">troca o código + o segredo por tokens</div>
+        <div class="m reply" data-de="2" data-para="1">access token (5 min) e refresh token</div>
+
+        <div class="phase">Chamada à API · o token conferido duas vezes</div>
+        <div class="m" data-de="1" data-para="3">
+          GET /api/v1/orders, com <code>Authorization: Bearer</code>
+        </div>
+        <div class="m hot" data-de="3" data-para="3">1ª conferência: assinatura, emissor, validade e papel</div>
+        <div class="m" data-de="3" data-para="4">encaminha, com o mesmo token</div>
+        <div class="m hot" data-de="4" data-para="4">2ª conferência: o token de novo (ADR 21)</div>
+        <div class="m reply" data-de="4" data-para="1">os pedidos deste comprador</div>
+
+        <div class="phase">Antes de vencer</div>
+        <div class="m" data-de="1" data-para="2">renova com o refresh token, sem pedir a senha</div>
+      </div>
+
+      <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 22px">
+        <div class="note">
+          <strong>Por que PKCE:</strong> só o hash passa pelo redirecionamento. Quem interceptar o
+          código não tem o segredo, e o Keycloak recusa a troca (ADR 27).
+        </div>
+        <div class="note">
+          <strong>O token é um JWT:</strong> um JSON assinado pelo Keycloak, com quem é a pessoa
+          (<code>sub</code>) e os papéis dela. Conferir a assinatura não exige perguntar nada ao
+          Keycloak.
+        </div>
+        <div class="note">
+          <strong>Quem decide é o servidor:</strong> a loja esconde o que o papel não permite, mas é
+          só conveniência. Gateway e serviço recusam de verdade.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · keycloak-e-seguranca</span>
+      </div>
+    </div>
+  </body>
+</html>

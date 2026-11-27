@@ -2,28 +2,7 @@
 
 O MongoDB guarda **documentos**: um registro com o formato que ele precisar, com listas e objetos dentro. No Lotou ele tem dois papéis bem diferentes: o **catálogo de shows** (no event-service) e os **relatórios do produtor** (no analytics-service). Cada serviço tem o próprio banco na mesma instância, que roda como replica set de um nó só (`rs0`), porque as transações do MongoDB exigem isso.
 
-```mermaid
-flowchart LR
-    subgraph es["banco event_service"]
-        events["events<br/>os shows"]
-        venues["venues<br/>os locais e os mapas"]
-        idem["idempotency_keys<br/>TTL de 24 h"]
-        outbox["outbox<br/>mensagens a publicar"]
-    end
-    subgraph an["banco analytics"]
-        ov["order_view"]
-        sbs["sales_by_sector"]
-        ps["producer_statements"]
-        cbg["checkins_by_gate"]
-        lt["shows, lot_timeline"]
-        gen["generations<br/>qual geração está ativa"]
-    end
-    prod["produtor cria e edita shows"] --> es
-    loja["loja busca e exibe shows"] --> es
-    es -- "outbox → Kafka shows.catalog" --> kafka{{"Kafka"}}
-    kafka -- "todos os eventos" --> an
-    an --> painel["painel ao vivo e<br/>relatório financeiro"]
-```
+![Os dois bancos do MongoDB na mesma instância. O banco event_service, do catálogo, tem as coleções events (os shows), venues (os locais e os mapas), idempotency_keys (apagadas em 24 h por TTL) e outbox; o produtor grava nele e a loja lê. Um relay publica o outbox no Kafka. O analytics-service lê os tópicos shows.catalog, order.events, inventory.events e checkin.events e monta no banco analytics as coleções order_view, sales_by_sector, producer_statements, checkins_by_gate, shows e lot_timeline, além de generations; o painel do produtor lê essas visões prontas, sem join.](img/mongodb-bancos.png)
 
 ## 1. O catálogo de shows
 
@@ -67,14 +46,9 @@ Documento é o formato certo aqui porque cada visão é **desnormalizada de prop
 
 ### Reconstruir do zero, sem parar o painel
 
-Como os eventos ficam no Kafka para sempre, as visões podem ser apagadas e montadas de novo. Cada montagem é uma **geração** com as próprias coleções (`order_view_g3`, `order_view_g4`); uma **view** do MongoDB com o nome simples (`order_view`) aponta para a geração ativa, e a coleção `generations` guarda qual é.
+Como os eventos ficam no Kafka para sempre, as visões podem ser apagadas e montadas de novo. Cada montagem é uma **geração** com as próprias coleções (`order_view_g3`, `order_view_g4`). A API do painel lê qual é a geração ativa num ponteiro (o documento `analytics_state/active`), a coleção `generations` registra a situação de cada uma, e uma **view** do MongoDB com o nome simples (`order_view`) aponta para a ativa, para quem lê o banco de fora (o `mongosh`, o futuro assistente de IA).
 
-```mermaid
-flowchart LR
-    painel["Painel"] --> view["view order_view"]
-    view -- "hoje" --> g3["order_view_g3"]
-    view -. "depois da troca" .-> g4["order_view_g4<br/>sendo montada pelo replay"]
-```
+![A view order_view, com o nome simples, aponta hoje para a geração ativa order_view_g3, alimentada pelo consumidor ao vivo; a order_view_g4 está sendo montada pelo replay, lendo os tópicos desde o primeiro evento, e passa a receber a view depois da troca. Embaixo, os três passos do replay: reservar a geração nova com coleções e consumer group próprios, ler tudo do começo até o fim que cada tópico tinha na partida enquanto quem lê continua na g3, e trocar de uma vez.](img/mongodb-geracoes.png)
 
 Quando a geração nova alcança o fim dos tópicos, a view passa a apontar para ela de uma vez. Quem lê nem percebe (ADR 30). O `make replay-analytics` faz isso no ambiente.
 

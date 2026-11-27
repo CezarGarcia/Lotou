@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Os tópicos do Kafka</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .cols,
+      .trow {
+        display: grid;
+        grid-template-columns: 190px 330px 1fr;
+        column-gap: 96px;
+        align-items: center;
+      }
+      .cols {
+        padding: 0 20px;
+        margin-bottom: 30px;
+      }
+      .group {
+        padding: 28px 18px 20px;
+      }
+      .group + .group {
+        margin-top: 34px;
+      }
+      .group.facts > .group-title {
+        color: var(--kafka);
+      }
+      .trow + .trow {
+        margin-top: 14px;
+      }
+      .pub {
+        padding: 12px 14px;
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .topic {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px 12px;
+      }
+      .topic .name {
+        font-family: var(--display);
+        font-size: 26px;
+        font-weight: 900;
+        line-height: 0.95;
+        text-transform: uppercase;
+      }
+      .topic .desc {
+        margin-top: 4px;
+        font-size: 12.5px;
+        line-height: 1.3;
+      }
+      .topic.outline .desc {
+        color: var(--muted);
+      }
+      .ret {
+        justify-self: end;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        line-height: 1.25;
+        padding: 6px 9px;
+        border-radius: 10px;
+        background: rgb(18 16 21 / 0.86);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .topic.outline .ret {
+        background: var(--raised);
+        color: var(--kafka);
+      }
+      .readers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .readers .chip {
+        font-size: 12px;
+        padding: 5px 10px;
+      }
+      .foot-notes {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Kafka · os tópicos</span>
+        <h1>Sete tópicos: quatro de fatos, três da saga</h1>
+        <p class="lede">
+          Os fatos ficam guardados, porque os relatórios são reconstruídos a partir deles. A conversa da saga só importa enquanto a compra acontece, e some em 7 dias.
+        </p>
+      </div>
+
+      <div class="cols">
+        <span class="label">Quem publica</span>
+        <span class="label">Tópico, o que carrega e retenção</span>
+        <span class="label">Quem lê</span>
+      </div>
+
+      <div class="group facts">
+        <span class="group-title">Fatos · o que aconteceu, para quem quiser reagir</span>
+        <div class="trow">
+          <div class="node pub" id="f1a">event-service</div>
+          <div class="node solid is-kafka topic" id="f1b">
+            <div><div class="name">shows.catalog</div><div class="desc">o show inteiro a cada mudança</div></div>
+            <div class="ret">compactado<br />última versão</div>
+          </div>
+          <div class="readers" id="f1c">
+            <span class="chip">inventory</span><span class="chip">order</span><span class="chip">checkin</span><span class="chip">analytics</span>
+          </div>
+        </div>
+        <div class="trow">
+          <div class="node pub" id="f2a">order-service</div>
+          <div class="node solid is-kafka topic" id="f2b">
+            <div><div class="name">order.events</div><div class="desc">a vida do pedido e dos ingressos</div></div>
+            <div class="ret">para<br />sempre</div>
+          </div>
+          <div class="readers" id="f2c">
+            <span class="chip">analytics</span><span class="chip">notification</span><span class="chip">checkin</span>
+          </div>
+        </div>
+        <div class="trow">
+          <div class="node pub" id="f3a">inventory-service</div>
+          <div class="node solid is-kafka topic" id="f3b">
+            <div><div class="name">inventory.events</div><div class="desc">reservas confirmadas e liberadas, lotes esgotados e abertos</div></div>
+            <div class="ret">para<br />sempre</div>
+          </div>
+          <div class="readers" id="f3c">
+            <span class="chip">order</span><span class="chip">analytics</span><span class="chip">event-service</span>
+          </div>
+        </div>
+        <div class="trow">
+          <div class="node pub" id="f4a">checkin-service</div>
+          <div class="node solid is-kafka topic" id="f4b">
+            <div><div class="name">checkin.events</div><div class="desc">entradas e leituras recusadas na portaria</div></div>
+            <div class="ret">para<br />sempre</div>
+          </div>
+          <div class="readers" id="f4c">
+            <span class="chip">analytics</span><span class="chip">order</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="group-title">Conversa da saga · um serviço manda, outro responde</span>
+        <div class="trow">
+          <div class="node pub" id="s1a">order-service</div>
+          <div class="node outline is-kafka topic" id="s1b">
+            <div><div class="name">payment.commands</div><div class="desc">AuthorizePayment, RefundPayment</div></div>
+            <div class="ret">7 dias</div>
+          </div>
+          <div class="readers" id="s1c"><span class="chip">payment-mock</span></div>
+        </div>
+        <div class="trow">
+          <div class="node pub" id="s2a">payment-mock</div>
+          <div class="node outline is-kafka topic" id="s2b">
+            <div><div class="name">payment.events</div><div class="desc">a resposta: autorizado, recusado, estornado</div></div>
+            <div class="ret">7 dias</div>
+          </div>
+          <div class="readers" id="s2c"><span class="chip">order</span></div>
+        </div>
+        <div class="trow">
+          <div class="node pub" id="s3a">order-service</div>
+          <div class="node outline is-kafka topic" id="s3b">
+            <div><div class="name">inventory.commands</div><div class="desc">ConfirmReservation, ReleaseReservation, ReturnTickets</div></div>
+            <div class="ret">7 dias</div>
+          </div>
+          <div class="readers" id="s3c"><span class="chip">inventory</span></div>
+        </div>
+      </div>
+
+      <div class="foot-notes">
+        <div class="note">
+          <strong>E mais um <code>&lt;tópico&gt;.dlt</code> para cada tópico</strong>, com 7 dias de
+          retenção: a mensagem que um consumidor não conseguiu processar fica ali para inspeção.
+        </div>
+        <div class="note">
+          <strong>A resposta do inventory à saga</strong> (<code>ReservationConfirmed</code>) é um
+          fato: vai em <code>inventory.events</code>, que o order também lê.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · kafka</span>
+      </div>
+    </div>
+    <script>
+      for (const id of ['f1', 'f2', 'f3', 'f4', 's1', 's2', 's3']) {
+        const color = id.startsWith('f') ? 'yellow' : 'muted';
+        Diagrama.link(`#${id}a`, `#${id}b`, { straight: true, color });
+        Diagrama.link(`#${id}b`, `#${id}c`, { straight: true, color });
+      }
+    </script>
+  </body>
+</html>

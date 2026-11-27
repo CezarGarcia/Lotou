@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Reserva atômica em Lua</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .request {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 620px;
+        margin: 0 0 0 27.5px;
+        padding: 14px 18px;
+      }
+      .request .name {
+        font-size: 17px;
+      }
+      .request .chip {
+        margin-left: auto;
+      }
+      .script {
+        margin-top: 58px;
+        border-color: var(--redis);
+        padding: 34px 26px 26px;
+      }
+      .script > .group-title {
+        color: var(--redis);
+      }
+      .funnel {
+        display: grid;
+        grid-template-columns: 620px 1fr;
+        column-gap: 130px;
+        row-gap: 66px;
+        align-items: center;
+      }
+      .check {
+        justify-self: center;
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 16px 18px;
+      }
+      .check .name {
+        font-size: 18px;
+      }
+      .check .desc {
+        margin-top: 4px;
+      }
+      .check:nth-of-type(1) {
+        width: 620px;
+      }
+      .w2 {
+        width: 560px;
+      }
+      .w3 {
+        width: 500px;
+      }
+      .w4 {
+        width: 440px;
+      }
+      .reject {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+      }
+      .code {
+        flex: none;
+        background: none;
+        padding: 0;
+        font-family: var(--display);
+        font-size: 40px;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .reject .code {
+        color: var(--red);
+      }
+      .reject .name {
+        font-size: 16px;
+      }
+      .reject .desc {
+        margin-top: 2px;
+      }
+      .hold {
+        justify-self: center;
+        padding: 16px 18px;
+      }
+      .hold .name {
+        color: var(--green);
+        font-size: 18px;
+      }
+      .steps {
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 8px;
+      }
+      .steps li {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        font-size: 14px;
+        color: var(--text-2);
+      }
+      .steps li::before {
+        content: '';
+        flex: none;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        transform: translateY(-2px);
+      }
+      .check code {
+        white-space: nowrap;
+      }
+      .steps code {
+        font-size: 12.5px;
+      }
+      .done {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 18px;
+      }
+      .done .code {
+        color: var(--bg);
+        font-size: 48px;
+      }
+      .done .name {
+        font-size: 18px;
+      }
+      .notes {
+        margin-top: 26px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · reserva atômica em Lua</span>
+        <h1>Três perguntas, depois o ingresso</h1>
+        <p class="lede">
+          A reserva é um script Lua: o Redis roda o script inteiro sem intercalar nenhum outro
+          comando. Ele confere tudo antes de mudar qualquer coisa, então ou segura tudo, ou nada.
+        </p>
+      </div>
+
+      <div class="node request" id="req">
+        <span class="tag" style="margin: 0">pedido</span>
+        <span class="name">Reservar 2 ingressos na pista</span>
+        <span class="chip solid is-redis">redis-core</span>
+      </div>
+
+      <div class="group script">
+        <span class="group-title">Script Lua · atômico</span>
+        <div class="funnel">
+          <div class="node check" id="c1">
+            <span class="num">1</span>
+            <div>
+              <div class="name">Token de admissão válido?</div>
+              <div class="desc">
+                Só em show de alta demanda: quem a fila virtual admitiu tem
+                <code>admitted:{show}:{usuário}</code>.
+              </div>
+            </div>
+          </div>
+          <div class="node outline is-danger reject" id="x1">
+            <span class="code">409</span>
+            <div>
+              <div class="name">Entre na fila virtual</div>
+              <div class="desc">sem token, sem reserva</div>
+            </div>
+          </div>
+
+          <div class="node check w2" id="c2">
+            <span class="num">2</span>
+            <div>
+              <div class="name">O CPF passa de 4 ingressos?</div>
+              <div class="desc">O limite soma por show, numa chave com o HMAC do CPF.</div>
+            </div>
+          </div>
+          <div class="node outline is-danger reject" id="x2">
+            <span class="code">422</span>
+            <div>
+              <div class="name">Limite por CPF</div>
+              <div class="desc">a resposta diz quantos ainda cabem</div>
+            </div>
+          </div>
+
+          <div class="node check w3" id="c3">
+            <span class="num">3</span>
+            <div>
+              <div class="name">Lote à venda e estoque ≥ 2?</div>
+              <div class="desc">Lê o lote em venda do setor e o contador dele.</div>
+            </div>
+          </div>
+          <div class="node outline is-danger reject" id="x3">
+            <span class="code">409</span>
+            <div>
+              <div class="name">Esgotado</div>
+              <div class="desc">nada foi alterado</div>
+            </div>
+          </div>
+
+          <div class="node outline is-ok hold w4" id="hold">
+            <div class="name">Tudo conferido: segura</div>
+            <ul class="steps">
+              <li><span><code>DECRBY lot:{id}:stock 2</code></span></li>
+              <li><span>cria <code>res:{id}</code> e soma no limite do CPF</span></li>
+              <li><span>estoque chegou a zero? o lote esgota e o próximo abre</span></li>
+              <li>
+                <span><code>XADD stream:reservations</code> com o estado final, para o Postgres</span>
+              </li>
+            </ul>
+          </div>
+          <div class="node solid is-ok done" id="ok">
+            <span class="code">201</span>
+            <div>
+              <div class="name">Reserva por 10 minutos</div>
+              <div class="desc">o comprador segue para o pagamento</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Ninguém pega o último ingresso duas vezes:</strong> enquanto o script roda, nenhum
+          outro comando entra no meio (ADR 3).
+        </div>
+        <div class="note">
+          <strong>Cadeira numerada:</strong> o script tenta segurar todas as cadeiras escolhidas. Se
+          a F13 já foi, a F12 também não fica presa.
+        </div>
+        <div class="note">
+          <strong>Recusa não deixa rastro:</strong> as três perguntas vêm antes de qualquer escrita,
+          então quem recebe 409 ou 422 não mexeu em nada.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#req', '#c1', { from: 'bottom', to: 'top', straight: true });
+      Diagrama.link('#c1', '#x1', { label: 'não', labelColor: 'red', color: 'red', straight: true });
+      Diagrama.link('#c2', '#x2', { label: 'sim', labelColor: 'red', color: 'red', straight: true });
+      Diagrama.link('#c3', '#x3', { label: 'não', labelColor: 'red', color: 'red', straight: true });
+      Diagrama.link('#c1', '#c2', { label: 'sim', labelColor: 'green', color: 'green', straight: true });
+      Diagrama.link('#c2', '#c3', { label: 'não', labelColor: 'green', color: 'green', straight: true });
+      Diagrama.link('#c3', '#hold', { label: 'sim', labelColor: 'green', color: 'green', straight: true });
+      Diagrama.link('#hold', '#ok', { color: 'green', straight: true, width: 3 });
+    </script>
+  </body>
+</html>

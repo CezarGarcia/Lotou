@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Observabilidade: o caminho dos dados</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 330px 214px 352px;
+        column-gap: 100px;
+        align-items: center;
+      }
+      .sources {
+        display: flex;
+        flex-direction: column;
+        gap: 34px;
+      }
+      .src {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .item {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        padding: 7px 12px 8px;
+        border-radius: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line-strong);
+        font-size: 13.5px;
+      }
+      .item b {
+        font-weight: 700;
+      }
+      .item .how {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .col-title {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .collector ul {
+        margin: 10px 0 0;
+        padding-left: 17px;
+        font-size: 13.5px;
+        line-height: 1.35;
+        color: rgb(18 16 21 / 0.85);
+      }
+      .collector li + li {
+        margin-top: 6px;
+      }
+      .lgtm {
+        display: grid;
+        grid-template-columns: 136px 1fr;
+        column-gap: 54px;
+        align-items: center;
+        padding: 26px 16px 16px;
+      }
+      .stores {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .store {
+        padding: 10px 12px;
+      }
+      .store .name {
+        font-size: 15px;
+      }
+      .right {
+        display: flex;
+        flex-direction: column;
+        gap: 84px;
+      }
+      .mail {
+        width: 352px;
+      }
+      .notes {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Observabilidade · OpenTelemetry e Grafana</span>
+        <h1>Do código ao alerta no e-mail</h1>
+        <p class="lede">
+          Os serviços e a infraestrutura mandam traces, métricas e logs para um só lugar, o
+          Collector do OpenTelemetry. Ele limpa, escolhe o que guardar e entrega a cada banco; o
+          Grafana junta tudo.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="sources">
+          <div class="group src" id="apps">
+            <span class="group-title">Quem gera · manda por OTLP</span>
+            <div class="item"><b>Angular</b><span class="how">OTel Web SDK</span></div>
+            <div class="item"><b>inventory, order, gateway</b><span class="how">agente Java</span></div>
+            <div class="item"><b>event, checkin, payment</b><span class="how">auto-instrumentação Node</span></div>
+            <div class="item"><b>analytics, notification</b><span class="how">opentelemetry-instrument</span></div>
+          </div>
+          <div class="group src" id="infra">
+            <span class="group-title">Infraestrutura</span>
+            <div class="item"><b>Postgres, Redis, MongoDB</b><span class="how">estatísticas de cada um</span></div>
+            <div class="item"><b>Kafka, RabbitMQ</b><span class="how">lag dos consumidores e filas</span></div>
+          </div>
+        </div>
+
+        <div class="node solid is-otel collector" id="col">
+          <span class="tag">OpenTelemetry</span>
+          <div class="name display" style="font-size: 30px">Collector</div>
+          <ul>
+            <li>mascara dados pessoais</li>
+            <li>tail sampling: guarda erros, os lentos e 10% do resto</li>
+            <li>junta os rótulos</li>
+          </ul>
+        </div>
+
+        <div class="right">
+          <div class="group lgtm" id="lgtm">
+            <span class="group-title">imagem grafana/otel-lgtm</span>
+            <div class="stores">
+              <div class="node store" id="tempo">
+                <div class="name">Tempo</div>
+                <span class="tag">traces</span>
+              </div>
+              <div class="node store" id="prom">
+                <div class="name">Prometheus</div>
+                <span class="tag">métricas</span>
+              </div>
+              <div class="node store" id="loki">
+                <div class="name">Loki</div>
+                <span class="tag">logs</span>
+              </div>
+            </div>
+            <div class="node outline is-otel" id="graf">
+              <span class="tag">pasta Lotou</span>
+              <div class="name">Grafana</div>
+              <div class="desc">dashboards, alertas e Explore</div>
+            </div>
+          </div>
+          <div class="node mail" id="mail">
+            <span class="tag">localhost:8025</span>
+            <div class="name">Mailpit</div>
+            <div class="desc">recebe o e-mail de cada alerta (ADR 35)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Ninguém sabe do Grafana:</strong> os serviços só falam OTLP. Trocar de ferramenta é
+          mudar o exporter do Collector.
+        </div>
+        <div class="note">
+          <strong>Um clique entre sinais:</strong> os logs levam <code>trace_id</code>, e um ponto
+          no gráfico de latência leva a um trace daquele momento.
+        </div>
+        <div class="note">
+          <strong>Invariantes no banco:</strong> alguns painéis e alertas consultam o Postgres
+          direto, com o usuário só de leitura <code>observer</code>.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · observabilidade</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#apps', '#col', { from: 'right', to: 'left', toAt: 0.35, label: 'OTLP', color: 'orange' });
+      Diagrama.link('#infra', '#col', { from: 'right', to: 'left', toAt: 0.75, label: 'receivers', color: 'orange' });
+      for (const id of ['#tempo', '#prom', '#loki']) {
+        Diagrama.link('#col', id, { from: 'right', to: 'left', color: 'orange' });
+        Diagrama.link(id, '#graf', { from: 'right', to: 'left' });
+      }
+      Diagrama.link('#graf', '#mail', { from: 'bottom', to: 'top', toAt: 0.71, labelAt: 0.62, label: 'alertas por e-mail', color: 'red', labelColor: 'red' });
+    </script>
+  </body>
+</html>

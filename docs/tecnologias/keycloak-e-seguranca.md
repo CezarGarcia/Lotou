@@ -6,28 +6,7 @@ O Lotou não tem código de login próprio. Quem cuida de usuários, senhas, ses
 
 A loja usa o fluxo **Authorization Code com PKCE**, o recomendado para apps no navegador: a senha só é digitada na tela do Keycloak, e o código que volta para a loja não serve para nada sem um segredo que só ela tem (ADR 27).
 
-```mermaid
-sequenceDiagram
-    actor U as Comprador
-    participant W as Angular
-    participant K as Keycloak
-    participant G as Gateway
-    participant S as Serviço
-
-    U->>W: clica em Entrar
-    W->>W: gera um segredo (code_verifier) e o hash dele
-    W->>K: redireciona para a tela de login, com o hash
-    U->>K: usuário e senha (na tela do Keycloak, com o visual da loja)
-    K->>W: volta para a loja com um código de uso único
-    W->>K: troca o código + o segredo por tokens
-    K-->>W: access token (5 min) e refresh token
-    W->>G: GET /api/v1/orders com Authorization: Bearer <token>
-    G->>G: confere assinatura, emissor, validade e papel
-    G->>S: encaminha, com o mesmo token
-    S->>S: confere o token de novo (ADR 21)
-    S-->>W: os pedidos deste comprador
-    Note over W,K: antes de vencer, o token é renovado sem pedir a senha
-```
+![Diagrama de sequência do login com Authorization Code e PKCE, entre comprador, loja Angular, Keycloak, gateway e serviço. O comprador clica em Entrar; a loja gera um segredo, o code_verifier, e o hash dele; redireciona para o login levando só o hash; o comprador digita usuário e senha na tela do Keycloak; o Keycloak volta para a loja com um código de uso único; a loja troca o código e o segredo por um access token de 5 minutos e um refresh token. Na chamada GET /api/v1/orders com o token, o gateway faz a primeira conferência (assinatura, emissor, validade e papel), encaminha o mesmo token, e o serviço confere de novo (ADR 21) antes de devolver os pedidos. Antes de vencer, a loja renova o token com o refresh token, sem pedir a senha.](img/keycloak-login-pkce.png)
 
 O access token é um **JWT**: um JSON assinado pelo Keycloak com quem é a pessoa (`sub`) e os papéis dela. Qualquer serviço confere a assinatura com a chave pública do Keycloak, sem perguntar nada a ele a cada requisição.
 
@@ -44,12 +23,7 @@ Usuários de demonstração: `comprador`, `produtor` e `portaria`, todos com a s
 
 ## Duas conferências do token
 
-```mermaid
-flowchart LR
-    n["Navegador"] -- "token" --> g["Gateway<br/>1ª conferência"]
-    g -- "mesmo token" --> s["Serviço<br/>2ª conferência"]
-    x["Alguém na rede interna<br/>sem passar pelo gateway"] -. "sem token válido: 401" .-> s
-```
+![A loja manda o token ao api-gateway, que faz a primeira conferência (assinatura, emissor, validade, papel da rota e rate limit) e encaminha o mesmo token ao serviço, que confere de novo (assinatura, emissor, audiência, validade e papel). Os dois conferem a assinatura com a chave pública do Keycloak. Alguém na rede interna que pula o gateway chega ao serviço sem token válido e leva 401.](img/keycloak-dupla-conferencia.png)
 
 O gateway barra antes requisições sem login, e os serviços conferem de novo. Assim, um serviço exposto por engano na rede interna não fica aberto (ADR 21).
 

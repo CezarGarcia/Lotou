@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Painel ao vivo</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 250px 390px 1fr;
+        column-gap: 118px;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .insts {
+        display: grid;
+        gap: 26px;
+        padding-top: 34px;
+      }
+      .inst {
+        padding: 13px 16px;
+      }
+      .inst .name {
+        font-size: 16px;
+      }
+      .inst .desc {
+        margin-top: 3px;
+      }
+      .inst.lose {
+        opacity: 0.78;
+      }
+      .inst.lose .verdict {
+        color: var(--red);
+      }
+      .inst.win .verdict {
+        color: var(--green);
+      }
+      .verdict {
+        display: block;
+        margin-top: 6px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .core {
+        border-color: var(--redis);
+        padding: 30px 16px 16px;
+      }
+      .core > .group-title {
+        color: var(--redis);
+      }
+      .keys {
+        display: grid;
+        gap: 14px;
+      }
+      .key {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 14px;
+      }
+      .key .name {
+        font-family: var(--mono);
+        font-size: 13.5px;
+        font-weight: 500;
+      }
+      .key .desc {
+        margin-top: 4px;
+      }
+      .key .tag {
+        margin-top: 0;
+        margin-bottom: 2px;
+      }
+      .key.outline.is-redis .name {
+        color: var(--text);
+      }
+      .panels {
+        padding: 30px 14px 14px;
+      }
+      .panel {
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line-strong);
+        padding: 10px 12px 12px;
+      }
+      .panel + .panel {
+        margin-top: 12px;
+      }
+      .panel .top {
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .live {
+        color: var(--green);
+      }
+      .bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        height: 42px;
+        margin-top: 10px;
+      }
+      .bars i {
+        flex: 1;
+        border-radius: 3px 3px 0 0;
+        background: var(--yellow);
+        opacity: 0.85;
+      }
+      .feed {
+        margin-top: 10px;
+        display: grid;
+        gap: 5px;
+      }
+      .feed i {
+        display: block;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--line-strong);
+      }
+      .panels .desc {
+        margin-top: 12px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .notes {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · painel ao vivo do produtor</span>
+        <h1>Várias instâncias, um cálculo por segundo</h1>
+        <p class="lede">
+          Todas as instâncias do analytics disputam cada segundo de cada show assistido. Uma ganha,
+          calcula e publica; o pub/sub leva os números a todos os painéis, em qualquer instância.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="insts">
+          <span class="label">analytics · 3 instâncias</span>
+          <div class="node inst lose" id="i2">
+            <div class="name">Instância 2</div>
+            <span class="verdict">perdeu este segundo</span>
+            <div class="desc">pula o show e espera o próximo</div>
+          </div>
+          <div class="node inst lose" id="i3">
+            <div class="name">Instância 3</div>
+            <span class="verdict">perdeu este segundo</span>
+            <div class="desc">pula o show e espera o próximo</div>
+          </div>
+          <div class="node outline is-ok inst win" id="i1">
+            <div class="name" style="color: var(--text)">Instância 1</div>
+            <span class="verdict">ganhou este segundo</span>
+            <div class="desc">calcula os números do show e publica</div>
+          </div>
+        </div>
+
+        <div class="group core">
+          <span class="group-title">redis-core</span>
+          <div class="keys">
+            <div class="node key" id="k1">
+              <span class="num">1</span>
+              <div>
+                <span class="tag">sorted set</span>
+                <div class="name">dashboard:watched</div>
+                <div class="desc">
+                  Os shows com alguém olhando o painel: cada instância renova os seus a cada segundo. Só esses são calculados.
+                </div>
+              </div>
+            </div>
+            <div class="node key outline is-ok" id="k2">
+              <span class="num">2</span>
+              <div>
+                <span class="tag">SET só se o segundo for novo</span>
+                <div class="name">dashboard:metrics-tick:{show}</div>
+                <div class="desc">Quem calcula este segundo? Todas tentam gravar, só a primeira consegue.</div>
+              </div>
+            </div>
+            <div class="node key solid is-redis" id="k3">
+              <span class="num" style="background: var(--bg); color: var(--redis)">3</span>
+              <div>
+                <span class="tag">pub/sub</span>
+                <div class="name">dashboard.metrics:{show}</div>
+                <div class="desc">Os números do segundo, para todas as instâncias.</div>
+              </div>
+            </div>
+            <div class="node key" id="k4">
+              <span class="num">4</span>
+              <div>
+                <span class="tag">stream</span>
+                <div class="name">stream:activity:{show}</div>
+                <div class="desc">O feed de atividade, com os últimos ~1000 eventos.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group panels" id="panels">
+          <span class="group-title">Painéis · WebSocket</span>
+          <div class="panel">
+            <div class="top"><span>Painel A</span><span class="live">● ao vivo</span></div>
+            <div class="bars">
+              <i style="height: 30%"></i><i style="height: 45%"></i><i style="height: 38%"></i
+              ><i style="height: 62%"></i><i style="height: 55%"></i><i style="height: 80%"></i
+              ><i style="height: 92%"></i>
+            </div>
+            <div class="feed"><i style="width: 90%"></i><i style="width: 72%"></i><i style="width: 80%"></i></div>
+          </div>
+          <div class="panel">
+            <div class="top"><span>Painel B</span><span class="live">● ao vivo</span></div>
+            <div class="bars">
+              <i style="height: 30%"></i><i style="height: 45%"></i><i style="height: 38%"></i
+              ><i style="height: 62%"></i><i style="height: 55%"></i><i style="height: 80%"></i
+              ><i style="height: 92%"></i>
+            </div>
+            <div class="feed"><i style="width: 90%"></i><i style="width: 72%"></i><i style="width: 80%"></i></div>
+          </div>
+          <div class="desc">Cada instância repassa aos WebSockets conectados a ela.</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Perder um segundo não importa:</strong> se a instância que ganhou cair, o próximo
+          cálculo chega em 1 s, por qualquer outra.
+        </div>
+        <div class="note">
+          <strong>Sem eleição de líder:</strong> nenhuma instância é especial. O trabalho se espalha
+          entre elas, show a show.
+        </div>
+        <div class="note">
+          <strong>Quem abre o painel</strong> lê os últimos 50 eventos do feed de uma vez e depois
+          recebe os novos ao vivo (ADR&nbsp;32).
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#i2', '#k2', { color: 'red', dashed: true, toAt: 0.3, curve: 0.3 });
+      Diagrama.link('#i3', '#k2', { color: 'red', dashed: true, toAt: 0.55, curve: 0.3 });
+      Diagrama.link('#i1', '#k2', { color: 'green', fromAt: 0.3, toAt: 0.8, curve: 0.3, label: 'SET', labelColor: 'green', labelAt: 0.5 });
+      Diagrama.link('#i1', '#k3', { color: 'yellow', fromAt: 0.75, curve: 0.3, label: 'PUBLISH', labelAt: 0.62 });
+      Diagrama.link('#k3', '#panels', { color: 'yellow', toAt: 0.42, label: 'métricas' });
+      Diagrama.link('#k4', '#panels', { toAt: 0.72, label: 'feed' });
+    </script>
+  </body>
+</html>

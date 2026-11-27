@@ -12,26 +12,7 @@ Tudo é coletado com **OpenTelemetry**, o padrão aberto de instrumentação. Ne
 
 ## O caminho dos dados
 
-```mermaid
-flowchart LR
-    subgraph apps["Quem gera"]
-        web["Angular<br/>OTel Web SDK"]
-        java["inventory, order, gateway<br/>agente Java"]
-        node["event, checkin, payment<br/>auto-instrumentação Node"]
-        py["analytics, notification<br/>opentelemetry-instrument"]
-    end
-    subgraph infra["Infraestrutura, lida pelo Collector"]
-        dbs["Postgres, Redis, MongoDB"]
-        msg["Kafka (lag), RabbitMQ (filas)"]
-    end
-    apps -- "OTLP" --> col["OTel Collector<br/>mascara dados pessoais<br/>tail sampling<br/>junta os rótulos"]
-    infra -- "receivers" --> col
-    col --> tempo[("Tempo<br/>traces")]
-    col --> prom[("Prometheus<br/>métricas")]
-    col --> loki[("Loki<br/>logs")]
-    tempo & prom & loki --> graf["Grafana<br/>dashboards, alertas, explore"]
-    graf -- "alertas por e-mail" --> mail["Mailpit"]
-```
+![O caminho dos dados de observabilidade. Angular (OTel Web SDK), os serviços Java (agente Java), os Node (auto-instrumentação) e os Python (opentelemetry-instrument) mandam por OTLP para o OTel Collector; ele também lê, pelos receivers, as estatísticas de Postgres, Redis e MongoDB, o lag do Kafka e as filas do RabbitMQ. O Collector mascara dados pessoais, faz tail sampling e junta os rótulos, e entrega traces ao Tempo, métricas ao Prometheus e logs ao Loki, que vêm com o Grafana na imagem grafana/otel-lgtm. O Grafana manda os alertas por e-mail para o Mailpit.](img/observabilidade-caminho.png)
 
 No Compose, Tempo, Prometheus, Loki e Grafana vêm juntos na imagem `grafana/otel-lgtm`.
 
@@ -39,21 +20,9 @@ No Compose, Tempo, Prometheus, Loki e Grafana vêm juntos na imagem `grafana/ote
 
 O cabeçalho `traceparent` carrega o id do trace de um serviço para o outro: no HTTP, nos cabeçalhos das mensagens do Kafka e do RabbitMQ. O resultado é uma árvore só, do clique no Angular ao banco:
 
-```mermaid
-flowchart TB
-    a["Angular · clique em Pagar"] --> b["api-gateway · POST /orders"]
-    b --> c["order-service · cria o pedido e o outbox"]
-    c --> d["Postgres · INSERT orders, outbox"]
-    c -. "Kafka: AuthorizePayment" .-> e["payment-mock · autoriza"]
-    e -. "Kafka: PaymentAuthorized" .-> f["order-service · pede a confirmação da reserva"]
-    f -. "Kafka: ConfirmReservation" .-> g["inventory · confirma no Redis e no Postgres"]
-    g -. "Kafka: ReservationConfirmed" .-> h["order-service · confirma e emite os ingressos"]
-    h -. "Kafka: TicketsIssued" .-> i["analytics · atualiza o painel"]
-    h -. "Kafka: TicketsIssued" .-> j["notification · gera o PDF"]
-    j -. "RabbitMQ: e-mail" .-> k["notification · envia o e-mail"]
-```
+![Um trace de compra como as barras do Tempo, com tempos ilustrativos numa escala de 0 a 1000 ms. Na mesma requisição HTTP: Angular, clique em Pagar (62 ms); api-gateway, POST /orders; order-service, cria o pedido e o outbox; Postgres, INSERT orders e outbox. O comprador já tem a resposta nesse ponto. Depois, cada etapa chega pelo Kafka, com uma espera no broker antes: payment-mock autoriza (AuthorizePayment), order-service pede a confirmação da reserva (PaymentAuthorized), inventory confirma no Redis e no Postgres (ConfirmReservation), order-service confirma e emite os ingressos (ReservationConfirmed), e o TicketsIssued chega ao analytics, que atualiza o painel, e ao notification, que gera o PDF. Por fim, pelo RabbitMQ, o notification envia o e-mail, por volta de 900 ms.](img/observabilidade-trace.png)
 
-As linhas cheias são chamadas na mesma requisição; as tracejadas atravessam o Kafka ou o RabbitMQ, e mesmo assim tudo aparece no mesmo trace.
+As barras azuis são da mesma requisição HTTP; as amarelas e as rosas chegaram pelo Kafka e pelo RabbitMQ, depois de a mensagem esperar no broker, e mesmo assim tudo aparece no mesmo trace.
 
 No Grafana, em **Explore → Tempo**, um trace mostra cada etapa com o tempo dela. O `make smoke` imprime o id de um trace da compra para abrir direto.
 
@@ -108,13 +77,7 @@ Os alertas ficam no próprio Grafana e chegam por e-mail no Mailpit (ADR 35).
 
 O alerta não dispara num pico de segundos: ele mede o **burn rate**, a velocidade com que o orçamento de erro do mês está sendo gasto, em duas janelas ao mesmo tempo.
 
-```mermaid
-flowchart LR
-    a{"Erros na última hora<br/>> 14,4 × 0,5%?"} -- sim --> b{"E nos últimos 5 min<br/>também?"}
-    b -- sim --> alerta["Alerta crítico:<br/>2% do orçamento do mês<br/>gastos em uma hora"]
-    b -- "não: já passou" --> calma["Sem alerta"]
-    a -- não --> calma
-```
+![A conta do burn rate: o SLO de 99,5% sem erro 5xx em 30 dias deixa um orçamento de erro de 0,5%; 14,4 vezes 0,5% dá 7,2% de erros, o limite do alerta. Uma hora a 14,4 vezes gasta 14,4 de 720 horas, ou 2% do orçamento do mês. Três cenários ilustrativos mostram as duas janelas: com o problema acontecendo, a última hora (9,1%) e os últimos 5 minutos (12%) passam de 7,2% e o alerta crítico dispara; com o problema já passado, a hora está acima (10,2%) mas os 5 minutos não (0,3%), e não há alerta; num pico curto, os 5 minutos estão acima (16,1%) mas a hora não (1,6%), e também não há alerta.](img/observabilidade-burn-rate.png)
 
 A janela longa evita alarme falso; a curta faz o alerta parar logo que o problema acaba. Há também a versão lenta (6 vezes em 6 h e em 30 min).
 

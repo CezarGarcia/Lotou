@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>A topologia do RabbitMQ</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        column-gap: 80px;
+        grid-template-rows: auto 72px auto 118px auto 118px auto 72px auto;
+        align-items: center;
+      }
+      .node {
+        padding: 12px 14px;
+      }
+      .node .name {
+        font-size: 15px;
+      }
+      .hex {
+        padding: 14px 26px;
+        border: 0;
+        border-radius: 0;
+        clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 16px 100%, 0 50%);
+      }
+      .hex .key {
+        margin-top: 4px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: rgb(18 16 21 / 0.82);
+      }
+      .hex .key b {
+        font-weight: 500;
+        color: var(--bg);
+      }
+      .q .meta,
+      .w .meta {
+        margin-top: 6px;
+        font-size: 12.5px;
+        line-height: 1.35;
+        color: var(--muted);
+      }
+      .w .meta b,
+      .q .meta b {
+        font-family: var(--mono);
+        font-weight: 500;
+        color: var(--rabbit);
+      }
+      .slots {
+        margin-top: 10px;
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+      }
+      .slots i {
+        width: 16px;
+        height: 18px;
+        border-radius: 4px;
+        background: var(--rabbit);
+        opacity: 0.85;
+      }
+      .slots i.hi {
+        background: var(--yellow);
+        opacity: 1;
+      }
+      .dlq {
+        padding: 10px 14px;
+      }
+      .dlq .name {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .kafka .name {
+        font-family: var(--display);
+        font-size: 24px;
+        font-weight: 900;
+        text-transform: uppercase;
+        line-height: 1;
+      }
+      .kafka .evs {
+        margin-top: 6px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: rgb(18 16 21 / 0.82);
+      }
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .legend {
+        margin-top: 30px;
+        display: flex;
+        gap: 26px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .legend .sw {
+        display: inline-block;
+        width: 22px;
+        height: 14px;
+        margin-right: 8px;
+        vertical-align: -2px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">RabbitMQ · a topologia do notification-service</span>
+        <h1>Três filas de trabalho, e todas acabam num e-mail</h1>
+        <p class="lede">
+          Os fatos do Kafka e o pedido do produtor viram tarefas. O PDF do ingresso e o do
+          relatório têm filas próprias; quando ficam prontos, pedem o e-mail, que sai pelo SMTP.
+        </p>
+      </div>
+
+      <div class="stage">
+        <!-- linha 1: o Kafka e a fila de mortos do PDF -->
+        <div class="node solid is-kafka kafka" id="kafka" style="grid-row: 1; grid-column: 1">
+          <span class="tag">Kafka</span>
+          <div class="name">order.events</div>
+          <div class="evs">TicketsIssued, OrderCancelled, OrderRefunded</div>
+        </div>
+        <div class="node outline is-danger dlq" id="tdlq" style="grid-row: 1; grid-column: 3">
+          <span class="tag">fila de mortos</span>
+          <div class="name">tickets.render.dlq</div>
+        </div>
+
+        <!-- linha 2: ingressos -->
+        <div class="node" id="cons" style="grid-row: 3; grid-column: 1">
+          <span class="tag">notification-service</span>
+          <div class="name">Consumidor do Kafka</div>
+          <div class="meta muted" style="margin-top: 6px; font-size: 12.5px">transforma cada fato em tarefa</div>
+        </div>
+        <div class="node solid is-rabbit hex" id="tx" style="grid-row: 3; grid-column: 2">
+          <span class="tag">exchange · direct</span>
+          <div class="name">tickets</div>
+          <div class="key">chave <b>render</b></div>
+        </div>
+        <div class="node outline is-rabbit q" id="tq" style="grid-row: 3; grid-column: 3">
+          <span class="tag">fila · ingressos</span>
+          <div class="name">tickets.render</div>
+          <div class="meta">um PDF por pedido, com os QR codes</div>
+        </div>
+        <div class="node w" id="tw" style="grid-row: 3; grid-column: 4">
+          <span class="tag">workers</span>
+          <div class="name">Workers de PDF</div>
+          <div class="meta"><b>prefetch 1</b>, vários em paralelo (<code>RENDER_WORKERS</code>)</div>
+        </div>
+
+        <!-- linha 3: e-mails -->
+        <div class="node solid is-rabbit hex" id="nx" style="grid-row: 5; grid-column: 1">
+          <span class="tag">exchange · topic</span>
+          <div class="name">notifications</div>
+          <div class="key">a fila liga <b>email.#</b></div>
+        </div>
+        <div class="node outline is-rabbit q" id="nq" style="grid-row: 5; grid-column: 2">
+          <span class="tag">fila · e-mails</span>
+          <div class="name">notifications.email</div>
+          <div class="meta">prioridade de 0 a 10: o ingresso passa na frente</div>
+          <div class="slots"><i></i><i></i><i></i><i class="hi"></i></div>
+        </div>
+        <div class="node w" id="nw" style="grid-row: 5; grid-column: 3">
+          <span class="tag">worker</span>
+          <div class="name">Worker de e-mail</div>
+          <div class="meta"><b>prefetch 10</b>; se falhar, tenta de novo com espera (próxima imagem)</div>
+        </div>
+        <div class="stack" style="grid-row: 5; grid-column: 4">
+          <div class="node" id="smtp">
+            <span class="tag">SMTP</span>
+            <div class="name">Mailpit</div>
+            <div class="desc">os e-mails enviados, em localhost:8025</div>
+          </div>
+          <div class="node outline is-danger dlq" id="ndlq">
+            <span class="tag">fila de mortos</span>
+            <div class="name">notifications.email.dlq</div>
+          </div>
+        </div>
+
+        <!-- linha 4: relatórios -->
+        <div class="node" id="api" style="grid-row: 7; grid-column: 1">
+          <span class="tag">o produtor pede o PDF</span>
+          <div class="name">POST /reports/statements</div>
+        </div>
+        <div class="node solid is-rabbit hex" id="rx" style="grid-row: 7; grid-column: 2">
+          <span class="tag">exchange · direct</span>
+          <div class="name">reports</div>
+          <div class="key">chave <b>statement.pdf</b></div>
+        </div>
+        <div class="node outline is-rabbit q" id="rq" style="grid-row: 7; grid-column: 3">
+          <span class="tag">fila · relatórios</span>
+          <div class="name">reports.generate</div>
+          <div class="meta">o relatório financeiro de um show</div>
+        </div>
+        <div class="node w" id="rw" style="grid-row: 7; grid-column: 4">
+          <span class="tag">worker</span>
+          <div class="name">Worker de relatório</div>
+          <div class="meta"><b>prefetch 1</b>; lê os números do analytics</div>
+        </div>
+
+        <!-- linha 5: a fila de mortos do relatório -->
+        <div class="node outline is-danger dlq" id="rdlq" style="grid-row: 9; grid-column: 3">
+          <span class="tag">fila de mortos</span>
+          <div class="name">reports.generate.dlq</div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><span class="sw" style="background: var(--rabbit)"></span>exchange</span>
+        <span><span class="sw" style="border: 2px solid var(--rabbit)"></span>fila</span>
+        <span><span class="sw" style="border: 2px solid var(--red)"></span>fila de mortos: fica parada até alguém olhar</span>
+        <span><span class="sw" style="background: var(--yellow)"></span>e-mail do ingresso, prioridade 9</span>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · rabbitmq</span>
+      </div>
+    </div>
+    <script>
+      const pink = { color: 'pink' };
+      // Kafka e consumidor
+      Diagrama.link('#kafka', '#cons', { from: 'bottom', to: 'top', straight: true, color: 'yellow' });
+      // ingressos
+      Diagrama.link('#cons', '#tx', pink);
+      Diagrama.link('#tx', '#tq', pink);
+      Diagrama.link('#tq', '#tw', pink);
+      Diagrama.link('#tq', '#tdlq', { from: 'top', to: 'bottom', straight: true, dashed: true, color: 'red', label: 'não dá para gerar', labelColor: 'red' });
+      // e-mails
+      Diagrama.link('#cons', '#nx', { from: 'bottom', to: 'top', straight: true, color: 'pink', label: 'cancelado, reembolso' });
+      Diagrama.link('#tw', '#nx', {
+        from: 'bottom',
+        to: 'top',
+        toAt: 0.82,
+        fromAt: 0.3,
+        curve: 0.12,
+        color: 'yellow',
+        label: 'email.ticket.issued · prioridade alta',
+        labelColor: 'yellow',
+      });
+      Diagrama.link('#nx', '#nq', pink);
+      Diagrama.link('#nq', '#nw', pink);
+      Diagrama.link('#nw', '#smtp', { from: 'right', to: 'left', fromAt: 0.35 });
+      Diagrama.link('#nw', '#ndlq', { from: 'right', to: 'left', fromAt: 0.75, dashed: true, color: 'red' });
+      // relatórios
+      Diagrama.link('#api', '#rx', pink);
+      Diagrama.link('#rx', '#rq', pink);
+      Diagrama.link('#rq', '#rw', pink);
+      Diagrama.link('#rq', '#rdlq', { from: 'bottom', to: 'top', straight: true, dashed: true, color: 'red', label: 'não dá para gerar', labelColor: 'red' });
+      Diagrama.link('#rw', '#nx', {
+        from: 'top',
+        to: 'bottom',
+        toAt: 0.82,
+        fromAt: 0.3,
+        curve: 0.12,
+        color: 'pink',
+        label: 'email.report.statement, com o PDF',
+      });
+    </script>
+  </body>
+</html>

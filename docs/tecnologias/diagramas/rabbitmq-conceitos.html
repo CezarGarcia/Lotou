@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Os conceitos do RabbitMQ</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        column-gap: 110px;
+        row-gap: 96px;
+        align-items: center;
+        margin-top: 118px;
+      }
+      /* Exchange: um hexágono achatado, na tinta do RabbitMQ. */
+      .hex {
+        position: relative;
+        padding: 16px 30px;
+        border: 0;
+        border-radius: 0;
+        clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 18px 100%, 0 50%);
+      }
+      .hex.is-danger {
+        background: var(--red);
+      }
+      .msg {
+        margin-top: 10px;
+        display: inline-flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: var(--raised);
+        border: 1px solid var(--line-strong);
+        font-size: 12.5px;
+      }
+      .msg .label {
+        font-size: 10.5px;
+      }
+      .msg code {
+        padding: 0;
+        background: none;
+        color: var(--rabbit);
+      }
+      /* Fila: a caixa com as mensagens esperando, a mais antiga à direita. */
+      .slots {
+        margin-top: 12px;
+        display: flex;
+        gap: 5px;
+        justify-content: flex-end;
+      }
+      .slots i {
+        width: 22px;
+        height: 26px;
+        border-radius: 5px;
+        background: var(--rabbit);
+        opacity: 0.85;
+      }
+      .slots i.free {
+        background: transparent;
+        border: 1px dashed var(--line-strong);
+      }
+      .is-danger .slots i {
+        background: var(--red);
+      }
+      .bind {
+        margin-top: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .worker .facts {
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        color: var(--text-2);
+      }
+      .worker .facts b {
+        font-family: var(--mono);
+        font-weight: 500;
+        color: var(--rabbit);
+      }
+      .notes {
+        margin-top: 40px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">RabbitMQ · os conceitos</span>
+        <h1>Uma tarefa, um worker, uma vez</h1>
+        <p class="lede">
+          O exchange recebe a mensagem e, pela routing key, decide em que fila ela entra. Um worker
+          pega a mensagem, faz o trabalho e confirma. Só então ela sai da fila.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="node" id="pub">
+          <span class="tag">quem publica</span>
+          <div class="name">Worker de PDF</div>
+          <div class="desc">terminou o PDF; pede o e-mail</div>
+          <div class="msg">
+            <span class="label">routing key</span>
+            <code>email.ticket.issued</code>
+          </div>
+        </div>
+
+        <div class="node solid is-rabbit hex" id="ex">
+          <span class="tag">exchange · topic</span>
+          <div class="name">notifications</div>
+          <div class="bind">fila ligada por <b>email.#</b></div>
+        </div>
+
+        <div class="node outline is-rabbit" id="q">
+          <span class="tag">fila</span>
+          <div class="name">notifications.email</div>
+          <div class="slots"><i class="free"></i><i></i><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="node worker" id="w">
+          <span class="tag">worker</span>
+          <div class="name">Worker de e-mail</div>
+          <div class="facts">
+            <span><b>prefetch 10</b>: pega até 10 de uma vez</span>
+            <span><b>ack manual</b>: confirma só no fim</span>
+          </div>
+        </div>
+
+        <div></div>
+        <div></div>
+
+        <div class="node outline is-danger" id="dlq">
+          <span class="tag">fila de mortos</span>
+          <div class="name">notifications.email.dlq</div>
+          <div class="slots"><i class="free"></i><i class="free"></i><i class="free"></i><i></i></div>
+        </div>
+
+        <div class="node solid is-danger hex" id="dlx">
+          <span class="tag">exchange de mortos</span>
+          <div class="name">notifications.dlx</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Tipos de exchange:</strong> <code>direct</code> entrega pela chave exata,
+          <code>topic</code> aceita padrões (<code>email.#</code> pega todo e-mail) e
+          <code>fanout</code> entrega para todas as filas ligadas.
+        </div>
+        <div class="note">
+          <strong>Prefetch</strong> é quanto o worker segura de uma vez. O PDF usa 1, porque é
+          pesado; o e-mail usa 10, porque passa o tempo esperando a rede.
+        </div>
+        <div class="note">
+          <strong>Worker caiu antes do ack?</strong> A mensagem volta para a fila e outro worker a
+          pega. A recusada, ou vencida pelo <strong>TTL</strong>, vai para o exchange de mortos.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · rabbitmq</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#pub', '#ex', { label: 'publica', color: 'pink' });
+      Diagrama.link('#ex', '#q', { label: 'email.#', color: 'pink' });
+      Diagrama.link('#q', '#w', { from: 'right', to: 'left', label: 'entrega', color: 'pink' });
+      Diagrama.link('#w', '#q', {
+        from: 'top',
+        to: 'top',
+        fromAt: 0.5,
+        toAt: 0.5,
+        label: 'ack: feito, sai da fila',
+        color: 'green',
+        labelColor: 'green',
+        curve: 0.3,
+      });
+      Diagrama.link('#w', '#dlx', {
+        from: 'bottom',
+        to: 'top',
+        straight: true,
+        dashed: true,
+        color: 'red',
+        label: 'falhou: nack',
+        labelColor: 'red',
+      });
+      Diagrama.link('#dlx', '#dlq', { color: 'red' });
+    </script>
+  </body>
+</html>

@@ -317,7 +317,7 @@ O gateway também leva o WebSocket do painel até o analytics-service, que é o 
 | api-gateway | Java · Spring Cloud Gateway | roteamento, validação de JWT e rate limit | redis-core |
 | event-service | Node · NestJS | shows, locais, setores, mapas de assentos, busca e cache | MongoDB, redis-cache |
 | inventory-service | Java · Spring Boot | lotes, disponibilidade, fila virtual e reservas de pista e de assento | Postgres, redis-core |
-| order-service | Java · Spring Boot | pedidos, cupons, emissão de ingressos, cancelamento, reembolso, saga e outbox | Postgres, redis-core |
+| order-service | Java · Spring Boot | pedidos, cupons, emissão de ingressos, cancelamento, reembolso, saga e outbox | Postgres |
 | payment-mock | Node | simula um gateway de pagamento com recusa, estorno e latência configuráveis | Postgres |
 | analytics-service | Python · FastAPI | métricas ao vivo, read models, relatório financeiro e hub de tempo real (SSE e WebSocket) | MongoDB, redis-core |
 | notification-service | Python · FastAPI + workers | gera o PDF do ingresso com QR code e envia os e-mails (Mailpit em desenvolvimento) | RabbitMQ, redis-core (deduplicação) |
@@ -400,7 +400,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | `agent_conversations` | histórico do chat e chamadas de ferramenta | estrutura aninhada e variável |
 | `idempotency_keys` | `Idempotency-Key` já vista nos POSTs do event-service, com a resposta original; TTL de 24 h | o índice único do `_id` decide a corrida entre requisições iguais (ADR 22) |
 
-Os read models do analytics ficam no banco `analytics`, em coleções por geração (`order_view_g3`); uma view com o nome simples (`order_view`) aponta sempre para a geração ativa, e é ela que leitores de fora, como o producer-assistant, usam. Cada geração tem o próprio consumer group (`analytics-service.gen-<N>`), o que permite o replay sem parada (ADR 30).
+Os read models do analytics ficam no banco `analytics`, em coleções por geração (`order_view_g3`); a API do analytics descobre a geração ativa por um ponteiro (`analytics_state/active`), e uma view com o nome simples (`order_view`) aponta sempre para ela, para leitores de fora, como o producer-assistant. Cada geração tem o próprio consumer group (`analytics-service.gen-<N>`), o que permite o replay sem parada (ADR 30).
 
 ### Redis
 
@@ -427,7 +427,6 @@ Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, 
 | `queue:{showId}:drawn` | string | fim das vendas | core | marca de sorteio feito |
 | `admitted:{showId}:{userId}` | string | 5 min | core | token de admissão ao checkout |
 | `checkin:{ticketId}` | string | até o fim do show | core | entrada já registrada; o valor guarda portão e horário |
-| `idem:{chave}` | string | 24 h | core | Idempotency-Key do POST /orders |
 | `rl:{sub}` ou `rl:ip:{hash do IP}` | sorted set | janela | core | rate limit por janela deslizante do event-service |
 | `request_rate_limiter.{operação:user:sub}.tokens` e `.timestamp` | string | segundos | core | balde do token bucket do gateway, por operação de compra e usuário (sem token, `ip:{hash do IP}`) |
 | `lock:{nome}` | string | segundos | core | lock distribuído de jobs |
@@ -523,7 +522,7 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 
 - **Idempotência na entrada:** o POST /orders exige `Idempotency-Key`; a chave única (comprador, chave) e a reserva única por pedido no Postgres fazem um clique duplo devolver o mesmo pedido.
 - **Pista:** o script Lua confere o token (em shows de alta demanda), o limite do CPF, o status do lote e o estoque, decrementa, cria a reserva e faz `XADD` em `stream:reservations`. Um consumer group do inventory grava a reserva no Postgres.
-- **Cadeira numerada:** o comprador escolhe até 4 assentos e o script Lua tenta `SET NX` em todos de uma vez: segura todos ou nenhum. Em seguida marca os bits no bitmap e publica a mudança em `seatmap.{showId}`, e os outros compradores veem os assentos ficarem ocupados.
+- **Cadeira numerada:** o comprador escolhe até 4 assentos e o script Lua confere se algum já tem dono (`EXISTS`) e só então grava todos (`SET`): como nada roda no meio do script, segura todos ou nenhum. Em seguida marca os bits no bitmap e publica a mudança em `seatmap.{showId}`, e os outros compradores veem os assentos ficarem ocupados.
 - **Cupom:** o order-service valida código, show, setor e validade, e conta o uso com um update condicional no Postgres, na mesma transação que cria o pedido; acima do limite, o pedido é recusado. Se o pedido for cancelado ou reembolsado, o uso volta (ADR 33).
 - **Última defesa:** a constraint única de (show, assento) na tabela `tickets` impede a venda dupla mesmo se o Redis falhar.
 - **Outbox:** pedido, passo da saga e mensagens são gravados na mesma transação; um relay publica no Kafka em ordem, com advisory lock, e marca como publicado (ADR 8).
@@ -591,12 +590,12 @@ Cada dado tem um padrão de cache escolhido pela tolerância a dado velho. Preç
 ### Outros usos do Redis
 
 - **Rate limit:** o gateway usa o `RedisRateLimiter` do Spring Cloud Gateway (token bucket). No event-service, implementar uma janela deslizante própria com sorted set, para comparar os dois algoritmos.
-- **Reserva atômica:** na pista, um contador; na cadeira numerada, `SET NX` em vários assentos com tudo ou nada. Os dois em script Lua, junto com a checagem do token, do limite do CPF e o `XADD` no stream.
-- **Bitmap de assentos:** `SETBIT` e `GETRANGE` guardam o mapa de um setor com 5 mil cadeiras em cerca de 625 bytes, e o mapa inteiro sai numa leitura só.
+- **Reserva atômica:** na pista, um contador; na cadeira numerada, `EXISTS` e `SET` em vários assentos com tudo ou nada. Os dois em script Lua, junto com a checagem do token, do limite do CPF e o `XADD` no stream.
+- **Bitmap de assentos:** `SETBIT` e `GET` guardam e leem o mapa de um setor com 5 mil cadeiras em cerca de 625 bytes, e o mapa inteiro sai numa leitura só.
 - **Fila virtual:** sorted set com hora de chegada; `ZRANK` dá a posição e `ZPOPMIN` admite o próximo lote.
 - **Cupons:** contados no Postgres do order-service, na transação do pedido, e não no Redis (ADR 33).
 - **Check-in:** `SET NX` em `checkin:{ticketId}` garante que só o primeiro portão libera a entrada, mesmo com leituras simultâneas.
-- **Idempotência:** `SET NX` da Idempotency-Key antes de criar o pedido; um clique duplo devolve o mesmo pedido.
+- **Idempotência:** `SET NX` da Idempotency-Key da reserva (`idem:reservation:{hash}`); um clique duplo devolve a mesma reserva. No pedido, a mesma garantia vem da chave única (comprador, chave) no Postgres.
 - **Lock distribuído:** `SET NX PX` com token único e liberação via Lua, para que só uma instância rode jobs como a abertura de vendas. Documentar o limite: para correção forte, a garantia final fica numa constraint do Postgres.
 - **Painel ao vivo:** as vendas por setor saem dos read models do analytics, publicadas a cada segundo em `dashboard.metrics:{showId}`, com um único cálculo por show por segundo entre as instâncias (ADR 32).
 

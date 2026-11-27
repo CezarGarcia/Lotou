@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mapa de cadeiras ao vivo</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 370px 210px 1fr;
+        column-gap: 120px;
+        row-gap: 92px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .stage .node .name {
+        font-size: 17px;
+      }
+      .bitmap {
+        border-color: var(--redis);
+        padding: 30px 18px 16px;
+      }
+      .bitmap > .group-title {
+        color: var(--redis);
+      }
+      .bits {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 5px;
+      }
+      .bit {
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: var(--raised);
+        border: 1px solid var(--line-strong);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--faint);
+      }
+      .bit.on {
+        background: var(--redis);
+        border-color: transparent;
+        color: var(--bg);
+      }
+      .bit.hot {
+        outline: 2px solid var(--yellow);
+        outline-offset: 2px;
+      }
+      .bit-legend {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .bit-legend strong {
+        color: var(--text);
+      }
+      .pubsub {
+        justify-self: center;
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 18px;
+      }
+      .pubsub .desc {
+        margin-top: 6px;
+      }
+      .browsers {
+        display: grid;
+        gap: 12px;
+      }
+      .browser {
+        padding: 0;
+        overflow: hidden;
+      }
+      .browser .bar {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line-strong);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .browser .bar i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--line-strong);
+      }
+      .browser .bar span {
+        margin-left: 6px;
+      }
+      .seats {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 5px;
+        padding: 10px 12px 12px;
+      }
+      .seat {
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: var(--green);
+        opacity: 0.85;
+      }
+      .seat.off {
+        background: var(--line-strong);
+        opacity: 1;
+      }
+      .seat.now {
+        background: var(--faint);
+        outline: 2px solid var(--yellow);
+        outline-offset: 2px;
+        opacity: 1;
+      }
+      .notes {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · bitmap e pub/sub</span>
+        <h1>A cadeira fica cinza na tela de todo mundo</h1>
+        <p class="lede">
+          O mapa de cada setor é um bitmap, com um bit por cadeira. A cada mudança, o script da
+          reserva grava o bit e avisa por pub/sub; o inventory repassa por SSE a quem está olhando.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="node outline is-redis" id="lua">
+          <span class="tag">redis-core</span>
+          <div class="name">Script da reserva</div>
+          <div class="desc">a cada cadeira segurada, liberada ou vendida</div>
+        </div>
+        <div class="node solid is-redis pubsub" id="ps">
+          <span class="tag">pub/sub</span>
+          <div class="name">seatmap.{show}</div>
+          <div class="desc">entrega a quem está ouvindo agora; não guarda nada</div>
+        </div>
+        <div></div>
+
+        <div class="group bitmap" id="bm">
+          <span class="group-title">seatmap:{show}:{setor} · bitmap</span>
+          <div class="bits">
+            <span class="bit">0</span><span class="bit">0</span><span class="bit on">1</span
+            ><span class="bit">0</span><span class="bit on">1</span><span class="bit on">1</span
+            ><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span
+            ><span class="bit on">1</span><span class="bit">0</span><span class="bit">0</span
+            ><span class="bit">0</span><span class="bit on">1</span><span class="bit on">1</span
+            ><span class="bit">0</span><span class="bit">0</span><span class="bit on">1</span
+            ><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span
+            ><span class="bit">0</span><span class="bit on hot">1</span><span class="bit">0</span
+            ><span class="bit on">1</span><span class="bit">0</span><span class="bit">0</span
+            ><span class="bit">0</span><span class="bit on">1</span><span class="bit on">1</span
+            ><span class="bit">0</span><span class="bit">0</span><span class="bit">0</span
+            ><span class="bit">0</span><span class="bit">0</span><span class="bit on">1</span>
+          </div>
+          <div class="bit-legend">
+            <strong>Um bit por cadeira</strong>, 1 = ocupada. Um setor de 5 mil cadeiras cabe em
+            cerca de 625 bytes.
+          </div>
+        </div>
+        <div class="node" id="inv">
+          <span class="tag">inventory</span>
+          <div class="name">Assina o canal e serve o mapa</div>
+          <div class="desc">ao conectar ou reconectar, manda o mapa inteiro; depois, só as mudanças</div>
+        </div>
+        <div class="browsers" id="br">
+          <div class="node browser" id="b1">
+            <div class="bar"><i></i><i></i><i></i><span>quem está no mapa</span></div>
+            <div class="seats">
+              <i class="seat"></i><i class="seat"></i><i class="seat off"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat off"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat"></i><i class="seat off"></i><i class="seat"></i><i class="seat off"></i
+              ><i class="seat off"></i><i class="seat"></i><i class="seat"></i><i class="seat off"></i
+              ><i class="seat"></i><i class="seat"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat"></i><i class="seat"></i><i class="seat now"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat off"></i>
+            </div>
+          </div>
+          <div class="node browser" id="b2">
+            <div class="bar"><i></i><i></i><i></i><span>outro comprador</span></div>
+            <div class="seats">
+              <i class="seat"></i><i class="seat"></i><i class="seat off"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat off"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat"></i><i class="seat off"></i><i class="seat"></i><i class="seat off"></i
+              ><i class="seat off"></i><i class="seat"></i><i class="seat"></i><i class="seat off"></i
+              ><i class="seat"></i><i class="seat"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat"></i><i class="seat"></i><i class="seat now"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat"></i><i class="seat"></i><i class="seat"></i
+              ><i class="seat off"></i><i class="seat off"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Ao vivo:</strong> o script grava o bit com <code>SETBIT</code> e publica “F12
+          ocupada”. O inventory repassa por SSE, e a cadeira fica cinza na hora.
+        </div>
+        <div class="note">
+          <strong>O mapa inteiro numa leitura:</strong> quem abre o mapa recebe primeiro o bitmap todo, lido com
+          um só <code>GET</code>, em vez de uma consulta por cadeira (ADR&nbsp;5).
+        </div>
+        <div class="note">
+          <strong>Perdeu a conexão?</strong> O pub/sub não guarda nada, então quem estava fora perde
+          a mensagem. Ao reconectar, o navegador lê o bitmap de novo (ADR&nbsp;11).
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#lua', '#bm', { label: 'SETBIT', color: 'redis', straight: true, fromAt: 0.9, toAt: 0.9 });
+      Diagrama.link('#lua', '#ps', { label: 'PUBLISH', color: 'redis', straight: true });
+      Diagrama.link('#ps', '#inv', { label: 'assina', straight: true });
+      Diagrama.link('#inv', '#b1', { label: 'SSE', color: 'yellow', from: 'right', to: 'left' });
+      Diagrama.link('#inv', '#b2', { label: 'SSE', color: 'yellow', from: 'right', to: 'left' });
+      Diagrama.link('#bm', '#inv', { label: 'GET', straight: true, dashed: true, from: 'right', to: 'left' });
+    </script>
+  </body>
+</html>

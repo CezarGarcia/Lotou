@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cache da página do show</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .request {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 18px;
+      }
+      .request .name {
+        font-family: var(--mono);
+        font-size: 16px;
+        font-weight: 500;
+      }
+      .stairs {
+        position: relative;
+        margin-top: 54px;
+        display: grid;
+        grid-template-columns: 1fr 270px;
+        column-gap: 0;
+        row-gap: 58px;
+        align-items: center;
+      }
+      .step {
+        width: 410px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        padding: 14px 18px;
+      }
+      .step .lvl {
+        flex: none;
+        width: 74px;
+        font-family: var(--display);
+        font-size: 38px;
+        font-weight: 900;
+        line-height: 0.9;
+        text-transform: uppercase;
+      }
+      .step .lvl small {
+        display: block;
+        margin-top: 4px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .step .name {
+        font-size: 16px;
+      }
+      .step .desc {
+        margin-top: 4px;
+      }
+      .step .chip {
+        margin-top: 8px;
+      }
+      .s1 {
+        margin-left: 0;
+      }
+      .s2 {
+        margin-left: 100px;
+      }
+      .s3 {
+        margin-left: 200px;
+      }
+      .s4 {
+        margin-left: 300px;
+      }
+      .s1 .lvl {
+        color: var(--yellow);
+      }
+      .s2 .lvl {
+        color: var(--redis-cache);
+      }
+      .s3 .lvl {
+        color: var(--text);
+        font-size: 30px;
+      }
+      .s4 .lvl {
+        color: var(--mongo);
+        font-size: 30px;
+      }
+      .out {
+        padding: 12px 16px;
+      }
+      .out .name {
+        font-size: 15px;
+      }
+      .out .desc {
+        margin-top: 3px;
+      }
+      .ok .name {
+        color: var(--green);
+      }
+      .notes {
+        margin-top: 38px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .tick {
+        color: var(--green);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · cache da página do show</span>
+        <h1>Quatro degraus até o banco</h1>
+        <p class="lede">
+          Cache-aside em dois níveis: a leitura desce um degrau só quando o de cima não tem a
+          resposta, e um lock deixa uma requisição por vez ir ao MongoDB.
+        </p>
+      </div>
+
+      <div class="node request" id="req">
+        <span class="tag" style="margin: 0">leitura</span>
+        <span class="name">GET /shows/{id}</span>
+      </div>
+
+      <div class="stairs">
+        <div class="node outline is-warn step s1" id="l1">
+          <div class="lvl">L1<small>2 s</small></div>
+          <div>
+            <div class="name">Memória do processo</div>
+            <div class="desc">Segura a chave quente do show que está abrindo as vendas.</div>
+          </div>
+        </div>
+        <div class="node out ok" id="o1">
+          <div class="name">Responde</div>
+          <div class="desc">sem sair do processo</div>
+        </div>
+
+        <div class="node outline is-redis-cache step s2" id="l2">
+          <div class="lvl">L2<small>10 min</small></div>
+          <div>
+            <div class="name">redis-cache</div>
+            <div class="desc"><code>cache:event:{id}</code></div>
+            <span class="chip">10 min + 0 a 60 s de jitter</span>
+          </div>
+        </div>
+        <div class="node out ok" id="o2">
+          <div class="name">Responde</div>
+          <div class="desc">e guarda a cópia de 2 s no L1</div>
+        </div>
+
+        <div class="node step s3" id="lock">
+          <div class="lvl">Lock<small>SET NX</small></div>
+          <div>
+            <div class="name">Sou o único recarregando?</div>
+            <div class="desc"><code>cache:lock:event:{id}</code></div>
+          </div>
+        </div>
+        <div class="node out outline is-warn" id="o3">
+          <div class="name">Espera um instante</div>
+          <div class="desc">e lê o cache de novo, que o outro já está enchendo</div>
+        </div>
+
+        <div class="node outline is-mongo step s4" id="db">
+          <div class="lvl">Banco<small>MongoDB</small></div>
+          <div>
+            <div class="name">Busca o show</div>
+            <div class="desc">e grava no cache com 10 min + jitter</div>
+          </div>
+        </div>
+        <div class="node out ok" id="o4">
+          <div class="name">Responde</div>
+          <div class="desc">e as próximas leituras param no L1 ou no L2</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Contra a avalanche:</strong> quando a chave de um show disputado vence, milhares
+          de requisições querem recarregar ao mesmo tempo. O <code>SET NX</code> deixa só uma ir ao
+          banco. O jitter faz cada chave vencer num momento um pouco diferente.
+        </div>
+        <div class="note">
+          <strong>Apagar, não atualizar:</strong> quando o produtor edita o show ou um lote esgota,
+          a chave é apagada, e a próxima leitura desce a escada e recarrega.
+        </div>
+        <div class="note">
+          <strong>O que nunca vem do cache:</strong> preço, ingressos restantes e cadeiras. Esses
+          saem direto do inventory.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      // As descidas são verticais: cada degrau começa 100 px à direita do anterior.
+      const W = 410;
+      const down = { from: 'bottom', to: 'top', fromAt: 150 / W, toAt: 50 / W, straight: true };
+      Diagrama.link('#req', '#l1', { from: 'bottom', to: 'top', fromAt: 50 / document.querySelector('#req').offsetWidth, toAt: 50 / W, straight: true });
+      Diagrama.link('#l1', '#l2', { ...down, label: 'não tem' });
+      Diagrama.link('#l2', '#lock', { ...down, label: 'não tem' });
+      Diagrama.link('#lock', '#db', { ...down, label: 'sim', labelColor: 'green' });
+      Diagrama.link('#l1', '#o1', { label: 'tem', color: 'green', straight: true });
+      Diagrama.link('#l2', '#o2', { label: 'tem', color: 'green', straight: true });
+      Diagrama.link('#lock', '#o3', { label: 'não', color: 'yellow', straight: true });
+      Diagrama.link('#db', '#o4', { color: 'green', straight: true });
+    </script>
+  </body>
+</html>

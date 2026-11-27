@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>A saga da compra</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 250px 120px 330px 120px 1fr;
+        grid-template-rows: auto 64px auto 110px auto 110px auto 110px auto;
+        align-items: center;
+      }
+      .start {
+        grid-column: 1;
+        justify-self: start;
+        margin-left: 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .start i {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--text);
+      }
+      .state {
+        grid-column: 1;
+        padding: 14px 18px;
+      }
+      .state .name {
+        font-family: var(--display);
+        font-size: 30px;
+        font-weight: 900;
+        line-height: 0.95;
+        text-transform: uppercase;
+      }
+      .state .desc {
+        margin-top: 4px;
+      }
+      .is-warn.outline .tag,
+      .is-warn.outline .name {
+        color: var(--yellow);
+      }
+      .cancelled {
+        grid-column: 5;
+        grid-row: 5 / 8;
+        align-self: center;
+        min-height: 230px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      /* Uma transição: o que chega e o que o order-service manda em resposta. */
+      .tr {
+        padding: 10px 14px;
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line-strong);
+        font-size: 13px;
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        row-gap: 6px;
+        align-items: center;
+      }
+      .tr .k {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .tr .v {
+        color: var(--text-2);
+        font-weight: 600;
+      }
+      .tr .chip {
+        justify-self: start;
+      }
+      .tr.bad {
+        border-color: rgb(255 90 90 / 0.55);
+      }
+      .down {
+        grid-column: 1 / 4;
+        justify-self: start;
+        margin-left: 160px;
+        width: 330px;
+      }
+      .side {
+        grid-column: 3;
+      }
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+      }
+      .notes {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Kafka · a saga da compra</span>
+        <h1>O order-service conduz a compra, passo a passo</h1>
+        <p class="lede">
+          Cada passo do pedido fica em <code>saga_state</code>. Quando chega uma resposta pelo
+          Kafka, o <span style="white-space: nowrap">order-service</span> muda de passo e envia o próximo comando.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="start" id="start" style="grid-row: 1"><i id="dot"></i>pedido criado</div>
+
+        <div class="node state" id="pending" style="grid-row: 3">
+          <span class="tag">pedido gravado</span>
+          <div class="name">PENDING</div>
+        </div>
+        <div class="tr down" style="grid-row: 4">
+          <span class="k">envia</span><span class="chip is-kafka solid">AuthorizePayment</span>
+        </div>
+
+        <div class="node state outline is-warn" id="pay" style="grid-row: 5">
+          <span class="tag">espera o payment-mock</span>
+          <div class="name">Aguardando pagamento</div>
+        </div>
+        <div class="tr side bad" id="tr-declined" style="grid-row: 5">
+          <span class="k">recebe</span><span class="v">PaymentDeclined</span>
+          <span class="k">envia</span><span class="chip is-kafka solid">ReleaseReservation</span>
+        </div>
+        <div class="tr down" style="grid-row: 6">
+          <span class="k">recebe</span><span class="v">PaymentAuthorized</span>
+          <span class="k">envia</span><span class="chip is-kafka solid">ConfirmReservation</span>
+        </div>
+
+        <div class="node state outline is-warn" id="res" style="grid-row: 7">
+          <span class="tag">espera o inventory</span>
+          <div class="name">Aguardando reserva</div>
+        </div>
+        <div class="tr side bad" id="tr-expired" style="grid-row: 7">
+          <span class="k">recebe</span><span class="v">a reserva já tinha expirado</span>
+          <span class="k">envia</span><span class="chip is-kafka solid">RefundPayment</span>
+        </div>
+        <div class="tr down" style="grid-row: 8">
+          <span class="k">recebe</span><span class="v">ReservationConfirmed</span>
+          <span class="k">faz</span><span class="v">emite os ingressos com QR assinado</span>
+        </div>
+
+        <div class="node state solid is-ok" id="ok" style="grid-row: 9">
+          <span class="tag">fim feliz</span>
+          <div class="name">CONFIRMED</div>
+          <div class="desc">publica <b>OrderConfirmed</b> e <b>TicketsIssued</b></div>
+        </div>
+
+        <div class="legend" style="grid-row: 9; grid-column: 3 / 6">
+          <span class="chip is-kafka solid">Comando</span>
+          <span class="muted">o que o order-service manda pelo Kafka; a resposta volta como um evento no passado</span>
+        </div>
+
+        <div class="node state solid is-danger cancelled" id="cancel">
+          <span class="tag">fim</span>
+          <div class="name">CANCELLED</div>
+          <div class="desc">as cadeiras voltam à venda e, se houve cobrança, o dinheiro volta</div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Sem resposta no prazo?</strong> O order-service manda o mesmo comando de novo.
+        </div>
+        <div class="note">
+          <strong>Repetir é seguro:</strong> cada consumidor grava o <code>eventId</code> com o
+          efeito e ignora a mensagem repetida. O payment-mock não cobra duas vezes.
+        </div>
+        <div class="note">
+          <strong>Todo comando sai pelo outbox</strong>, na mesma transação que muda o passo da
+          saga.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · kafka</span>
+      </div>
+    </div>
+    <script>
+      const v = { from: 'bottom', to: 'top', fromAt: 0.25, toAt: 0.25, straight: true, color: 'text' };
+      Diagrama.link('#dot', '#pending', { from: 'bottom', to: 'top', toAt: 0.104, straight: true, color: 'text' });
+      Diagrama.link('#pending', '#pay', v);
+      Diagrama.link('#pay', '#res', v);
+      Diagrama.link('#res', '#ok', { ...v, color: 'green' });
+      Diagrama.link('#pay', '#tr-declined', { straight: true, color: 'red', head: false });
+      Diagrama.link('#tr-declined', '#cancel', { from: 'right', to: 'left', toAt: 0.22, color: 'red' });
+      Diagrama.link('#res', '#tr-expired', { straight: true, color: 'red', head: false });
+      Diagrama.link('#tr-expired', '#cancel', { from: 'right', to: 'left', toAt: 0.78, color: 'red' });
+    </script>
+  </body>
+</html>

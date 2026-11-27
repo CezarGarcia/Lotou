@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>MongoDB: gerações dos relatórios</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 230px 260px 1fr;
+        column-gap: 150px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .gens {
+        display: flex;
+        flex-direction: column;
+        gap: 44px;
+      }
+      .gen .head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .gen .name {
+        font-family: var(--mono);
+        font-weight: 500;
+        font-size: 17px;
+      }
+      .gen.building {
+        border-style: dashed;
+      }
+      .node.big.view .name {
+        font-family: var(--mono);
+        font-size: 24px;
+        text-transform: none;
+      }
+      .steps {
+        margin-top: 46px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        background: var(--surface);
+        border: 1px solid var(--line-strong);
+        border-radius: 16px;
+        padding: 14px 16px;
+      }
+      .step .t {
+        font-weight: 700;
+        font-size: 15px;
+        line-height: 1.25;
+      }
+      .step .d {
+        margin-top: 4px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .steps-title {
+        margin-top: 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">MongoDB · reconstruir os relatórios</span>
+        <h1>Montar de novo sem apagar a tela</h1>
+        <p class="lede">
+          Cada montagem dos relatórios é uma geração, com as próprias coleções. Uma view com o nome
+          simples aponta para a geração ativa; quando a nova fica pronta, a view muda de uma vez.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="node" id="reader">
+          <span class="tag">quem lê</span>
+          <div class="name">Painel do produtor, mongosh</div>
+          <div class="desc">pede sempre <code>order_view</code>, sem saber o número</div>
+        </div>
+
+        <div class="node solid is-mongo big view" id="view">
+          <span class="tag">view do MongoDB</span>
+          <div class="name">order_view</div>
+          <div class="desc">só um nome: não guarda nada, aponta para uma geração</div>
+        </div>
+
+        <div class="gens">
+          <div class="node outline is-ok gen" id="g3">
+            <div class="head-row">
+              <div class="name">order_view_g3</div>
+              <span class="chip is-ok solid">ativa</span>
+            </div>
+            <div class="desc">completa. O consumidor ao vivo segue alimentando esta geração.</div>
+          </div>
+          <div class="node outline is-warn gen building" id="g4">
+            <div class="head-row">
+              <div class="name">order_view_g4</div>
+              <span class="chip is-warn solid">sendo montada</span>
+            </div>
+            <div class="desc">o replay lê os tópicos do Kafka desde o primeiro evento.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="label steps-title">O replay, sem parar o painel (ADR 30)</div>
+      <div class="steps" style="margin-top: 12px">
+        <div class="step">
+          <span class="num">1</span>
+          <div>
+            <div class="t">Reserva a geração nova</div>
+            <div class="d">
+              Coleções com <code>_g4</code> no nome e um consumer group novo. Um replay por vez.
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <div>
+            <div class="t">Lê tudo do começo</div>
+            <div class="d">
+              Até o fim que cada tópico tinha na partida. Enquanto isso, quem lê continua na g3.
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <div>
+            <div class="t">Troca de uma vez</div>
+            <div class="d">
+              A view passa a apontar para a g4, e <code>generations</code> registra a nova ativa.
+              Quem lê nem percebe.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · mongodb</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#reader', '#view', { label: 'lê' });
+      Diagrama.link('#view', '#g3', { from: 'right', to: 'left', label: 'hoje', labelAt: 0.6, color: 'green', labelColor: 'green' });
+      Diagrama.link('#view', '#g4', {
+        from: 'right',
+        to: 'left',
+        label: 'depois da troca',
+        labelAt: 0.6,
+        color: 'yellow',
+        labelColor: 'yellow',
+        dashed: true,
+      });
+    </script>
+  </body>
+</html>

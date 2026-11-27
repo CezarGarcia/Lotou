@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Do Redis para o Postgres</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .flow {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        column-gap: 170px;
+        row-gap: 104px;
+        align-items: center;
+        margin-top: 12px;
+      }
+      .flow > .node {
+        padding: 16px 18px;
+      }
+      .flow .node .name {
+        font-size: 17px;
+      }
+      .stream {
+        padding: 30px 16px 16px;
+        border-color: var(--redis);
+      }
+      .stream > .group-title {
+        color: var(--redis);
+      }
+      .tape {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+      }
+      .cell {
+        border-radius: 10px;
+        padding: 10px 6px 8px;
+        text-align: center;
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.25;
+        background: var(--raised);
+        border: 1.5px solid var(--line-strong);
+        color: var(--faint);
+      }
+      .cell small {
+        display: block;
+        margin-top: 3px;
+        font-size: 9.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .cell.pend {
+        border-color: var(--yellow);
+        color: var(--yellow);
+        background: rgb(255 210 63 / 0.08);
+      }
+      .cell.new {
+        border-color: var(--redis);
+        color: var(--text);
+      }
+      .tape-legend {
+        display: grid;
+        grid-template-columns: 2fr 1fr 2fr;
+        gap: 6px;
+        text-align: center;
+        margin-top: 10px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .fail {
+        margin-top: 40px;
+        border-color: var(--yellow);
+      }
+      .fail > .group-title {
+        color: var(--yellow);
+      }
+      .fail-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 56px;
+      }
+      .fail-row .node {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .fail-row .name {
+        font-size: 15px;
+      }
+      .fail-row .desc {
+        margin-top: 4px;
+      }
+      .x {
+        color: var(--red);
+      }
+      .notes {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · Redis Streams</span>
+        <h1>Do Redis para o Postgres, sem perder nada</h1>
+        <p class="lede">
+          Na mesma operação da reserva, o script Lua acrescenta uma entrada no stream. O inventory
+          lê, grava no Postgres e só então confirma. Entrada sem confirmação não some.
+        </p>
+      </div>
+
+      <div class="flow">
+        <div class="node outline is-redis" id="lua">
+          <span class="tag">redis-core</span>
+          <div class="name">Script Lua da reserva</div>
+          <div class="desc">a reserva e a entrada no stream, num passo só</div>
+        </div>
+
+        <div class="group stream" id="stream">
+          <span class="group-title">stream:reservations</span>
+          <div class="tape">
+            <div class="cell">1715…-0<small>lida</small></div>
+            <div class="cell">1715…-1<small>lida</small></div>
+            <div class="cell pend">1715…-2<small>pendente</small></div>
+            <div class="cell new">1715…-3<small>nova</small></div>
+            <div class="cell new">1715…-4<small>nova</small></div>
+          </div>
+          <div class="tape-legend">
+            <span>com XACK</span>
+            <span style="color: var(--yellow)">sem XACK</span>
+            <span>ainda não lida</span>
+          </div>
+        </div>
+
+        <div class="node solid is-pg" id="pg">
+          <span class="tag">cópia durável</span>
+          <div class="name">Postgres</div>
+          <div class="desc">lotes, cadeiras e reservas, cada linha com o <code>redis_seq</code> da entrada que a gravou</div>
+        </div>
+
+        <div class="node" id="inv">
+          <span class="tag">inventory · grupo de consumidores</span>
+          <div class="name">ReservationProjection</div>
+          <div class="desc">lê as entradas em grupo, grava cada uma numa transação e só depois confirma</div>
+        </div>
+      </div>
+
+      <div class="group fail">
+        <span class="group-title">Se o inventory cair antes do XACK</span>
+        <div class="fail-row">
+          <div class="node outline is-danger" id="f1">
+            <span class="num" style="background: var(--red)">!</span>
+            <div>
+              <div class="name">O consumidor caiu</div>
+              <div class="desc">gravou (ou não) no Postgres, mas não confirmou a entrada</div>
+            </div>
+          </div>
+          <div class="node" id="f2">
+            <span class="num">1</span>
+            <div>
+              <div class="name"><code>XPENDING</code></div>
+              <div class="desc">mostra a entrada entregue há tempo demais, ainda sem XACK</div>
+            </div>
+          </div>
+          <div class="node" id="f3">
+            <span class="num">2</span>
+            <div>
+              <div class="name"><code>XCLAIM</code></div>
+              <div class="desc">outra instância do inventory assume a entrada</div>
+            </div>
+          </div>
+          <div class="node outline is-ok" id="f4">
+            <span class="num" style="background: var(--green)">✓</span>
+            <div>
+              <div class="name">Grava de novo e confirma</div>
+              <div class="desc">repetir a mesma entrada não estraga nada</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <strong>Estado final, não diferença:</strong> cada entrada leva o estoque que sobrou, e não
+          “menos 2”. Aplicar a mesma entrada duas vezes dá o mesmo resultado.
+        </div>
+        <div class="note">
+          <strong>O <code>redis_seq</code> guarda a posição no stream:</strong> o consumidor nunca
+          aplica uma entrada mais antiga por cima de uma mais nova.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#lua', '#stream', { label: '1 XADD', color: 'redis', straight: true });
+      Diagrama.link('#stream', '#inv', {
+        label: '2 XREADGROUP',
+        straight: true,
+        from: 'bottom',
+        to: 'top',
+        fromAt: 0.3,
+        toAt: 0.3,
+      });
+      Diagrama.link('#inv', '#stream', {
+        label: '4 XACK',
+        dashed: true,
+        straight: true,
+        from: 'top',
+        to: 'bottom',
+        fromAt: 0.7,
+        toAt: 0.7,
+      });
+      Diagrama.link('#inv', '#pg', { label: '3 grava', color: 'lilac', straight: true });
+      Diagrama.link('#f1', '#f2', { straight: true });
+      Diagrama.link('#f2', '#f3', { straight: true });
+      Diagrama.link('#f3', '#f4', { straight: true, color: 'green' });
+    </script>
+  </body>
+</html>

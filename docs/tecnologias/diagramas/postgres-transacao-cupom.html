@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Postgres: pedido com cupom</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 600px 1fr;
+        column-gap: 130px;
+        align-items: start;
+      }
+      .tx {
+        border-color: var(--pg);
+        padding: 22px 18px 18px;
+      }
+      .tx > .group-title {
+        color: var(--pg);
+      }
+      .kw {
+        font-family: var(--mono);
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        color: var(--pg);
+      }
+      .stmt {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line-strong);
+      }
+      .stmt + .stmt {
+        margin-top: 10px;
+      }
+      .stmt .sql {
+        font-family: var(--mono);
+        font-size: 13.5px;
+        line-height: 1.45;
+        color: var(--text);
+      }
+      .stmt .why {
+        margin-top: 3px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .stmt.key {
+        border: 2px solid var(--yellow);
+        background: rgb(255 210 63 / 0.06);
+      }
+      .stmt.key .sql .hl {
+        color: var(--yellow);
+      }
+      .begin,
+      .commit {
+        margin: 0 0 12px 4px;
+      }
+      .commit {
+        margin: 14px 0 0 4px;
+      }
+      .outcomes {
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+        padding-top: 112px;
+      }
+      .outcome .name {
+        font-size: 18px;
+      }
+      .outcome ul {
+        margin: 8px 0 0;
+        padding-left: 18px;
+        font-size: 13.5px;
+        color: rgb(18 16 21 / 0.85);
+      }
+      .outcome.is-danger ul {
+        color: var(--text-2);
+      }
+      .outcome.is-danger .desc {
+        color: var(--muted);
+      }
+      .counter {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      .foot-note {
+        margin-top: 26px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Postgres · transação</span>
+        <h1>Pedido com cupom: tudo ou nada</h1>
+        <p class="lede">
+          Criar o pedido, gastar um uso do cupom, começar a saga e deixar a mensagem para o Kafka
+          acontecem numa transação só. Se uma parte falha, nenhuma fica gravada.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="group tx" id="tx">
+          <span class="group-title">order-service · banco orders</span>
+          <div class="kw begin">BEGIN</div>
+          <div class="stmt">
+            <span class="num">1</span>
+            <div>
+              <div class="sql">INSERT INTO orders … status 'PENDING'</div>
+              <div class="why">o pedido nasce pendente, esperando o pagamento</div>
+            </div>
+          </div>
+          <div class="stmt key" id="upd">
+            <span class="num">2</span>
+            <div>
+              <div class="sql">
+                UPDATE coupons SET uses = uses + 1<br />
+                WHERE id = :cupom <span class="hl">AND uses &lt; max_uses</span><br />
+                &nbsp;&nbsp;AND status = 'ACTIVE' AND valid_until &gt; now
+              </div>
+              <div class="why">
+                a condição fica no próprio UPDATE: dois pedidos disputando o último uso não passam
+                os dois
+              </div>
+            </div>
+          </div>
+          <div class="stmt">
+            <span class="num">3</span>
+            <div>
+              <div class="sql">INSERT INTO coupon_redemptions</div>
+              <div class="why">qual pedido usou o cupom e com quanto de desconto</div>
+            </div>
+          </div>
+          <div class="stmt">
+            <span class="num">4</span>
+            <div>
+              <div class="sql">INSERT INTO saga_state</div>
+              <div class="why">a saga de compra começa, com prazo</div>
+            </div>
+          </div>
+          <div class="stmt">
+            <span class="num">5</span>
+            <div>
+              <div class="sql">INSERT INTO outbox: OrderCreated, AuthorizePayment</div>
+              <div class="why">o relay publica no Kafka depois do COMMIT</div>
+            </div>
+          </div>
+          <div class="kw commit" id="commit">COMMIT</div>
+        </div>
+
+        <div class="outcomes">
+          <div class="node solid is-ok outcome" id="ok">
+            <span class="tag">havia uso sobrando</span>
+            <div class="name">Segue até o COMMIT</div>
+            <ul>
+              <li>pedido, uso do cupom, saga e mensagens gravados juntos</li>
+              <li>o pagamento começa pelo Kafka</li>
+            </ul>
+          </div>
+          <div class="node outline is-danger outcome" id="bad">
+            <span class="tag">nenhum uso sobrando</span>
+            <div class="name">ROLLBACK</div>
+            <div class="desc">o cupom já atingiu o limite (ou foi pausado ou venceu)</div>
+            <ul>
+              <li>o pedido é recusado: cupom esgotado</li>
+              <li>nenhuma das cinco escritas fica no banco</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid foot-note" style="grid-template-columns: 1fr 1fr">
+        <div class="note">
+          <strong>Rede de segurança:</strong> a tabela <code>coupons</code> tem
+          <code style="white-space: nowrap">CHECK (uses &lt;= max_uses)</code>. Mesmo que o código
+          errasse, o banco recusaria o uso a mais (ADR 33).
+        </div>
+        <div class="note">
+          <strong>Cancelamento, a mesma ideia:</strong> pedido em reembolso, ingressos cancelados,
+          passo da saga e mensagens no outbox, numa transação só.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · postgres</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#upd', '#ok', { from: 'right', to: 'left', fromAt: 0.3, toAt: 0.45, label: '1 linha', color: 'green', labelColor: 'green' });
+      Diagrama.link('#upd', '#bad', { from: 'right', to: 'left', fromAt: 0.72, toAt: 0.3, label: '0 linhas', color: 'red', labelColor: 'red' });
+    </script>
+  </body>
+</html>

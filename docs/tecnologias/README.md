@@ -54,50 +54,7 @@ E mais duas peças de apoio: o **Keycloak**, para não escrever login à mão, e
 
 O caminho de uma compra mostra quase todas as peças juntas. A parte síncrona (o comprador esperando) termina na reserva; o pagamento segue por eventos.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Comprador
-    participant W as Angular
-    participant G as Gateway
-    participant I as inventory
-    participant R as Redis core
-    participant O as order
-    participant K as Kafka
-    participant P as payment-mock
-    participant N as notification
-    participant Q as RabbitMQ
-
-    C->>W: escolhe 2 cadeiras e clica em Reservar
-    W->>G: POST /reservations (token do Keycloak)
-    G->>G: confere o token e o rate limit
-    G->>I: encaminha
-    I->>R: script Lua: segura as 2 cadeiras, tudo ou nada
-    R-->>I: reservado (e avisa o mapa dos outros por pub/sub)
-    I-->>W: reserva válida por 10 minutos
-    C->>W: paga
-    W->>O: POST /orders (Idempotency-Key)
-    O->>O: pedido PENDING + mensagem no outbox, na mesma transação
-    O-->>W: 201, pedido PENDING (a tela acompanha até confirmar)
-    O->>K: AuthorizePayment
-    K->>P: comando
-    P->>K: PaymentAuthorized
-    K->>O: resposta
-    O->>K: ConfirmReservation
-    K->>I: comando
-    I->>K: ReservationConfirmed
-    K->>O: fato
-    O->>O: pedido CONFIRMED, ingressos emitidos
-    O->>K: OrderConfirmed e TicketsIssued
-    K->>N: fato
-    N->>Q: tarefa: gerar o PDF
-    Q->>N: worker gera o PDF com os QR codes
-    N->>Q: tarefa: enviar o e-mail
-    Q->>N: worker envia
-    N-->>C: e-mail com o ingresso
-```
-
-Ao mesmo tempo, o `TicketsIssued` chega ao checkin-service (que guarda uma cópia dos ingressos para a portaria) e ao analytics-service (que atualiza o painel do produtor em menos de um segundo).
+![Uma compra em 23 passos: a reserva no Redis com o comprador esperando, o pedido criado na hora, a saga de pagamento e de confirmação da reserva pelo Kafka, e a geração do PDF e o e-mail pelo RabbitMQ](img/compra.png)
 
 ## Como ver cada peça funcionando
 

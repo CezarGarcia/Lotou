@@ -6,22 +6,7 @@ O Postgres guarda o que **não pode ficar errado**: pedidos, ingressos, pagament
 
 Uma instância só no Compose, com um banco e um usuário por serviço. Nenhum serviço consegue ler o banco de outro: quando precisa de um dado alheio, recebe pelo Kafka e guarda uma cópia (ADR 18).
 
-```mermaid
-flowchart TB
-    subgraph pg["Postgres 18 (uma instância)"]
-        inv[("inventory<br/>lotes, cadeiras, reservas,<br/>limite por CPF, outbox")]
-        ord[("orders<br/>pedidos, ingressos, cupons,<br/>reembolsos, saga, outbox")]
-        pay[("payments<br/>tentativas e estornos")]
-        ck[("checkin<br/>ingressos válidos, entradas,<br/>leituras recusadas, outbox")]
-        kc[("keycloak<br/>usuários e sessões")]
-    end
-    is["inventory-service"] --> inv
-    os["order-service"] --> ord
-    ps["payment-mock"] --> pay
-    cs["checkin-service"] --> ck
-    k["Keycloak"] --> kc
-    obs["Grafana (usuário observer,<br/>só leitura)"] -. "consultas dos alertas" .-> inv & ord & ck
-```
+![Uma instância do Postgres 18 com cinco bancos, cada um usado só pelo seu dono: inventory (lotes, cadeiras, reservas, limite por CPF, outbox) pelo inventory-service, orders (pedidos, ingressos, cupons, reembolsos, saga, outbox) pelo order-service, payments (tentativas e estornos) pelo payment-mock, checkin (ingressos válidos, entradas, leituras recusadas, outbox) pelo checkin-service e keycloak (usuários e sessões) pelo Keycloak. O Grafana, com o usuário observer, só de leitura, consulta os bancos inventory, orders e checkin para os alertas de invariante.](img/postgres-bancos.png)
 
 As tabelas são criadas por migrações versionadas (Flyway nos serviços Java, scripts SQL nos serviços Node), na subida de cada serviço.
 
@@ -31,16 +16,7 @@ As tabelas são criadas por migrações versionadas (Flyway nos serviços Java, 
 
 Criar um pedido com cupom faz várias coisas, e elas acontecem juntas ou nenhuma acontece:
 
-```mermaid
-flowchart LR
-    subgraph tx["BEGIN ... COMMIT"]
-        a["INSERT orders<br/>PENDING"]
-        b["UPDATE coupons<br/>SET uses = uses + 1<br/>WHERE uses < max_uses"]
-        c["INSERT coupon_redemptions"]
-        d["INSERT saga_state"]
-        e["INSERT outbox<br/>AuthorizePayment"]
-    end
-```
+![A transação de um pedido com cupom, entre BEGIN e COMMIT, em cinco passos: INSERT em orders com status PENDING; UPDATE em coupons somando um uso só onde uses é menor que max_uses, o cupom está ativo e no prazo; INSERT em coupon_redemptions; INSERT em saga_state; e INSERT no outbox de OrderCreated e AuthorizePayment. Se o UPDATE altera uma linha, tudo segue até o COMMIT; se altera zero, o cupom não tem uso sobrando, o pedido é recusado e o ROLLBACK desfaz as cinco escritas.](img/postgres-transacao-cupom.png)
 
 Se o cupom já atingiu o limite, o `UPDATE` não muda nenhuma linha, o pedido é recusado e nada fica gravado pela metade. O mesmo vale para o cancelamento: pedido em reembolso, ingressos cancelados, passo da saga e mensagens no outbox, numa transação só.
 

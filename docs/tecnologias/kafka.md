@@ -4,18 +4,7 @@ O Kafka é o lugar onde o Lotou registra **o que aconteceu**: "o pedido foi conf
 
 ## Os conceitos, em uma imagem
 
-```mermaid
-flowchart LR
-    prod["Produtor<br/>order-service"] -- "chave = orderId" --> t
-    subgraph t["Tópico order.events"]
-        p0["Partição 0<br/>evento 1, 2, 3, ..."]
-        p1["Partição 1<br/>evento 1, 2, ..."]
-        p2["Partição 2<br/>evento 1, 2, 3, 4, ..."]
-    end
-    t --> g1["Grupo notification-service<br/>lê no seu ritmo"]
-    t --> g2["Grupo checkin-service<br/>lê no seu ritmo"]
-    t --> g3["Grupo analytics-service.gen-3<br/>pode reler do começo"]
-```
+![Os conceitos do Kafka. O order-service publica eventos com a chave orderId no tópico order.events, dividido em 3 partições; a chave escolhe a partição, e todos os eventos do pedido A caem em ordem na partição 1. Embaixo, três grupos de consumidores leem a mesma partição cada um no seu ritmo: o notification-service em dia, o checkin-service mais atrás e o analytics-service.gen-4 relendo do começo. Ler não apaga, e cada grupo guarda o próprio offset.](img/kafka-conceitos.png)
 
 - **Tópico:** um log de mensagens, só de acréscimo. Ler uma mensagem não a apaga.
 - **Partição:** cada tópico é dividido em partes (3 no Compose). A **chave** da mensagem escolhe a partição, e dentro de uma partição a ordem é garantida. Por isso todos os eventos de um pedido usam o `orderId` como chave: quem lê vê `OrderCreated` antes de `OrderConfirmed`, sempre.
@@ -24,18 +13,7 @@ flowchart LR
 
 ## Os tópicos e quem fala com quem
 
-```mermaid
-flowchart LR
-    ev["event-service"] --> sc[["shows.catalog"]] --> c1["inventory · order<br/>checkin · analytics"]
-    ord["order-service"] --> oe[["order.events"]] --> c2["analytics · notification<br/>checkin"]
-    inv["inventory-service"] --> ie[["inventory.events"]] --> c3["order · analytics<br/>event-service"]
-    ck["checkin-service"] --> ce[["checkin.events"]] --> c4["analytics · order"]
-    ord2["order-service"] --> pc[["payment.commands"]] --> c5["payment-mock"]
-    pay["payment-mock"] --> pe[["payment.events"]] --> c6["order"]
-    ord3["order-service"] --> ic[["inventory.commands"]] --> c7["inventory"]
-```
-
-Cada linha é um tópico: à esquerda quem publica, à direita quem lê. As quatro primeiras são fatos; as três últimas são a conversa da saga de compra.
+![Os sete tópicos do Kafka, com quem publica, o que carrega, a retenção e quem lê. Fatos: shows.catalog (event-service publica; compactado, fica a última versão de cada show; inventory, order, checkin e analytics leem) e, guardados para sempre, order.events (order-service; analytics, notification e checkin leem), inventory.events (inventory-service; order, analytics e event-service leem) e checkin.events (checkin-service; analytics e order leem). Conversa da saga, 7 dias: payment.commands (order-service para o payment-mock), payment.events (payment-mock para o order) e inventory.commands (order-service para o inventory). Cada tópico tem ainda um .dlt de 7 dias.](img/kafka-topicos.png)
 
 | Tópico | O que carrega | Retenção | Por quê |
 | --- | --- | --- | --- |
@@ -66,17 +44,7 @@ O contexto do trace vai no cabeçalho `traceparent` da mensagem, para o trace co
 
 O pagamento não acontece na mesma requisição em que o comprador clica em pagar. O order-service grava o pedido como PENDING, responde na hora e conduz o resto por mensagens. Ele é o **orquestrador**: guarda o passo de cada pedido em `saga_state` e decide o próximo comando a cada resposta (ADR 7).
 
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: pedido criado
-    PENDING --> AguardandoPagamento: AuthorizePayment
-    AguardandoPagamento --> AguardandoReserva: PaymentAuthorized<br/>envia ConfirmReservation
-    AguardandoPagamento --> CANCELLED: PaymentDeclined<br/>envia ReleaseReservation
-    AguardandoReserva --> CONFIRMED: ReservationConfirmed<br/>emite os ingressos
-    AguardandoReserva --> CANCELLED: reserva já expirou<br/>envia RefundPayment
-    CONFIRMED --> [*]
-    CANCELLED --> [*]
-```
+![A saga da compra como máquina de estados. Pedido criado vai para PENDING, que envia AuthorizePayment e passa a aguardar o pagamento. Com PaymentAuthorized, envia ConfirmReservation e passa a aguardar a reserva; com PaymentDeclined, envia ReleaseReservation e vai para CANCELLED. Aguardando a reserva, ReservationConfirmed leva a CONFIRMED, que emite os ingressos e publica OrderConfirmed e TicketsIssued; se a reserva já tinha expirado, envia RefundPayment e vai para CANCELLED. Sem resposta no prazo, o comando é repetido, e os consumidores ignoram a repetição.](img/kafka-saga.png)
 
 Se uma resposta não chega no prazo, o order-service repete o comando. Repetir é seguro porque todo consumidor é **idempotente**: o `eventId` de cada evento processado é gravado junto com o efeito (na tabela `processed_events` dos serviços com Postgres; no notification-service, numa marca no Redis), e um evento repetido é ignorado. O payment-mock responde igual a um comando repetido, sem cobrar duas vezes.
 
@@ -86,16 +54,7 @@ O cancelamento com reembolso é outra saga do mesmo jeito: `RefundPayment` ao pa
 
 O problema clássico: o order-service grava o pedido no Postgres e publica no Kafka. Se ele cair entre as duas coisas, o pedido existe e ninguém fica sabendo (ou o contrário). A solução é o **outbox transacional** (ADR 8):
 
-```mermaid
-flowchart LR
-    subgraph tx["Uma transação no Postgres"]
-        a["UPDATE orders<br/>status = CONFIRMED"]
-        b["INSERT INTO outbox<br/>OrderConfirmed"]
-    end
-    tx --> relay["Relay<br/>a cada instante lê o outbox,<br/>com advisory lock"]
-    relay -- "publica em ordem" --> k[["order.events"]]
-    relay -- "marca como publicado" --> tx
-```
+![O outbox transacional. Numa transação do Postgres, o UPDATE em orders e o INSERT no outbox são gravados juntos. O relay do order-service lê o outbox em ordem, com advisory lock, publica no tópico order.events e marca como publicada. Sem outbox, uma queda entre gravar e publicar deixa o resto do sistema sem saber do pedido; com outbox, o relay publica de novo e quem lê ignora a repetição pelo eventId.](img/kafka-outbox.png)
 
 O pedido e a mensagem são gravados juntos ou não são gravados. Um relay (com advisory lock, para só uma instância publicar) lê o outbox em ordem, publica e marca como publicado. Se cair no meio, publica de novo, e o consumidor idempotente ignora a repetição. No inventory, o outbox é preenchido por trigger do próprio Postgres. No event-service, o outbox fica no MongoDB, na mesma transação do show, e é publicado em transações do Kafka (ADR 29).
 
@@ -107,19 +66,7 @@ O checkin-service lê `TicketsIssued` e `TicketsCancelled` e mantém a própria 
 
 O analytics-service monta o painel ao vivo e o relatório financeiro lendo os eventos. Como `order.events`, `inventory.events` e `checkin.events` guardam tudo para sempre, dá para apagar os relatórios e montá-los de novo, por exemplo depois de corrigir um bug no cálculo. O `make replay-analytics` faz isso **sem parar o painel** (ADR 30):
 
-```mermaid
-sequenceDiagram
-    participant K as Kafka (desde o começo)
-    participant G3 as Geração 3 (ativa)
-    participant G4 as Geração 4 (nova)
-    participant V as View order_view
-    Note over G3,V: o painel lê a view, que aponta para a geração 3
-    K->>G4: novo grupo analytics-service.gen-4 lê tudo do offset 0
-    G4->>G4: monta coleções order_view_g4, sales_by_sector_g4, ...
-    Note over G4: alcançou o fim dos tópicos
-    G4->>V: troca o ponteiro, de uma vez
-    Note over V: o painel passa a ler a geração 4
-```
+![O replay dos relatórios em gerações. A geração 3 está ativa, em dia com os eventos novos, e o ponteiro analytics_state/active, com as views order_view e sales_by_sector, aponta para ela; o painel do produtor lê o ponteiro a cada requisição. A geração 4, com o grupo analytics-service.gen-4, relê os tópicos de fatos do offset 0 e monta as coleções _g4. Passos: 1, reserva a geração 4 e anota o fim de cada partição; 2, relê do offset 0 enquanto a geração 3 segue no ar; 3, ao alcançar o fim anotado, troca o ponteiro numa transação, de uma vez; 4, a geração 4 assume de onde o replay parou e a 3 é apagada depois de 30 s.](img/kafka-replay.png)
 
 ### 5. Avisos entre serviços
 

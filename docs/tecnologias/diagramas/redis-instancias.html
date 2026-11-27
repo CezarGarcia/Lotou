@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Duas instâncias de Redis</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        column-gap: 48px;
+        row-gap: 72px;
+      }
+      .users {
+        display: grid;
+        gap: 12px;
+        align-items: stretch;
+      }
+      .users.core {
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+      }
+      .users .node {
+        padding: 12px 10px;
+      }
+      .users .name {
+        font-size: 14.5px;
+        white-space: nowrap;
+      }
+      .users .desc {
+        margin-top: 4px;
+        font-size: 12.5px;
+        line-height: 1.35;
+      }
+      .inst {
+        border-radius: 22px;
+        padding: 22px 24px 24px;
+      }
+      .inst .top {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .inst .top .name {
+        white-space: nowrap;
+      }
+      .inst .name {
+        font-size: 36px !important;
+      }
+      .stamp {
+        flex: none;
+        padding: 4px 12px 3px;
+        border-radius: 999px;
+        background: var(--bg);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .is-redis-cache .stamp {
+        color: var(--redis-cache);
+      }
+      .is-redis .stamp {
+        color: var(--redis);
+      }
+      .rules {
+        margin: 18px 0 0;
+        display: grid;
+        grid-template-columns: 1fr;
+        border-top: 1px solid rgb(18 16 21 / 0.25);
+      }
+      .rules dt,
+      .rules dd {
+        margin: 0;
+        padding: 0 0 10px;
+        border-bottom: 1px solid rgb(18 16 21 / 0.25);
+        font-size: 14px;
+        line-height: 1.35;
+      }
+      .rules dt {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgb(18 16 21 / 0.7);
+        padding: 10px 0 2px;
+        border-bottom: 0;
+      }
+      .rules dd {
+        font-weight: 600;
+      }
+      .rules dd code {
+        background: rgb(18 16 21 / 0.14);
+        color: var(--bg);
+      }
+      .keeps {
+        margin-top: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+      .keeps .chip {
+        background: var(--bg);
+        border-color: transparent;
+        color: var(--text);
+        font-size: 12px;
+      }
+      .why {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .note code {
+        white-space: nowrap;
+      }
+      .side-label {
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Redis · duas instâncias</span>
+        <h1>Uma pode perder tudo, a outra não pode perder nada</h1>
+        <p class="lede">
+          O cache e o estado da venda ficam em instâncias separadas, com regras opostas para quando a
+          memória acaba e para o disco. Em cima, quem usa cada uma e para quê.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div>
+          <div class="label side-label">Quem usa</div>
+          <div class="users">
+            <div class="node" id="u-event">
+              <div class="name">event-service</div>
+              <div class="desc">página do show e resultados de busca prontos</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="label side-label">Quem usa</div>
+          <div class="users core">
+            <div class="node" id="u-ev2">
+              <div class="name">event-service</div>
+              <div class="desc">rate limit do catálogo (janela deslizante)</div>
+            </div>
+            <div class="node" id="u-gw">
+              <div class="name">gateway</div>
+              <div class="desc">rate limit das compras (token bucket)</div>
+            </div>
+            <div class="node" id="u-inv">
+              <div class="name">inventory</div>
+              <div class="desc">estoque, cadeiras, reservas, fila virtual</div>
+            </div>
+            <div class="node" id="u-ck">
+              <div class="name">checkin</div>
+              <div class="desc">quem passou primeiro no portão</div>
+            </div>
+            <div class="node" id="u-an">
+              <div class="name">analytics</div>
+              <div class="desc">painel ao vivo do produtor</div>
+            </div>
+            <div class="node" id="u-nt">
+              <div class="name">notification</div>
+              <div class="desc">e-mail já enviado não sai de novo</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="node solid is-redis-cache big inst" id="cache">
+          <div class="top">
+            <div class="name">redis-cache</div>
+            <span class="stamp">pode perder</span>
+          </div>
+          <dl class="rules">
+            <dt>Memória cheia</dt>
+            <dd>apaga as chaves menos usadas <code>allkeys-lru</code></dd>
+            <dt>Disco</dt>
+            <dd>nenhuma persistência</dd>
+            <dt>Se perder tudo</dt>
+            <dd>a próxima leitura busca de novo no MongoDB</dd>
+          </dl>
+          <div class="keeps">
+            <span class="chip">cache:event:{id}</span>
+            <span class="chip">busca</span>
+          </div>
+        </div>
+
+        <div class="node solid is-redis big inst" id="core">
+          <div class="top">
+            <div class="name">redis-core</div>
+            <span class="stamp">não pode perder</span>
+          </div>
+          <dl class="rules">
+            <dt>Memória cheia</dt>
+            <dd>recusa escrever <code>noeviction</code></dd>
+            <dt>Disco</dt>
+            <dd>AOF, gravado a cada segundo</dd>
+            <dt>Se perder tudo</dt>
+            <dd>seria um bug: ingresso vendido duas vezes, fila perdida</dd>
+          </dl>
+          <div class="keeps">
+            <span class="chip">estoque</span>
+            <span class="chip">cadeiras</span>
+            <span class="chip">reservas</span>
+            <span class="chip">fila virtual</span>
+            <span class="chip">limites por CPF</span>
+            <span class="chip">check-in</span>
+            <span class="chip">rate limit</span>
+            <span class="chip">locks</span>
+            <span class="chip">painel ao vivo</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="why">
+        <div class="note">
+          <strong>Por que duas:</strong> numa instância só, o cache, ao crescer, expulsaria o estoque
+          da memória. Separados, o cache pode descartar à vontade e o estado da venda nunca some (ADR
+          10).
+        </div>
+        <div class="note">
+          <strong>O event-service aparece dos dois lados:</strong> o cache da página fica no
+          <code>redis-cache</code>, e a janela deslizante do rate limit do catálogo fica no <code>redis-core</code>.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · redis</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#u-event', '#cache', { from: 'bottom', to: 'top', color: 'orange' });
+      for (const id of ['#u-ev2', '#u-gw', '#u-inv', '#u-ck', '#u-an', '#u-nt']) {
+        const u = document.querySelector(id).getBoundingClientRect();
+        const c = document.querySelector('#core').getBoundingClientRect();
+        const toAt = (u.left + u.width / 2 - c.left) / c.width;
+        Diagrama.link(id, '#core', { from: 'bottom', to: 'top', toAt, straight: true, color: 'redis' });
+      }
+    </script>
+  </body>
+</html>
