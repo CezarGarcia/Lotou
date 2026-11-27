@@ -172,3 +172,8 @@ dl {
     outline-offset: 4px;
   }
 }
+
+// "Cadeira B-12" não quebra no hífen: o setor e a cadeira descem inteiros.
+.place {
+  white-space: nowrap;
+}

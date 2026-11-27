@@ -43,7 +43,14 @@ import { SCAN_ICONS, clockOf } from './scan-result';
             @if (view.place) {
               <div>
                 <dt class="eyebrow">Setor</dt>
-                <dd>{{ view.place }}</dd>
+                <dd>
+                  @for (part of view.place.split(' · '); track $index) {
+                    @if (!$first) {
+                      ·
+                    }
+                    <span class="place">{{ part }}</span>
+                  }
+                </dd>
               </div>
             }
             @if (view.ticket) {
