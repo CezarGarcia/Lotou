@@ -1021,6 +1021,26 @@ O que ficou para depois, de propósito:
 - O disjuntor ou um teto maior de espera para as repetições da saga numa queda longa de um serviço (seção "Caos").
 - O dashboard de IA, com o agente da fase 5.
 
+### Fase 8 (interface e vídeo)
+
+Interface concluída em 27/11/2026; falta o vídeo de apresentação.
+
+- [x] Pesquisa de referências e protótipo de oito telas aprovado antes da implementação (loja no computador e no celular, mapa de cadeiras, ingresso, portaria e painel)
+- [x] Visual de cartaz de show (ADR 36): cada show é um cartaz com a cor do artista e o carimbo da data; tema noite na loja e na portaria, tema dia no painel; tokens em `styles.scss` por cima do Angular Material
+- [x] Fontes servidas pelo próprio site (Fontsource) e ícones Lucide (`@ng-icons`) no lugar do Google Fonts e da fonte Material Symbols
+- [x] Loja: página inicial com o show em destaque, filtros rápidos, "Hoje à noite" e vitrine de cartazes; página do show com barra de compra fixa no celular; fila, mapa de cadeiras, reserva e pedido com o ingresso em forma de canhoto; barra de abas no celular
+- [x] Painel do produtor no tema claro: lista de shows, painel ao vivo com números grandes e barras por setor, financeiro com a divisão do valor bruto e cupons em forma de ingresso
+- [x] Portaria em modo foco: o leitor ocupa a tela inteira, e o resultado (verde, amarelo ou vermelho) é lido de longe
+- [x] Tela de login do Keycloak com o mesmo visual, só em CSS por cima do tema padrão
+- [x] Transição entre telas com a View Transitions API, e todo movimento desligado com `prefers-reduced-motion`
+- [ ] Vídeo de apresentação
+
+O que ficou para depois, de propósito:
+
+- O gráfico de vendas por hora e os cupons usados no painel ao vivo: o analytics já calcula as vendas por hora, mas o painel ainda não as busca.
+- A ocupação na portaria: a API do check-in não devolve a capacidade do show, então o terceiro contador mostra as leituras recusadas.
+- Cadeira segurada e cadeira vendida com cores diferentes no mapa: a disponibilidade diz só se a cadeira está livre.
+
 ## Questões em aberto
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br

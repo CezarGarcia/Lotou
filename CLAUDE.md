@@ -6,7 +6,7 @@ Plataforma de venda de ingressos para shows, construída como projeto de portfó
 
 ## Fase atual
 
-Fases 0 (Fundação), 1 (Pedidos e estoque), 2 (Redis e abertura de vendas), 3 (Kafka e saga), 4 (RabbitMQ e tempo real), 6 (Produto completo) e 7 (Vitrine) concluídas. A próxima é a fase 8 (revisão de UI e UX do sistema inteiro e, no fim, o vídeo de apresentação); a fase 5 (Agente de IA) ficou para o fim, como complemento. O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
+Fases 0 (Fundação), 1 (Pedidos e estoque), 2 (Redis e abertura de vendas), 3 (Kafka e saga), 4 (RabbitMQ e tempo real), 6 (Produto completo) e 7 (Vitrine) concluídas. A fase 8 (revisão de UI e UX) está com a interface nova pronta (visual de cartaz, ADR 36) e falta o vídeo de apresentação; a fase 5 (Agente de IA) ficou para o fim, como complemento. O roadmap e o que cada fase entregou estão em `docs/projeto.md`, seção "Roadmap".
 
 ## Stack
 

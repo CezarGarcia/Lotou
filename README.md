@@ -8,7 +8,7 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 
 ## Onde o projeto está
 
-**Fases 0 a 4, 6 e 7 concluídas.** O que já funciona:
+**Fases 0 a 4, 6 e 7 concluídas; a fase 8 está com a interface nova pronta e falta o vídeo.** O que já funciona:
 
 - o ambiente inteiro sobe com um comando;
 - o produtor cadastra e publica shows pela API, e a loja busca e exibe;
@@ -20,7 +20,8 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 - **o produtor acompanha a venda ao vivo:** um painel por WebSocket mostra vendas por setor, receita e um feed de atividade, e uma venda aparece nele menos de meio segundo depois do clique em pagar;
 - **o ciclo do ingresso fecha:** taxa de serviço e cupons no pagamento, cancelamento com reembolso integral (o ingresso volta à venda e o uso do cupom também), show cancelado com reembolso em massa sob controle de vazão, e a portaria lendo o QR no celular e barrando a segunda entrada;
 - o produtor vê as vendas, os cupons e o relatório financeiro de cada show (com PDF por e-mail) em read models que se reconstroem do zero, sem parar, a partir do Kafka;
-- cada requisição gera um trace que atravessa os serviços, o Kafka, o banco e o Redis.
+- cada requisição gera um trace que atravessa os serviços, o Kafka, o banco e o Redis;
+- **a interface tem cara de show:** cada show é um cartaz de lambe-lambe com a cor do artista, a loja e a portaria usam um tema escuro e o painel do produtor um tema claro, inclusive na tela de login ([ADR 36](docs/adr/0036-visual-de-cartaz-e-design-system-da-loja.md)).
 
 | Fase | Entrega | Estado |
 | --- | --- | --- |
@@ -32,7 +33,7 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 | 5. Agente de IA | assistente do produtor com LangGraph | por último, como complemento |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | concluída |
 | 7. Vitrine | testes de carga e caos, SLOs, alertas e testes ponta a ponta | concluída |
-| 8. Interface e vídeo | revisão de UI e UX do sistema inteiro e o vídeo de apresentação | próxima |
+| 8. Interface e vídeo | revisão de UI e UX do sistema inteiro e o vídeo de apresentação | interface pronta; falta o vídeo |
 
 A fase 1 reservou com lock no Postgres de propósito: ela é a linha de base que a reserva no Redis superou na fase 2. Os dois motores continuam no código, e o teste de carga compara um com o outro.
 
@@ -67,13 +68,13 @@ Se você já tinha o ambiente de uma versão anterior, rode `make clean` antes d
 
 Entre na loja com `comprador` / `lotou123`, abra um show em venda e escolha o setor. Nas cadeiras numeradas, o mapa mostra o que está livre e muda sozinho quando outra pessoa reserva (SSE). A reserva segura os ingressos por 10 minutos, e o pagamento é simulado.
 
+![Página do show com o cartaz, os setores e o painel de compra](docs/img/loja-show.png)
+
 ![Checkout com o mapa de cadeiras](docs/img/loja-mapa-de-cadeiras.png)
 
-![Reserva com cronômetro de 10 minutos](docs/img/loja-reserva.png)
+No pagamento, o resumo vem da cotação do order-service: ingressos, desconto do cupom (só sobre os ingressos) e a taxa de serviço de 10%, quando o show a repassa ao comprador. Cada show do seed tem um cupom de lançamento (no "Baile da Maré Cheia", `MARE10`), e o produtor cria outros na aba **Cupons** do painel.
 
-No pagamento, o resumo vem da cotação do order-service: ingressos, desconto do cupom (só sobre os ingressos) e a taxa de serviço de 10%, quando o show a repassa ao comprador. No seed não há cupom pronto: crie um na aba **Cupons** do painel do produtor.
-
-![Pagamento com cupom e taxa de serviço](docs/img/loja-cupom-e-taxa.png)
+![Reserva com o cronômetro de 10 minutos, o cupom e a taxa de serviço](docs/img/loja-cupom-e-taxa.png)
 
 Depois do pagamento, a página do pedido mostra o QR code de cada ingresso, e o mesmo QR chega por e-mail num PDF (veja no Mailpit).
 
