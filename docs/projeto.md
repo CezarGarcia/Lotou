@@ -413,7 +413,6 @@ Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, 
 | `res:{resId}` | hash | nenhum enquanto ativa; 24 h depois de concluída | core | reserva, com comprador, lote, cadeiras, prazo e CPF (em hash) |
 | `limit:{showId}:{cpfHash}` | inteiro | fim das vendas | core | ingressos por CPF (máximo 4); a chave usa um hash do CPF, nunca o CPF |
 | `idem:reservation:{hash}` | string | 24 h | core | Idempotency-Key da reserva; o hash junta comprador e chave |
-| `coupon:{code}:uses` | inteiro | validade do cupom | core | usos do cupom, com limite checado de forma atômica |
 | `queue:{showId}` | sorted set | fim das vendas | core | fila virtual (só em shows de alta demanda); score = posição sorteada para quem estava na sala, hora de chegada para quem veio depois |
 | `queue:{showId}:room` | set | fim das vendas | core | sala de espera, antes do sorteio |
 | `queue:{showId}:drawn` | string | fim das vendas | core | marca de sorteio feito |
@@ -515,7 +514,7 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 - **Idempotência na entrada:** o POST /orders exige `Idempotency-Key`; a chave única (comprador, chave) e a reserva única por pedido no Postgres fazem um clique duplo devolver o mesmo pedido.
 - **Pista:** o script Lua confere o token (em shows de alta demanda), o limite do CPF, o status do lote e o estoque, decrementa, cria a reserva e faz `XADD` em `stream:reservations`. Um consumer group do inventory grava a reserva no Postgres.
 - **Cadeira numerada:** o comprador escolhe até 4 assentos e o script Lua tenta `SET NX` em todos de uma vez: segura todos ou nenhum. Em seguida marca os bits no bitmap e publica a mudança em `seatmap.{showId}`, e os outros compradores veem os assentos ficarem ocupados.
-- **Cupom:** o order-service valida código, show e validade, e incrementa `coupon:{code}:uses` com um script que recusa acima do limite. Se o pedido for cancelado, o uso volta.
+- **Cupom:** o order-service valida código, show, setor e validade, e conta o uso com um update condicional no Postgres, na mesma transação que cria o pedido; acima do limite, o pedido é recusado. Se o pedido for cancelado ou reembolsado, o uso volta (ADR 33).
 - **Última defesa:** a constraint única de (show, assento) na tabela `tickets` impede a venda dupla mesmo se o Redis falhar.
 - **Outbox:** pedido, passo da saga e mensagens são gravados na mesma transação; um relay publica no Kafka em ordem, com advisory lock, e marca como publicado (ADR 8).
 - **Saga orquestrada:** o order-service guarda o passo de cada pedido em `saga_state`, envia os comandos e reage às respostas e aos fatos da reserva; se uma resposta não chega no prazo, repete o comando ou consulta a reserva (ADR 7).
@@ -583,7 +582,7 @@ Cada dado tem um padrão de cache escolhido pela tolerância a dado velho. Preç
 - **Reserva atômica:** na pista, um contador; na cadeira numerada, `SET NX` em vários assentos com tudo ou nada. Os dois em script Lua, junto com a checagem do token, do limite do CPF e o `XADD` no stream.
 - **Bitmap de assentos:** `SETBIT` e `GETRANGE` guardam o mapa de um setor com 5 mil cadeiras em cerca de 625 bytes, e o mapa inteiro sai numa leitura só.
 - **Fila virtual:** sorted set com hora de chegada; `ZRANK` dá a posição e `ZPOPMIN` admite o próximo lote.
-- **Cupons:** o limite de uso é checado e incrementado num script atômico; o cancelamento devolve o uso.
+- **Cupons:** contados no Postgres do order-service, na transação do pedido, e não no Redis (ADR 33).
 - **Check-in:** `SET NX` em `checkin:{ticketId}` garante que só o primeiro portão libera a entrada, mesmo com leituras simultâneas.
 - **Idempotência:** `SET NX` da Idempotency-Key antes de criar o pedido; um clique duplo devolve o mesmo pedido.
 - **Lock distribuído:** `SET NX PX` com token único e liberação via Lua, para que só uma instância rode jobs como a abertura de vendas. Documentar o limite: para correção forte, a garantia final fica numa constraint do Postgres.
@@ -757,6 +756,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 30 | Replay dos read models em gerações: cada geração tem coleções e consumer group próprios, e uma troca atômica de ponteiro a torna ativa | apagar e reconstruir no lugar | o painel segue respondendo durante o replay; se ele falha, a geração anterior continua ativa |
 | 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
 | 32 | Painel com várias instâncias: interesse num ZSET com prazo, o segundo de cada show disputado num script Lua e o feed registrado uma vez por `eventId`, fora das gerações | líder eleito calculando tudo; calcular em toda instância | sem failover nem trabalho repetido; o replay não repete linhas no feed |
+| 33 | Uso do cupom contado no Postgres, na mesma transação que cria o pedido | contador num script Lua no Redis | pedido e uso no mesmo banco, sem reconciliação; o update condicional garante o limite exato |
 
 ## Testes, carga e caos
 

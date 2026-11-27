@@ -53,3 +53,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0030](0030-replay-dos-read-models.md) | Replay dos read models em gerações, com troca atômica do ponteiro | aceita |
 | [0031](0031-hub-de-tempo-real-so-para-o-painel.md) | O analytics é o hub de tempo real do painel; o SSE da loja fica no inventory | aceita |
 | [0032](0032-painel-ao-vivo-com-varias-instancias.md) | Painel ao vivo com várias instâncias: interesse em ZSET, um cálculo por show por segundo e feed sem repetição | aceita |
+| [0033](0033-uso-do-cupom-contado-no-postgres.md) | Uso do cupom contado no Postgres, na transação do pedido | aceita |
