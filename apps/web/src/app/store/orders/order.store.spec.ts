@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Order } from '../data/sale.models';
-import { ORDER_POLL_MS, OrderStore } from './order.store';
+import { ORDER_POLL_MS, OrderStore, REFUND_POLL_MS } from './order.store';
 
 const order = (value: Partial<Order> = {}): Order => ({
   id: 'o1',
@@ -106,5 +106,81 @@ describe('OrderStore', () => {
     expect(store.error()?.status).toBe(404);
     vi.advanceTimersByTime(ORDER_POLL_MS * 3);
     http.expectNone('/api/v1/orders/o1');
+  });
+
+  it('acompanha o reembolso com menos pressa até ele terminar', () => {
+    open();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'REFUNDING' }));
+    vi.advanceTimersByTime(ORDER_POLL_MS);
+    http.expectNone('/api/v1/orders/o1');
+    vi.advanceTimersByTime(REFUND_POLL_MS - ORDER_POLL_MS);
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'REFUNDING' }));
+    vi.advanceTimersByTime(REFUND_POLL_MS);
+    http
+      .expectOne('/api/v1/orders/o1')
+      .flush(
+        order({ status: 'REFUNDED', refundedCents: 30_000, refundedAt: '2031-01-02T00:00:00Z' }),
+      );
+    expect(store.order()?.status).toBe('REFUNDED');
+    vi.advanceTimersByTime(REFUND_POLL_MS * 3);
+    http.expectNone('/api/v1/orders/o1');
+  });
+
+  it('cancela, mostra o reembolso começando e passa a acompanhá-lo', () => {
+    open();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'CONFIRMED' }));
+    store.cancel();
+    expect(store.cancelling()).toBe(true);
+    // Um segundo clique não manda outro pedido.
+    store.cancel();
+    http
+      .expectOne('/api/v1/orders/o1/cancel')
+      .flush(order({ status: 'REFUNDING' }), { status: 202, statusText: 'Accepted' });
+    expect(store.cancelling()).toBe(false);
+    expect(store.order()?.status).toBe('REFUNDING');
+
+    TestBed.tick();
+    http.expectNone('/api/v1/orders/o1');
+    vi.advanceTimersByTime(REFUND_POLL_MS);
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'REFUNDED' }));
+    expect(store.order()?.status).toBe('REFUNDED');
+  });
+
+  it('aceita o 202 sem corpo', () => {
+    open();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'CONFIRMED' }));
+    store.cancel();
+    http.expectOne('/api/v1/orders/o1/cancel').flush(null, { status: 202, statusText: 'Accepted' });
+    expect(store.order()?.status).toBe('REFUNDING');
+    TestBed.tick();
+    vi.advanceTimersByTime(REFUND_POLL_MS);
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'REFUNDING' }));
+  });
+
+  it('traduz a recusa do cancelamento e relê o pedido', () => {
+    open();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'CONFIRMED' }));
+    store.cancel();
+    http.expectOne('/api/v1/orders/o1/cancel').flush(
+      {
+        type: 'urn:lotou:problem:cancellation-not-allowed',
+        title: 'Não pode',
+        status: 409,
+        reason: 'TICKET_USED',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    expect(store.cancelError()?.message).toContain('já foi usado na entrada');
+    TestBed.tick();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'CONFIRMED' }));
+  });
+
+  it('mostra a falha de rede do cancelamento sem mudar o pedido', () => {
+    open();
+    http.expectOne('/api/v1/orders/o1').flush(order({ status: 'CONFIRMED' }));
+    store.cancel();
+    http.expectOne('/api/v1/orders/o1/cancel').error(new ProgressEvent('error'));
+    expect(store.cancelError()?.message).toContain('Sem conexão');
+    expect(store.order()?.status).toBe('CONFIRMED');
   });
 });

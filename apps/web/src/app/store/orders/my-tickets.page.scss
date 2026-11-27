@@ -78,9 +78,16 @@ h1 {
     color: var(--mat-sys-on-primary-container);
   }
 
-  &[data-status='CANCELLED'] {
+  &[data-status='CANCELLED'],
+  &[data-status='REFUND_FAILED'] {
     background: var(--mat-sys-error-container);
     color: var(--mat-sys-on-error-container);
+  }
+
+  &[data-status='REFUNDING'],
+  &[data-status='REFUNDED'] {
+    background: var(--mat-sys-tertiary-container);
+    color: var(--mat-sys-on-tertiary-container);
   }
 
   @media (max-width: 480px) {

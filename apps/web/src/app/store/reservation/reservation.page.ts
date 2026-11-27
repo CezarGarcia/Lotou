@@ -1,27 +1,46 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  viewChild,
+  Injector,
+} from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
-import { MoneyPipe } from '../../core/format/money.pipe';
+import { MoneyPipe, formatCents } from '../../core/format/money.pipe';
 import { toApiError } from '../../core/http/problem';
 import { formatClock } from '../shared/countdown';
 import { ShowHeading } from '../shared/show-heading';
 import { ReservationStore } from './reservation.store';
 
 /**
- * A reserva e o pagamento: resumo, cronômetro de 10 minutos e o botão de
- * pagar. Quando o tempo acaba, a reserva aparece como expirada.
+ * A reserva e o pagamento: resumo, cronômetro de 10 minutos, o total com o
+ * cupom e a taxa de serviço, e o botão de pagar. Quando o tempo acaba, a
+ * reserva aparece como expirada.
  */
 @Component({
   selector: 'app-reservation-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ReactiveFormsModule,
     RouterLink,
     MatButtonModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
     MoneyPipe,
@@ -33,6 +52,21 @@ import { ReservationStore } from './reservation.store';
 })
 export class ReservationPage {
   protected readonly store = inject(ReservationStore);
+  private readonly injector = inject(Injector);
+
+  protected readonly couponOpen = signal(false);
+  protected readonly couponCode = new FormControl('', { nonNullable: true });
+  protected readonly couponForm = new FormGroup({ code: this.couponCode });
+  private readonly couponInput = viewChild<ElementRef<HTMLInputElement>>('couponInput');
+
+  /** Anúncio para leitores de tela quando o cupom muda o total. */
+  protected readonly couponAnnouncement = computed(() => {
+    const quote = this.store.quote();
+    if (!quote?.coupon) {
+      return '';
+    }
+    return `Cupom ${quote.coupon.code} aplicado: desconto de ${formatCents(quote.discountCents)}. Novo total: ${formatCents(quote.totalCents)}.`;
+  });
 
   /** Parâmetro `:id` da rota. */
   readonly id = input.required<string>();
@@ -65,5 +99,14 @@ export class ReservationPage {
 
   constructor() {
     effect(() => this.store.load(this.id()));
+  }
+
+  protected openCoupon(): void {
+    this.couponOpen.set(true);
+    afterNextRender(() => this.couponInput()?.nativeElement.focus(), { injector: this.injector });
+  }
+
+  protected applyCoupon(): void {
+    this.store.applyCoupon(this.couponCode.value);
   }
 }

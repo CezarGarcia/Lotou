@@ -67,16 +67,118 @@
         </section>
 
         <aside class="card pay" aria-label="Pagamento">
-          <dl>
-            <div>
-              <dt>Ingressos</dt>
-              <dd>{{ r.quantity }}</dd>
+          @if (store.quote(); as q) {
+            <dl class="breakdown">
+              <div>
+                <dt>{{ r.quantity === 1 ? '1 ingresso' : r.quantity + ' ingressos' }}</dt>
+                <dd>{{ q.subtotalCents | brl }}</dd>
+              </div>
+              @if (q.coupon; as coupon) {
+                <div class="discount">
+                  <dt>
+                    Desconto <span class="code">{{ coupon.code }}</span>
+                  </dt>
+                  <dd>− {{ q.discountCents | brl }}</dd>
+                </div>
+              }
+              @if (q.serviceFeePaidBy === 'BUYER') {
+                <div>
+                  <dt>Taxa de serviço <small>10% do valor dos ingressos</small></dt>
+                  <dd>{{ q.serviceFeeCents | brl }}</dd>
+                </div>
+              }
+              <div class="total">
+                <dt>Total</dt>
+                <dd>{{ q.totalCents | brl }}</dd>
+              </div>
+            </dl>
+            @if (q.serviceFeePaidBy === 'PRODUCER') {
+              <p class="fee-note">Sem taxa de serviço: ela fica por conta do produtor.</p>
+            }
+          } @else if (store.quoteError(); as error) {
+            <div class="error" role="alert">
+              <p>Não foi possível calcular o total. {{ error.message }}</p>
+              @if (error.traceId) {
+                <small>Código para o suporte: {{ error.traceId }}</small>
+              }
+              <button matButton type="button" (click)="store.retryQuote()">Tentar de novo</button>
             </div>
-            <div class="total">
-              <dt>Total</dt>
-              <dd>{{ r.totalCents | brl }}</dd>
+          } @else {
+            <div class="calculating" aria-busy="true">
+              <mat-spinner diameter="20" aria-hidden="true" />
+              <span>Calculando o total...</span>
             </div>
-          </dl>
+          }
+
+          <div class="coupon">
+            @if (store.coupon(); as coupon) {
+              <div class="applied">
+                <mat-icon aria-hidden="true">sell</mat-icon>
+                <span>
+                  Cupom <strong>{{ coupon.code }}</strong> aplicado
+                </span>
+                <button
+                  matButton
+                  type="button"
+                  [disabled]="store.paying()"
+                  (click)="store.removeCoupon()"
+                >
+                  Remover
+                </button>
+              </div>
+            } @else if (!couponOpen()) {
+              <button
+                matButton
+                type="button"
+                class="toggle"
+                aria-controls="coupon-form"
+                [attr.aria-expanded]="false"
+                [disabled]="!store.quote()"
+                (click)="openCoupon()"
+              >
+                <mat-icon aria-hidden="true">sell</mat-icon>
+                Tenho um cupom
+              </button>
+            } @else {
+              <form
+                id="coupon-form"
+                class="coupon-form"
+                [formGroup]="couponForm"
+                (ngSubmit)="applyCoupon()"
+              >
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Código do cupom</mat-label>
+                  <input
+                    #couponInput
+                    matInput
+                    [formControl]="couponCode"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    maxlength="40"
+                    [attr.aria-invalid]="!!store.couponError()"
+                  />
+                  @if (store.couponError(); as message) {
+                    <mat-hint id="coupon-error" class="coupon-error" role="alert">
+                      {{ message }}
+                    </mat-hint>
+                  }
+                </mat-form-field>
+                <button
+                  matButton="tonal"
+                  type="submit"
+                  [disabled]="store.checkingCoupon() || store.paying()"
+                >
+                  @if (store.checkingCoupon()) {
+                    <mat-spinner diameter="18" aria-label="Conferindo o cupom" />
+                  } @else {
+                    Aplicar
+                  }
+                </button>
+              </form>
+            }
+          </div>
+          <p class="sr-only" aria-live="polite">{{ couponAnnouncement() }}</p>
 
           @if (store.error(); as error) {
             <div class="error" role="alert">
@@ -91,13 +193,15 @@
             matButton="filled"
             type="button"
             class="cta"
-            [disabled]="store.paying()"
+            [disabled]="!store.canPay()"
             (click)="store.pay()"
           >
             @if (store.paying()) {
               <mat-spinner diameter="20" aria-label="Enviando o pagamento" />
+            } @else if (store.quote(); as q) {
+              Pagar {{ q.totalCents | brl }}
             } @else {
-              Pagar {{ r.totalCents | brl }}
+              Pagar
             }
           </button>
           <p class="hint">

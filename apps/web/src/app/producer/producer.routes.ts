@@ -9,7 +9,8 @@ export const PRODUCER_ROUTES: Routes = [
   {
     path: 'sem-acesso',
     title: 'Acesso restrito | Lotou.',
-    loadComponent: () => import('./no-access.page').then((m) => m.NoAccessPage),
+    loadComponent: () => import('../shared/no-access.page').then((m) => m.NoAccessPage),
+    data: { message: 'O painel é só para produtores. Sua conta não tem esse acesso.' },
   },
   {
     path: '',

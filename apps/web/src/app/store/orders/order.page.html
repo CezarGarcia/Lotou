@@ -10,6 +10,8 @@
 
   @if (store.order(); as order) {
     @let tz = show.hasValue() ? show.value().venue?.timezone : undefined;
+    @let showCancelled = show.hasValue() && show.value().status === 'CANCELLED';
+    @let refund = order.refundedCents ?? order.totalCents;
     <section class="card" aria-live="polite">
       @switch (order.status) {
         @case ('PENDING') {
@@ -51,17 +53,96 @@
           </div>
           <a matButton="filled" [routerLink]="['/shows', order.showId]">Voltar ao show</a>
         }
-        @default {
-          <div class="status">
+        @case ('REFUNDING') {
+          <div class="status refunding">
+            <mat-spinner diameter="40" aria-hidden="true" />
+            <div>
+              <h2>Reembolso em andamento</h2>
+              <p>
+                @if (showCancelled) {
+                  O show foi cancelado pelo produtor.
+                } @else {
+                  Seu pedido foi cancelado.
+                }
+                Estamos devolvendo {{ refund | brl }}, taxa de serviço incluída. Os ingressos não
+                valem mais.
+              </p>
+            </div>
+          </div>
+        }
+        @case ('REFUNDED') {
+          <div class="status refunded">
             <mat-icon aria-hidden="true">currency_exchange</mat-icon>
             <div>
-              <h2>{{ statusLabels[order.status] }}</h2>
-              <p>O cancelamento e o reembolso aparecem aqui conforme avançam.</p>
+              <h2>Pedido reembolsado</h2>
+              <p>
+                @if (showCancelled) {
+                  O show foi cancelado pelo produtor.
+                }
+                Devolvemos {{ refund | brl }}, taxa de serviço incluída{{
+                  order.refundedAt ? ', em ' + at(order.refundedAt, tz) : ''
+                }}. O valor aparece na forma de pagamento da compra.
+              </p>
+            </div>
+          </div>
+        }
+        @case ('REFUND_FAILED') {
+          <div class="status failed">
+            <mat-icon aria-hidden="true">support_agent</mat-icon>
+            <div>
+              <h2>Seu reembolso está atrasado</h2>
+              <p>
+                Não conseguimos concluir o estorno de {{ refund | brl }} automaticamente. Nossa
+                equipe já foi avisada, vai tentar de novo e entrar em contato com você. Não precisa
+                fazer nada agora.
+              </p>
             </div>
           </div>
         }
       }
     </section>
+
+    @if (order.status === 'CONFIRMED' && order.cancellation; as cancellation) {
+      <section class="card cancellation" aria-labelledby="cancel-title">
+        <h2 id="cancel-title">Cancelamento</h2>
+        @if (cancellation.allowed) {
+          <p>
+            Você pode cancelar este pedido
+            @if (cancellation.deadline) {
+              até {{ cancellation.deadline | showDate: tz : 'date' }} às
+              {{ cancellation.deadline | showDate: tz : 'time' }}
+            }
+            e receber de volta {{ order.totalCents | brl }}, taxa de serviço incluída.
+          </p>
+          <button
+            matButton="outlined"
+            type="button"
+            class="danger"
+            [disabled]="store.cancelling()"
+            (click)="confirmCancel(order, tz)"
+          >
+            @if (store.cancelling()) {
+              <mat-spinner diameter="18" aria-label="Pedindo o cancelamento" />
+            } @else {
+              Cancelar pedido
+            }
+          </button>
+        } @else {
+          <p class="blocked">
+            <mat-icon aria-hidden="true">info</mat-icon>
+            {{ blockMessage(cancellation.reason) }}
+          </p>
+        }
+        @if (store.cancelError(); as error) {
+          <div class="error" role="alert">
+            <p>{{ error.message }}</p>
+            @if (error.traceId) {
+              <small>Código para o suporte: {{ error.traceId }}</small>
+            }
+          </div>
+        }
+      </section>
+    }
 
     @if (order.tickets.length > 0) {
       <section aria-labelledby="tickets-title">
@@ -70,11 +151,35 @@
           @for (ticket of order.tickets; track ticket.id) {
             @let place = ticket.seat ? 'Cadeira ' + ticket.seat : 'Sem lugar marcado';
             <li class="ticket" [class.inactive]="ticket.status !== 'VALID'">
-              @if (ticket.status !== 'CANCELLED') {
-                <app-ticket-qr
-                  [code]="ticket.code"
-                  [label]="'QR code do ingresso, ' + ticket.sectorName + ', ' + place"
-                />
+              @switch (ticket.status) {
+                @case ('USED') {
+                  <div class="stamp used">
+                    <mat-icon aria-hidden="true">how_to_reg</mat-icon>
+                    <strong>Entrada registrada</strong>
+                    @if (ticket.usedAt) {
+                      <span
+                        >{{ ticket.usedAt | showDate: tz : 'date' }} às
+                        {{ ticket.usedAt | showDate: tz : 'time' }}</span
+                      >
+                    }
+                    @if (ticket.gate) {
+                      <span>{{ ticket.gate }}</span>
+                    }
+                  </div>
+                }
+                @case ('CANCELLED') {
+                  <div class="stamp">
+                    <mat-icon aria-hidden="true">block</mat-icon>
+                    <strong>Ingresso cancelado</strong>
+                    <span>Não vale para a entrada</span>
+                  </div>
+                }
+                @default {
+                  <app-ticket-qr
+                    [code]="ticket.code"
+                    [label]="'QR code do ingresso, ' + ticket.sectorName + ', ' + place"
+                  />
+                }
               }
               <div class="info">
                 <div class="where">
@@ -92,10 +197,12 @@
             </li>
           }
         </ul>
-        <p class="qr-note">
-          <mat-icon aria-hidden="true">qr_code_2</mat-icon>
-          Apresente o QR code na entrada. Deixe o brilho da tela alto; não precisa imprimir.
-        </p>
+        @if (hasValidTicket()) {
+          <p class="qr-note">
+            <mat-icon aria-hidden="true">qr_code_2</mat-icon>
+            Apresente o QR code na entrada. Deixe o brilho da tela alto; não precisa imprimir.
+          </p>
+        }
       </section>
     }
 
@@ -109,6 +216,18 @@
               <small>{{ item.lotName }}</small>
             </span>
             <strong>{{ item.unitPriceCents | brl }}</strong>
+          </li>
+        }
+        @if (order.discountCents) {
+          <li class="discount">
+            <span>Desconto{{ order.couponCode ? ' (cupom ' + order.couponCode + ')' : '' }}</span>
+            <strong>− {{ order.discountCents | brl }}</strong>
+          </li>
+        }
+        @if (order.serviceFeePaidBy === 'BUYER' && order.serviceFeeCents) {
+          <li>
+            <span>Taxa de serviço</span>
+            <strong>{{ order.serviceFeeCents | brl }}</strong>
           </li>
         }
         <li class="total">

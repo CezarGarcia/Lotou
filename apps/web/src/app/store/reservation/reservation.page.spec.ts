@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { Reservation } from '../data/sale.models';
+import { OrderQuote, Reservation } from '../data/sale.models';
 import { ReservationPage } from './reservation.page';
 
 const reservation = (value: Partial<Reservation>): Reservation => ({
@@ -44,8 +44,19 @@ async function settle(fixture: { detectChanges(): void }) {
   fixture.detectChanges();
 }
 
+const QUOTE: OrderQuote = {
+  subtotalCents: 24_000,
+  discountCents: 0,
+  serviceFeeCents: 2_400,
+  serviceFeePaidBy: 'BUYER',
+  totalCents: 26_400,
+  coupon: null,
+};
+
+const plain = (text: string) => text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ');
+
 describe('ReservationPage', () => {
-  async function render(value: Reservation) {
+  async function render(value: Reservation, quote?: OrderQuote) {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -62,9 +73,93 @@ describe('ReservationPage', () => {
     await settle(fixture);
     http.expectOne('/api/v1/shows/s1').flush(SHOW);
     await settle(fixture);
+    if (quote) {
+      http.expectOne('/api/v1/orders/quote').flush(quote);
+      await settle(fixture);
+    }
     const element = fixture.nativeElement as HTMLElement;
-    return { element, text: () => element.textContent!.replace(/\s+/g, ' ') };
+    return { element, http, fixture, text: () => plain(element.textContent!) };
   }
+
+  it('mostra ingressos, taxa de serviço e total quando a taxa é do comprador', async () => {
+    const { element, text } = await render(reservation({}), QUOTE);
+    const rows = [...element.querySelectorAll('.breakdown > div')].map(
+      (row) =>
+        `${plain(row.querySelector('dt')!.textContent!).trim()} = ${plain(row.querySelector('dd')!.textContent!).trim()}`,
+    );
+    expect(rows).toEqual([
+      '2 ingressos = R$ 240,00',
+      'Taxa de serviço 10% do valor dos ingressos = R$ 24,00',
+      'Total = R$ 264,00',
+    ]);
+    expect(plain(element.querySelector('.cta')!.textContent!)).toContain('Pagar R$ 264,00');
+    expect(text()).not.toContain('por conta do produtor');
+  });
+
+  it('não cobra taxa quando o produtor a absorve, e diz isso com discrição', async () => {
+    const { element, text } = await render(reservation({}), {
+      ...QUOTE,
+      serviceFeePaidBy: 'PRODUCER',
+      serviceFeeCents: 2_400,
+      totalCents: 24_000,
+    });
+    expect(text()).not.toContain('Taxa de serviço 10%');
+    expect(element.querySelector('.fee-note')!.textContent).toContain('por conta do produtor');
+    expect(plain(element.querySelector('.cta')!.textContent!)).toContain('Pagar R$ 240,00');
+  });
+
+  it('abre o campo de cupom, aplica e mostra o desconto com o código', async () => {
+    const { element, http, fixture, text } = await render(reservation({}), QUOTE);
+    const toggle = [...element.querySelectorAll('button')].find((button) =>
+      button.textContent!.includes('Tenho um cupom'),
+    )!;
+    toggle.click();
+    fixture.detectChanges();
+    const input = element.querySelector<HTMLInputElement>('#coupon-form input')!;
+    input.value = 'amigos20';
+    input.dispatchEvent(new Event('input'));
+    element.querySelector<HTMLFormElement>('#coupon-form')!.dispatchEvent(new Event('submit'));
+    const request = http.expectOne('/api/v1/orders/quote');
+    expect(request.request.body).toEqual({ reservationId: 'r1', couponCode: 'AMIGOS20' });
+    request.flush({
+      ...QUOTE,
+      discountCents: 4_800,
+      totalCents: 21_600,
+      coupon: { code: 'AMIGOS20', kind: 'PERCENT', percent: 20, amountCents: null },
+    });
+    await settle(fixture);
+    const discount = element.querySelector('.discount')!;
+    expect(plain(discount.querySelector('dt')!.textContent!).trim()).toBe('Desconto AMIGOS20');
+    expect(plain(discount.querySelector('dd')!.textContent!).trim()).toBe('− R$ 48,00');
+    expect(text()).toContain('Cupom AMIGOS20 aplicado');
+    expect(text()).toContain('Novo total: R$ 216,00');
+  });
+
+  it('mostra o motivo de um cupom recusado junto do campo', async () => {
+    const { element, http, fixture } = await render(reservation({}), QUOTE);
+    [...element.querySelectorAll('button')]
+      .find((button) => button.textContent!.includes('Tenho um cupom'))!
+      .click();
+    fixture.detectChanges();
+    const input = element.querySelector<HTMLInputElement>('#coupon-form input')!;
+    input.value = 'VELHO';
+    input.dispatchEvent(new Event('input'));
+    element.querySelector<HTMLFormElement>('#coupon-form')!.dispatchEvent(new Event('submit'));
+    http.expectOne('/api/v1/orders/quote').flush(
+      {
+        type: 'urn:lotou:problem:coupon-invalid',
+        title: 'Cupom inválido',
+        status: 422,
+        reason: 'EXPIRED',
+      },
+      { status: 422, statusText: 'Unprocessable' },
+    );
+    await settle(fixture);
+    const error = element.querySelector('.coupon-error')!;
+    expect(error.getAttribute('role')).toBe('alert');
+    expect(error.textContent).toContain('prazo dele acabou');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
 
   it('mostra o cronômetro, as cadeiras e o botão de pagar', async () => {
     const { element, text } = await render(reservation({}));

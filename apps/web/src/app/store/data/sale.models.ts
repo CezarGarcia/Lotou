@@ -117,6 +117,9 @@ export interface Ticket {
   sectorName: string;
   seat: string | null;
   issuedAt: string;
+  /** Entrada na portaria (só em `USED`): quando e por qual portão. */
+  usedAt?: string | null;
+  gate?: string | null;
   /**
    * Conteúdo do QR code: `LOTOU1.<ticketId>.<assinatura HMAC>`, conferido na
    * portaria. Ausente nos ingressos emitidos antes do código assinado.
@@ -124,18 +127,66 @@ export interface Ticket {
   code?: string | null;
 }
 
+/** Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o produtor. */
+export type ServiceFeePayer = 'BUYER' | 'PRODUCER';
+
+/** Por que o comprador não pode cancelar o pedido agora. */
+export type CancellationBlock =
+  'NOT_CONFIRMED' | 'WINDOW_EXPIRED' | 'TOO_CLOSE_TO_SHOW' | 'TICKET_USED';
+
+/** Se o pedido pode ser cancelado pelo comprador, e até quando. */
+export interface Cancellation {
+  allowed: boolean;
+  /** Preenchido quando não pode. */
+  reason: CancellationBlock | string | null;
+  /** Até quando pode cancelar (UTC). */
+  deadline: string | null;
+}
+
 export interface Order {
   id: string;
   status: OrderStatus;
   showId: string;
   reservationId: string;
+  /** O que o comprador pagou: subtotal − desconto + taxa (quando é dele). */
   totalCents: number;
   cancelReason: CancelReason | null;
   createdAt: string;
   confirmedAt: string | null;
   items: OrderItem[];
   tickets: Ticket[];
+  // Fase 6. Opcionais: pedidos de antes não têm, e a loja não quebra sem eles.
+  subtotalCents?: number;
+  discountCents?: number;
+  serviceFeeCents?: number;
+  serviceFeePaidBy?: ServiceFeePayer;
+  couponCode?: string | null;
+  refundedCents?: number | null;
+  refundedAt?: string | null;
+  cancellation?: Cancellation;
 }
+
+/** Um cupom aplicado, como o orçamento devolve. */
+export interface AppliedCoupon {
+  code: string;
+  kind: 'PERCENT' | 'AMOUNT';
+  percent: number | null;
+  amountCents: number | null;
+}
+
+/** Quanto o pedido de uma reserva vai custar, sem criar nada (`POST /orders/quote`). */
+export interface OrderQuote {
+  subtotalCents: number;
+  discountCents: number;
+  serviceFeeCents: number;
+  serviceFeePaidBy: ServiceFeePayer;
+  totalCents: number;
+  coupon: AppliedCoupon | null;
+}
+
+/** Por que um cupom foi recusado (`coupon-invalid`). */
+export type CouponInvalidReason =
+  'NOT_FOUND' | 'EXPIRED' | 'PAUSED' | 'EXHAUSTED' | 'WRONG_SHOW' | 'WRONG_SECTOR';
 
 /** Linha de "Meus ingressos". */
 export interface OrderSummary {
