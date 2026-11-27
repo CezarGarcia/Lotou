@@ -138,7 +138,7 @@
           <div class="node" id="s3">
             <div class="name">Envia as leituras</div>
             <ul class="checks">
-              <li>a primeira entrada, pelo horário da leitura, vale: vira check-in normal e evento no Kafka</li>
+              <li>a entrada que chega primeiro vale: vira check-in normal e evento no Kafka</li>
               <li>as outras viram conflito registrado, com portão, aparelho e hora</li>
               <li>reenviar não duplica: cada leitura tem um id</li>
             </ul>
@@ -166,7 +166,7 @@
           <span class="label">Na sincronização</span>
           <span class="big-result bad">Entrada dupla detectada</span>
           <span style="font-size: 13px; color: var(--text-2)"
-            >vale a das 20h40; a das 20h52 vira conflito e alerta. Com os portões divididos por
+            >a primeira a chegar ao servidor vale; a outra vira conflito e alerta, com os dois horários. Com os portões divididos por
             setor, isso só acontece entre celulares do mesmo portão, os dois sem rede.</span
           >
         </div>

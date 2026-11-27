@@ -555,7 +555,7 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 
 Como a portaria tem sua própria cópia dos ingressos, ela continua funcionando mesmo com o order-service fora do ar.
 
-**Sem internet no local (ADR 38).** Ao abrir o show, o leitor baixa a lista dos ingressos (setor e situação de cada um) e a chave pública, e a atualiza a cada 2 minutos. Se o checkin-service não responde, o leitor confere a assinatura e a lista no próprio aparelho, lembra o que já passou por ele e guarda as leituras. Quando a rede volta, envia tudo: a primeira entrada pelo horário da leitura vale e vira um check-in normal; as outras viram conflito em `offline_conflicts`, com alerta. Os portões divididos por setor limitam a entrada dupla a aparelhos do mesmo portão, os dois sem rede.
+**Sem internet no local (ADR 38).** Ao abrir o show, o leitor baixa a lista dos ingressos (setor e situação de cada um) e a chave pública, e a atualiza a cada 2 minutos. Se o checkin-service não responde, o leitor confere a assinatura e a lista no próprio aparelho, lembra o que já passou por ele e guarda as leituras. Quando a rede volta, envia tudo: a entrada que chega primeiro ao servidor vale e vira um check-in normal (num mesmo envio, pela hora da leitura); as outras viram conflito em `offline_conflicts`, com os dois horários e alerta. Os portões divididos por setor limitam a entrada dupla a aparelhos do mesmo portão, os dois sem rede.
 
 ### Fluxo F: cancelamento e reembolso
 
