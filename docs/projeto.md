@@ -810,9 +810,11 @@ Os testes de carga e caos são a vitrine: cada um gera um print do Grafana e um 
 
 ## Roadmap
 
-São oito fases, e cada uma termina com algo demonstrável. Parar no meio ainda deixa um projeto sólido no GitHub.
+São nove fases, e cada uma termina com algo demonstrável. Parar no meio ainda deixa um projeto sólido no GitHub.
 
-**Ordem de execução:** depois da fase 4 vêm a 6 e a 7, e a fase 5 (agente de IA) fica para o fim, como complemento. O produto (portaria, cancelamento, cupons e financeiro) e a vitrine vêm antes; o agente só lê dados que essas fases produzem, então ganha ferramentas mais úteis chegando por último. A numeração foi mantida porque o resto da documentação se refere às fases pelo número.
+**Ordem de execução:** depois da fase 4 vêm a 6, a 7 e a 8, e a fase 5 (agente de IA) fica para o fim, como complemento. O produto (portaria, cancelamento, cupons e financeiro), a vitrine e o polimento da interface vêm antes; o agente só lê dados que essas fases produzem, então ganha ferramentas mais úteis chegando por último. A numeração foi mantida porque o resto da documentação se refere às fases pelo número.
+
+A fase 7 deixa o sistema inteiro funcionando e pronto, sem o vídeo. A fase 8 revisa o visual e a experiência de todo o sistema, e o vídeo de apresentação é gravado no fim dela, já com a interface nova.
 
 | Fase | Entregas | Pronta quando |
 | --- | --- | --- |
@@ -823,7 +825,8 @@ São oito fases, e cada uma termina com algo demonstrável. Parar no meio ainda 
 | 4. RabbitMQ e tempo real | ingresso com QR code, DLQ, painel ao vivo e Streams | DLQ demonstrada; evento chega ao painel em menos de 2 s |
 | 5. Agente de IA (por último) | producer-assistant com LangGraph e ferramentas de leitura | conjunto de avaliação passa no CI; traces do LLM aparecem no Tempo |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | portaria barra entrada dupla; reembolso devolve ingresso e cupom |
-| 7. Vitrine | seed realista, caos, SLOs, ADRs, README e vídeo | docker compose up funciona numa máquina limpa |
+| 7. Vitrine | seed realista, carga, caos, SLOs, alertas, ADRs e README | docker compose up funciona numa máquina limpa |
+| 8. Interface e vídeo | revisão de UI e UX do sistema inteiro (loja, painel e portaria): visual, interações, efeitos e fluxos; depois, o vídeo de apresentação | telas revisadas e conferidas no navegador; vídeo gravado |
 
 As fases 0 a 3 são o núcleo técnico e já sustentam uma boa conversa de entrevista. A fase 6 fecha o ciclo do ingresso e dá ao projeto cara de produto. A fase 1 começa com a reserva no Postgres de propósito: ela vira a linha de base que a reserva no Redis precisa superar na fase 2.
 

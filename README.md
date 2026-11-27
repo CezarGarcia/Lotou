@@ -31,7 +31,8 @@ Plataforma de venda de ingressos para shows: loja, painel do produtor e portaria
 | 4. RabbitMQ e tempo real | ingresso com QR code, DLQ e painel ao vivo | concluída |
 | 5. Agente de IA | assistente do produtor com LangGraph | por último, como complemento |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | concluída |
-| 7. Vitrine | testes de carga e caos, SLOs e vídeo | próxima |
+| 7. Vitrine | testes de carga e caos, SLOs e alertas | próxima |
+| 8. Interface e vídeo | revisão de UI e UX do sistema inteiro e o vídeo de apresentação | |
 
 A fase 1 reservou com lock no Postgres de propósito: ela é a linha de base que a reserva no Redis superou na fase 2. Os dois motores continuam no código, e o teste de carga compara um com o outro.
 
