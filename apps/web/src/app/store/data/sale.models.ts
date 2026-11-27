@@ -121,7 +121,7 @@ export interface Ticket {
   usedAt?: string | null;
   gate?: string | null;
   /**
-   * Conteúdo do QR code: `LOTOU1.<ticketId>.<assinatura HMAC>`, conferido na
+   * Conteúdo do QR code: `LOTOU2.<ticketId>.<assinatura Ed25519>` (ADR 38), conferido na
    * portaria. Ausente nos ingressos emitidos antes do código assinado.
    */
   code?: string | null;

@@ -91,7 +91,7 @@ export async function qrMatrix(text: string): Promise<QrMatrix> {
   `,
 })
 export class TicketQr {
-  /** O código assinado do ingresso (`LOTOU1.<ticketId>.<assinatura>`). */
+  /** O código assinado do ingresso (`LOTOU2.<ticketId>.<assinatura>`). */
   readonly code = input<string | null | undefined>();
   /** Descrição para leitores de tela. */
   readonly label = input('QR code do ingresso');

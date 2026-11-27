@@ -84,8 +84,8 @@
               },
               "code": {
                 "type": "string",
-                "pattern": "^LOTOU1\\.[0-9a-f-]{36}\\.[A-Za-z0-9_-]{43}$",
-                "description": "Conteúdo do QR code: LOTOU1.<ticketId>.<HMAC-SHA256 do prefixo e do ticketId, base64url sem padding>. A portaria confere a assinatura sem ir ao banco (ADR 15)."
+                "pattern": "^(LOTOU2\\.[0-9a-f-]{36}\\.[A-Za-z0-9_-]{86}|LOTOU1\\.[0-9a-f-]{36}\\.[A-Za-z0-9_-]{43})$",
+                "description": "Conteúdo do QR code: LOTOU2.<ticketId>.<assinatura Ed25519 de \"LOTOU2.<ticketId>\", base64url sem padding> (ADR 38). A portaria confere com a chave pública, inclusive no aparelho sem internet. Ingressos emitidos antes têm LOTOU1.<ticketId>.<HMAC-SHA256, base64url> (ADR 15), ainda aceitos."
               }
             }
           },

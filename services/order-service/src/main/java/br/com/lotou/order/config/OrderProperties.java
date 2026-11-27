@@ -34,10 +34,11 @@ public record OrderProperties(
     }
 
     /**
-     * @param qrKey chave do HMAC que assina o QR code dos ingressos; a mesma da portaria. A de
-     *     desenvolvimento não serve para um ambiente real
+     * @param signingKey chave privada Ed25519 (PKCS#8 DER em base64) que assina o QR code dos
+     *     ingressos; a portaria confere com a pública (ADR 38). A de desenvolvimento não serve para um
+     *     ambiente real
      */
-    public record Tickets(@NotBlank String qrKey) {
+    public record Tickets(@NotBlank String signingKey) {
     }
 
     /**

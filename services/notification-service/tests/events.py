@@ -34,9 +34,13 @@ def validator(event_type: str, version: int = 1) -> Draft202012Validator:
 
 
 def ticket_code(ticket_id: str) -> str:
-    """Como o order-service assina (`TicketCodes.java`): LOTOU1.<id>.<HMAC base64url>."""
-    prefix = f"LOTOU1.{ticket_id}"
-    signature = hmac.new(QR_KEY, prefix.encode(), hashlib.sha256).digest()
+    """No formato do order-service (`TicketCodes.java`): LOTOU2.<id>.<64 bytes em base64url>.
+
+    O notification-service não confere a assinatura (só desenha o QR), então os testes usam 64 bytes
+    derivados do ID no lugar de uma assinatura Ed25519 de verdade.
+    """
+    prefix = f"LOTOU2.{ticket_id}"
+    signature = hmac.new(QR_KEY, prefix.encode(), hashlib.sha512).digest()
     return f"{prefix}.{base64.urlsafe_b64encode(signature).decode().rstrip('=')}"
 
 

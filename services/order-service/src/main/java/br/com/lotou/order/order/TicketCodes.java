@@ -2,32 +2,36 @@ package br.com.lotou.order.order;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.UUID;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 import br.com.lotou.order.config.OrderProperties;
 
 import org.springframework.stereotype.Component;
 
 /**
- * O conteúdo do QR code de cada ingresso (ADR 15): {@code LOTOU1.<ticketId>.<assinatura>}, em que a
- * assinatura é o HMAC-SHA256 do prefixo e do ID com uma chave secreta, em base64url sem padding.
+ * O conteúdo do QR code de cada ingresso (ADR 38): {@code LOTOU2.<ticketId>.<assinatura>}, em que a
+ * assinatura é Ed25519 de {@code "LOTOU2.<ticketId>"} com a chave privada do order-service, em
+ * base64url sem padding (64 bytes, 86 caracteres).
  *
- * <p>A portaria confere a assinatura com a mesma chave e recusa um QR falsificado sem consultar
- * banco nenhum. O prefixo versiona o formato: uma troca de chave ou de algoritmo vira LOTOU2.
+ * <p>A portaria confere com a chave pública, inclusive no aparelho, sem internet: quem tem só a
+ * pública confere, mas não consegue criar ingresso. O formato anterior, {@code LOTOU1} com HMAC
+ * (ADR 15), continua aceito pela portaria para os ingressos já emitidos. Ed25519 é determinístico:
+ * o mesmo ingresso tem sempre o mesmo código.
  */
 @Component
 public class TicketCodes {
 
-    static final String PREFIX = "LOTOU1.";
+    static final String PREFIX = "LOTOU2.";
 
-    private final SecretKeySpec key;
+    private final PrivateKey key;
 
     public TicketCodes(OrderProperties properties) {
-        this.key = new SecretKeySpec(properties.tickets().qrKey().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        this.key = privateKey(properties.tickets().signingKey());
     }
 
     public String codeFor(UUID ticketId) {
@@ -35,30 +39,26 @@ public class TicketCodes {
         return content + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(sign(content));
     }
 
-    /** Se o código foi emitido com esta chave. Comparação em tempo constante. */
-    public boolean isValid(String code) {
-        int dot = code.lastIndexOf('.');
-        if (!code.startsWith(PREFIX) || dot <= PREFIX.length()) {
-            return false;
-        }
-        byte[] expected = sign(code.substring(0, dot));
+    private byte[] sign(String content) {
         try {
-            byte[] given = Base64.getUrlDecoder().decode(code.substring(dot + 1));
-            return java.security.MessageDigest.isEqual(expected, given);
+            Signature signature = Signature.getInstance("Ed25519");
+            signature.initSign(this.key);
+            signature.update(content.getBytes(StandardCharsets.UTF_8));
+            return signature.sign();
         }
-        catch (IllegalArgumentException malformed) {
-            return false;
+        catch (GeneralSecurityException ex) {
+            throw new IllegalStateException("Ed25519 indisponível", ex);
         }
     }
 
-    private byte[] sign(String content) {
+    /** A chave privada em PKCS#8 DER, em base64 (como a variável de ambiente a traz). */
+    static PrivateKey privateKey(String base64) {
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(this.key);
-            return mac.doFinal(content.getBytes(StandardCharsets.UTF_8));
+            byte[] der = Base64.getDecoder().decode(base64.strip());
+            return KeyFactory.getInstance("Ed25519").generatePrivate(new PKCS8EncodedKeySpec(der));
         }
-        catch (GeneralSecurityException ex) {
-            throw new IllegalStateException("HMAC-SHA256 indisponível", ex);
+        catch (IllegalArgumentException | GeneralSecurityException ex) {
+            throw new IllegalStateException("TICKET_SIGNING_KEY não é uma chave privada Ed25519 (PKCS#8 em base64)", ex);
         }
     }
 }

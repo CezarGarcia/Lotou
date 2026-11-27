@@ -23,8 +23,14 @@ Uuid = Annotated[
 NonEmpty = Annotated[str, StringConstraints(min_length=1)]
 Cents = Annotated[int, Field(ge=0, strict=True)]
 UtcDatetime = Annotated[AwareDatetime, AfterValidator(lambda value: value.astimezone(UTC))]
-# LOTOU1.<ticketId>.<HMAC em base64url>: o order-service assina, aqui só vira QR code.
-TicketCode = Annotated[str, StringConstraints(pattern=r"^LOTOU1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$")]
+# LOTOU2.<ticketId>.<Ed25519 em base64url> (ADR 38), ou LOTOU1.<ticketId>.<HMAC> nos ingressos
+# antigos (ADR 15): o order-service assina, aqui só vira QR code.
+TicketCode = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^(LOTOU2\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{86}|LOTOU1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43})$"
+    ),
+]
 
 
 class ContractModel(BaseModel):
