@@ -1,25 +1,23 @@
 .page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   grid-template-areas:
     'back back'
     'heading heading'
     'card how';
   gap: 0 32px;
   align-items: start;
-  padding-block: 16px 64px;
+  padding-block: 16px 72px;
 
   @media (max-width: 900px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas: 'back' 'heading' 'card' 'how';
-    gap: 0;
   }
 }
 
 .back {
   grid-area: back;
-  justify-self: start;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 app-show-heading {
@@ -29,112 +27,226 @@ app-show-heading {
 .card {
   grid-area: card;
   display: grid;
-  gap: 16px;
-  padding: 28px;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 20px;
-  background: var(--mat-sys-surface-container-lowest);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.06);
+  justify-items: start;
+  gap: 18px;
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid var(--lt-line);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-surface);
 
   h2 {
     margin: 0;
-    font: var(--mat-sys-headline-small);
-    font-weight: 700;
+    font-family: var(--lt-display);
+    font-size: clamp(2rem, 6vw, 2.75rem);
+    font-weight: 900;
+    line-height: 0.95;
+    text-transform: uppercase;
   }
 
   p {
     margin: 0;
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-text-3);
   }
 
-  a,
-  button {
-    justify-self: start;
+  app-sales-countdown {
+    justify-self: stretch;
   }
+
+  // A vez chegou: o cartão acende, com o botão amarelo em destaque.
+  &[data-state='ADMITTED'] {
+    border: 2px solid var(--lt-cta);
+    background:
+      radial-gradient(circle at 100% 0, var(--lt-warn-soft), transparent 60%), var(--lt-surface);
+    box-shadow: 0 0 0 6px var(--lt-warn-soft);
+    animation: arrive 0.5s var(--lt-ease);
+  }
+}
+
+@keyframes arrive {
+  from {
+    transform: scale(0.97);
+    opacity: 0.4;
+  }
+}
+
+.card .big {
+  color: var(--lt-cta);
+  font-size: clamp(3rem, 10vw, 5rem);
+}
+
+.card .lead {
+  color: var(--lt-text);
+  font-size: 1.125rem;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--lt-raised);
+  color: var(--lt-text-2);
+  font-size: 1.75rem;
+
+  &.cta {
+    background: var(--lt-cta);
+    color: var(--lt-on-cta);
+  }
+
+  &.danger {
+    background: var(--lt-danger-soft);
+    color: var(--lt-danger);
+  }
+}
+
+.card .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--lt-ok);
+  font-family: var(--lt-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  .live-dot {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 1px var(--lt-ok-soft);
+  }
+}
+
+.queued-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  justify-self: stretch;
 }
 
 .position {
   display: grid;
-  justify-items: start;
 
-  span {
-    font: var(--mat-sys-label-large);
-    color: var(--mat-sys-on-surface-variant);
+  .eyebrow {
+    color: var(--lt-muted);
   }
 
   strong {
-    font-size: clamp(3rem, 10vw, 4.5rem);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1;
+    color: var(--lt-cta);
+    font-family: var(--lt-display);
+    font-size: clamp(6rem, 24vw, 11rem);
+    font-weight: 900;
+    line-height: 0.85;
     font-variant-numeric: tabular-nums;
-    color: var(--mat-sys-primary);
+    letter-spacing: -0.02em;
+  }
+}
+
+// A barra de avanço, com um brilho que corre (o "ao vivo").
+.progress {
+  justify-self: stretch;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--lt-raised);
+
+  span {
+    display: block;
+    min-width: 12px;
+    height: 100%;
+    border-radius: inherit;
+    background:
+      linear-gradient(90deg, transparent 0 40%, rgb(255 255 255 / 0.45) 50%, transparent 60%) 0 0 /
+        200% 100%,
+      var(--lt-cta);
+    transition: width 0.6s var(--lt-ease);
+    animation: sweep 2.2s linear infinite;
+  }
+}
+
+@keyframes sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -100% 0;
   }
 }
 
 .facts {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
+  font-size: 1.0625rem;
 
   li {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
 
-  mat-icon {
-    color: var(--mat-sys-primary);
+  ng-icon {
+    color: var(--lt-cta);
+    font-size: 1.25rem;
+  }
+}
+
+.keep {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--lt-raised);
+  font-size: 0.9375rem;
+
+  ng-icon {
+    flex: none;
+    margin-top: 3px;
+    color: var(--lt-warn);
   }
 }
 
 .state {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  justify-self: stretch;
+  gap: 12px;
   padding: 24px 8px;
   text-align: center;
 
-  mat-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 48px;
-    color: var(--mat-sys-outline);
+  > ng-icon {
+    font-size: 2.5rem;
+    color: var(--lt-cta);
   }
 
   .trace {
-    font: var(--mat-sys-body-small);
-    font-family: monospace;
+    font-family: var(--lt-mono);
+    font-size: 0.8125rem;
   }
+}
 
-  button {
-    justify-self: center;
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
 .how {
   grid-area: how;
-  padding: 20px 24px;
-  border-radius: 20px;
-  background: var(--mat-sys-surface-container-low);
 
   @media (max-width: 900px) {
     margin-top: 24px;
-  }
-
-  h2 {
-    margin: 0 0 12px;
-    font: var(--mat-sys-title-medium);
-    font-weight: 700;
-  }
-
-  ol {
-    display: grid;
-    gap: 10px;
-    margin: 0;
-    padding-left: 20px;
-    color: var(--mat-sys-on-surface-variant);
   }
 }

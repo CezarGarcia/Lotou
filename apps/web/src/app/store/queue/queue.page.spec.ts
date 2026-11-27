@@ -70,6 +70,20 @@ describe('QueuePage', () => {
     expect(text()).toContain('Você é o próximo.');
   });
 
+  it('enche a barra de avanço conforme a fila anda', async () => {
+    const { fixture, element } = await render({ showId: 's1', status: 'QUEUED', position: 101 });
+    const bar = () => element.querySelector('[role="progressbar"]')!;
+    expect(bar().getAttribute('aria-valuenow')).toBe('0');
+
+    events.next({ showId: 's1', status: 'QUEUED', position: 51 });
+    await settle(fixture);
+    expect(bar().getAttribute('aria-valuenow')).toBe('50');
+
+    events.next({ showId: 's1', status: 'QUEUED', position: 1 });
+    await settle(fixture);
+    expect(bar().getAttribute('aria-valuenow')).toBe('100');
+  });
+
   it('leva ao checkout do setor quando chega a vez', async () => {
     const { fixture, navigate } = await render({ showId: 's1', status: 'QUEUED', position: 2 });
     events.next({ showId: 's1', status: 'ADMITTED', admittedUntil: '2031-01-01T00:05:00Z' });

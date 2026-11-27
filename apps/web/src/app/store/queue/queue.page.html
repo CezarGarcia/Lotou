@@ -1,8 +1,5 @@
 <div class="container page">
-  <a matButton [routerLink]="['/shows', id()]" class="back">
-    <mat-icon aria-hidden="true">arrow_back</mat-icon>
-    Voltar ao show
-  </a>
+  <app-back-link class="back" [link]="['/shows', id()]" label="Voltar ao show" />
 
   @if (show.hasValue()) {
     <app-show-heading [show]="show.value()" eyebrow="Fila virtual" />
@@ -10,20 +7,21 @@
 
   <p class="sr-only" aria-live="polite">{{ announcement() }}</p>
 
-  <section class="card" aria-labelledby="queue-title">
+  <section class="card" aria-labelledby="queue-title" [attr.data-state]="state()">
     @if (store.error(); as error) {
       <div class="state" role="alert">
-        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <span class="badge danger"><ng-icon name="lucideCloudOff" aria-hidden="true" /></span>
         <h2 id="queue-title">Não foi possível entrar na fila</h2>
         <p>{{ error.message }}</p>
         @if (error.traceId) {
           <p class="trace">Código para o suporte: {{ error.traceId }}</p>
         }
-        <button matButton="filled" type="button" (click)="store.rejoin()">Tentar de novo</button>
+        <button class="btn btn-cta" type="button" (click)="store.rejoin()">Tentar de novo</button>
       </div>
     } @else if (store.status(); as q) {
       @switch (q.status) {
         @case ('NOT_OPEN') {
+          <span class="badge"><ng-icon name="lucideHourglass" aria-hidden="true" /></span>
           <h2 id="queue-title">A sala de espera ainda não abriu</h2>
           @if (q.waitingRoomOpensAt) {
             <app-sales-countdown
@@ -36,46 +34,66 @@
           <p>Deixe esta página aberta: você entra na sala de espera sozinho quando ela abrir.</p>
         }
         @case ('WAITING_ROOM') {
+          <p class="live"><span class="live-dot" aria-hidden="true"></span>Na sala de espera</p>
           <h2 id="queue-title">Você está na sala de espera</h2>
           @if (q.salesStartAt) {
             <app-sales-countdown [opensAt]="q.salesStartAt" [timezone]="tz()" />
           }
-          <p>Quando as vendas abrirem, você recebe sua posição na fila.</p>
+          <p>
+            Quando as vendas abrirem, você recebe uma posição sorteada na fila. Pode esperar com
+            calma: chegar antes não muda nada.
+          </p>
         }
         @case ('QUEUED') {
-          <h2 id="queue-title">Você está na fila</h2>
+          <div class="queued-head">
+            <h2 id="queue-title">Você está na fila</h2>
+            <p class="live"><span class="live-dot" aria-hidden="true"></span>Ao vivo</p>
+          </div>
           <div class="position" aria-live="off">
-            <span>Sua posição</span>
+            <span class="eyebrow">Sua posição</span>
             <strong>{{ q.position ? number(q.position) : '–' }}</strong>
+          </div>
+          <div
+            class="progress"
+            role="progressbar"
+            aria-label="Seu avanço na fila"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="progress()"
+          >
+            <span [style.width.%]="progress()"></span>
           </div>
           <ul class="facts">
             @if (q.position) {
               <li>
-                <mat-icon aria-hidden="true">groups</mat-icon>
+                <ng-icon name="lucideUsers" aria-hidden="true" />
                 {{ ahead(q.position) }}
               </li>
             }
             @if (q.estimatedWaitSeconds !== undefined) {
               <li>
-                <mat-icon aria-hidden="true">schedule</mat-icon>
+                <ng-icon name="lucideClock" aria-hidden="true" />
                 Espera estimada: {{ formatWait(q.estimatedWaitSeconds) }}.
               </li>
             }
           </ul>
-          <p>
+          <p class="keep">
+            <ng-icon name="lucideTriangleAlert" aria-hidden="true" />
             Não feche nem recarregue esta página. Abrir a fila em outras abas não melhora sua
             posição.
           </p>
         }
         @case ('ADMITTED') {
-          <h2 id="queue-title">Chegou a sua vez!</h2>
-          <p>Você tem 5 minutos para reservar. Abrindo a compra...</p>
+          <span class="badge cta"><ng-icon name="lucidePartyPopper" aria-hidden="true" /></span>
+          <h2 id="queue-title" class="big">Chegou a sua vez!</h2>
+          <p class="lead">Você tem 5 minutos para reservar. Abrindo a compra...</p>
           @if (q.admittedUntil) {
             <p>Sua vez vale até {{ q.admittedUntil | showDate: tz() : 'time' }}.</p>
           }
           @if (setor()) {
-            <a matButton="filled" [routerLink]="['/shows', id(), 'comprar', setor()]">
+            <a class="btn btn-cta btn-lg" [routerLink]="['/shows', id(), 'comprar', setor()]">
               Ir para a compra
+              <ng-icon name="lucideArrowRight" aria-hidden="true" />
             </a>
           }
         }
@@ -84,45 +102,30 @@
           <p>Abrindo a compra...</p>
         }
         @case ('NOT_IN_QUEUE') {
+          <span class="badge"><ng-icon name="lucideTimerOff" aria-hidden="true" /></span>
           <h2 id="queue-title">Você não está na fila</h2>
           <p>
             Sua vez pode ter passado: depois de admitido, você tem 5 minutos para reservar. Entre de
             novo para ganhar uma nova posição, no fim da fila.
           </p>
-          <button matButton="filled" type="button" (click)="store.rejoin()">
+          <button class="btn btn-cta btn-lg" type="button" (click)="store.rejoin()">
             Entrar na fila de novo
           </button>
         }
         @case ('CLOSED') {
+          <span class="badge"><ng-icon name="lucideBan" aria-hidden="true" /></span>
           <h2 id="queue-title">As vendas foram encerradas</h2>
           <p>A fila deste show já fechou.</p>
-          <a matButton="tonal" [routerLink]="['/shows', id()]">Voltar ao show</a>
+          <a class="btn btn-outline" [routerLink]="['/shows', id()]">Voltar ao show</a>
         }
       }
     } @else {
       <div class="state" aria-busy="true">
-        <mat-spinner diameter="40" aria-label="Entrando na fila" />
+        <ng-icon name="lucideLoaderCircle" class="spin" aria-hidden="true" />
         <h2 id="queue-title">Entrando na fila...</h2>
       </div>
     }
   </section>
 
-  <aside class="how" aria-label="Como funciona a fila">
-    <h2>Como funciona a fila</h2>
-    <ol>
-      <li>
-        A sala de espera abre <strong>30 minutos antes das vendas</strong>. Quem entra nela espera a
-        abertura sem posição definida.
-      </li>
-      <li>
-        Na abertura, cada pessoa da sala recebe uma <strong>posição sorteada</strong>. Chegar 30
-        minutos antes não dá vantagem sobre quem chegou 1 minuto antes. Quem chega depois da
-        abertura entra no fim da fila.
-      </li>
-      <li>
-        Quando chega a sua vez, você tem <strong>5 minutos</strong> para reservar. Depois disso, a
-        vez passa para o próximo.
-      </li>
-    </ol>
-  </aside>
+  <app-queue-rules class="how" />
 </div>

@@ -1,13 +1,30 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  input,
+  viewChild,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCircleAlert,
+  lucideCloudOff,
+  lucideInfo,
+  lucideLoaderCircle,
+  lucideSearchX,
+  lucideTimer,
+  lucideTimerOff,
+  lucideUserCheck,
+} from '@ng-icons/lucide';
 import { MoneyPipe } from '../../core/format/money.pipe';
 import { cpfValidator } from '../../core/forms/cpf';
 import { CpfMask } from '../../core/forms/cpf-mask';
@@ -17,8 +34,13 @@ import { SaleChip } from '../shared/sale-chip';
 import { ShowHeading } from '../shared/show-heading';
 import { KIND_LABELS } from '../show/buy-panel';
 import { CheckoutStore } from './checkout.store';
+import { PurchaseSteps } from './purchase-steps';
 import { MAX_SEATS } from './seat-map.state';
 import { SeatMap } from './seat-map';
+import { PayBar } from './pay-bar';
+import { TicketCard } from './ticket-card';
+import { BackLink } from './back-link';
+import { QuantityStepper } from './quantity-stepper';
 
 /**
  * Checkout de um setor: quantidade (pista) ou cadeiras no mapa (lugar
@@ -30,18 +52,33 @@ import { SeatMap } from './seat-map';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    MatButtonModule,
+    NgIcon,
     MatFormFieldModule,
-    MatIconModule,
     MatInputModule,
-    MatProgressSpinnerModule,
     MoneyPipe,
     CpfMask,
     SaleChip,
     ShowHeading,
     SeatMap,
+    PurchaseSteps,
+    PayBar,
+    BackLink,
+    QuantityStepper,
+    TicketCard,
   ],
   providers: [CheckoutStore],
+  viewProviders: [
+    provideIcons({
+      lucideCircleAlert,
+      lucideCloudOff,
+      lucideInfo,
+      lucideLoaderCircle,
+      lucideSearchX,
+      lucideTimer,
+      lucideTimerOff,
+      lucideUserCheck,
+    }),
+  ],
   templateUrl: './checkout.page.html',
   styleUrl: './checkout.page.scss',
 })
@@ -58,6 +95,7 @@ export class CheckoutPage {
     validators: [Validators.required, cpfValidator],
   });
   protected readonly form = new FormGroup({ cpf: this.cpf });
+  private readonly cpfInput = viewChild<ElementRef<HTMLInputElement>>('cpfInput');
 
   protected readonly notFound = computed(() => {
     const error = this.store.show.error();
@@ -89,6 +127,8 @@ export class CheckoutPage {
   protected submit(): void {
     if (this.cpf.invalid) {
       this.cpf.markAsTouched();
+      // No celular, o botão fica na barra de baixo, longe do campo: leva o foco até ele.
+      this.cpfInput()?.nativeElement.focus();
       return;
     }
     this.store.reserve(this.cpf.value);

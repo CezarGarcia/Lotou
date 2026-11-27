@@ -1,0 +1,137 @@
+<div class="container page">
+  <header class="head">
+    <p class="eyebrow">Sua carteira</p>
+    <h1>Meus ingressos</h1>
+  </header>
+
+  <section aria-live="polite" [attr.aria-busy]="store.loading()">
+    @if (store.loading()) {
+      <div class="grid" aria-hidden="true">
+        @for (item of skeletons; track $index) {
+          <div class="skeleton"></div>
+        }
+      </div>
+    } @else if (store.error() && store.orders().length === 0) {
+      @let error = store.error()!;
+      <div class="state" role="alert">
+        <ng-icon name="lucideCloudOff" aria-hidden="true" />
+        <h2>Não foi possível carregar seus pedidos</h2>
+        <p>{{ error.message }}</p>
+        <button class="btn btn-outline" type="button" (click)="store.retry()">
+          Tentar de novo
+        </button>
+      </div>
+    } @else if (store.empty()) {
+      <div class="state empty">
+        <ng-icon name="lucideTicket" aria-hidden="true" />
+        <h2>Nenhum ingresso por aqui ainda</h2>
+        <p>Escolha um show, garanta o seu lugar e o ingresso aparece aqui, com o QR da entrada.</p>
+        <a class="btn btn-cta btn-lg" routerLink="/">
+          Ver os shows
+          <ng-icon name="lucideArrowRight" aria-hidden="true" />
+        </a>
+      </div>
+    } @else {
+      @let g = groups();
+      @if (g.upcoming.length > 0) {
+        <section class="group" aria-labelledby="proximos">
+          <h2 id="proximos" class="section-title">Próximos</h2>
+          <ul class="grid">
+            @for (order of g.upcoming; track order.id) {
+              @let show = store.shows().get(order.showId);
+              <li>
+                <a class="card" [routerLink]="['/pedidos', order.id]">
+                  @if (show) {
+                    <app-cartaz size="faixa" [artist]="show.artist">
+                      <span class="when">
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'weekday' }}
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'day' }}
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'month' }} ·
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'time' }}
+                      </span>
+                    </app-cartaz>
+                  } @else {
+                    <div class="cartaz-placeholder" aria-hidden="true"></div>
+                  }
+                  <div class="info">
+                    <strong>{{ show?.artist ?? 'Show' }}</strong>
+                    @if (show) {
+                      <span>
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'date' }}
+                        @if (show.venue; as venue) {
+                          · {{ venue.name }}, {{ venue.city }}/{{ venue.state }}
+                        }
+                      </span>
+                    }
+                    <span class="meta">
+                      {{ order.tickets === 1 ? '1 ingresso' : order.tickets + ' ingressos' }}
+                      · {{ order.totalCents | brl }}
+                      <span class="status" [attr.data-status]="order.status">{{
+                        statusLabels[order.status]
+                      }}</span>
+                    </span>
+                  </div>
+                </a>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (g.past.length > 0) {
+        <section class="group" aria-labelledby="passados">
+          <h2 id="passados" class="section-title">Passados e cancelados</h2>
+          <ul class="rows">
+            @for (order of g.past; track order.id) {
+              @let show = store.shows().get(order.showId);
+              <li>
+                <a class="row" [routerLink]="['/pedidos', order.id]">
+                  <app-cartaz size="mini" [artist]="show?.artist ?? 'Lotou'" />
+                  <div class="info">
+                    <strong>{{ show?.artist ?? 'Show' }}</strong>
+                    @if (show) {
+                      <span>
+                        {{ show.startsAt | showDate: show.venue?.timezone : 'date' }}
+                        @if (show.venue; as venue) {
+                          · {{ venue.city }}/{{ venue.state }}
+                        }
+                      </span>
+                    }
+                    <span>
+                      {{ order.tickets === 1 ? '1 ingresso' : order.tickets + ' ingressos' }}
+                      · {{ order.totalCents | brl }}
+                    </span>
+                  </div>
+                  <span class="status" [attr.data-status]="order.status">{{
+                    statusLabels[order.status]
+                  }}</span>
+                </a>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (store.error(); as error) {
+        <p class="inline-error" role="alert">{{ error.message }}</p>
+      }
+      @if (store.hasMore()) {
+        <div class="more">
+          <button
+            class="btn btn-outline"
+            type="button"
+            [disabled]="store.loadingMore()"
+            (click)="store.loadMore()"
+          >
+            @if (store.loadingMore()) {
+              <ng-icon name="lucideLoaderCircle" class="spin" aria-hidden="true" />
+              Carregando...
+            } @else {
+              Carregar mais
+            }
+          </button>
+        </div>
+      }
+    }
+  </section>
+</div>
