@@ -27,16 +27,20 @@ Na raiz (`make help` lista todos):
 
 - `make up` / `make down`: sobe e derruba o ambiente com Docker Compose (`make clean` apaga também os volumes)
 - `make infra`: sobe só a infraestrutura, para rodar um serviço fora do Compose
-- `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
+- `make seed`: carrega shows, locais e cupons de lançamento fictícios pela API (pode rodar mais de uma vez; cria a cada dia um show de hoje, com os portões abertos)
+- `make seed-vendas`: compras, cupons, cancelamentos e entradas na portaria de demonstração, pela API, para o painel e os dashboards não começarem vazios
 - `make test`: roda os testes de todos os serviços
 - `make smoke`: confere o ambiente no ar: compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo (precisa do `make seed` do dia, que cria um show de hoje)
 - `make e2e`: testes ponta a ponta com Playwright na loja no ar (compra com cupom, cadeira no mapa, cancelamento, painel do produtor e portaria no celular); precisa do `make seed` do dia. Na primeira vez, `cd e2e && npx playwright install chromium`
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
+- `make chaos EXP=<experimento>` (ou `EXP=todos`): os experimentos de caos de `docs/projeto.md`, cada um provocando a falha, conferindo o resultado e deixando o ambiente como estava (veja o cabeçalho de `scripts/chaos.mjs`)
 - `make load-gate-prepare` e `make load-gate` (portaria, `GATE_TICKETS=30000`), `make load-coupon`, `make load-consumer-lag` (para e sobe o analytics-service) e `make load-render` (recria o notification-service com 1, 2 e 4 workers): os outros cenários de carga, cada um conferindo as invariantes no fim (veja `load-tests/README.md`)
 
 Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
+
+Observabilidade no Grafana (http://localhost:3000, pasta Lotou): dashboards gerados por `infra/grafana/dashboards.py` (rode o script depois de mudar um painel) e alertas em `infra/grafana/provisioning/alerting/lotou.yaml`, com e-mail no Mailpit (http://localhost:8025).
 
 Por serviço:
 
