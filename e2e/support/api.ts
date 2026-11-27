@@ -172,8 +172,7 @@ export class Gateway {
 
   /**
    * O show de hoje do seed ("Ensaio Aberto DD/MM", portões abertos), com a
-   * pista à venda. O seed de cada dia cria o seu; o de hoje começa nas
-   * próximas horas.
+   * pista à venda. O seed de cada dia cria o seu, que vai até o fim do dia.
    */
   async showDeHoje(): Promise<{ show: Show; pista: SetorDisponivel }> {
     const agora = Date.now();
@@ -182,7 +181,7 @@ export class Gateway {
         (show) =>
           show.artist === 'Coletivo Pé de Serra' &&
           Date.parse(show.startsAt) > agora &&
-          Date.parse(show.startsAt) - agora < 12 * 3_600_000,
+          Date.parse(show.startsAt) - agora < 26 * 3_600_000,
       )
       .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
     for (const show of candidatos) {

@@ -229,10 +229,10 @@ console.log(`   ingresso de volta à venda: ${after.available} -> ${returned.ava
 
 console.log('4. Portaria');
 const now = Date.now();
-// O show de hoje do seed: começa nas próximas horas, com os portões já abertos.
+// O show de hoje do seed: começa até o fim do dia, com os portões já abertos.
 const tonight = await findPista(
   shows,
-  (item) => Date.parse(item.startsAt) > now && Date.parse(item.startsAt) - now < 12 * 3_600_000,
+  (item) => Date.parse(item.startsAt) > now && Date.parse(item.startsAt) - now < 26 * 3_600_000,
 );
 if (!tonight) fail("nenhum show de hoje com os portões abertos. Rode 'make seed' hoje.");
 const { order: ticketOrder } = await buyOne(token, tonight.show, tonight.sector);

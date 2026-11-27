@@ -124,7 +124,7 @@ for (const show of page.items.filter((item) => !item.highDemand)) {
   total += confirmed.length;
   console.log(`  ${show.artist}: ${confirmed.length} pedidos confirmados, ${cancelled} cancelados`);
   const startsIn = Date.parse(show.startsAt) - now;
-  if (startsIn > 0 && startsIn < 12 * 3_600_000) tonight.push({ show, confirmed });
+  if (startsIn > 0 && startsIn < 26 * 3_600_000) tonight.push({ show, confirmed });
 }
 
 for (const { show, confirmed } of tonight) {

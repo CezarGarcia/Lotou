@@ -23,6 +23,19 @@ function inHours(hours) {
   return date.toISOString();
 }
 
+/**
+ * O show de hoje vai até o fim do dia no fuso dos locais (23h, UTC-3), ou pelo
+ * menos 3 horas depois do seed, se ele rodar tarde da noite: a portaria e as
+ * vendas ficam abertas o dia todo, não só nas horas seguintes ao seed.
+ */
+function tonight() {
+  const local = new Date(Date.now() - 3 * 3_600_000);
+  const endOfDay = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 23 + 3, 30);
+  const startsAt = Math.max(endOfDay, Date.now() + 3 * 3_600_000);
+  const hour = (ms) => new Date(Math.floor(ms / 3_600_000) * 3_600_000).toISOString();
+  return { startsAt: hour(startsAt), salesEndAt: hour(startsAt - 3_600_000) };
+}
+
 /** A data de hoje no fuso dos locais (UTC-3), como DD/MM. */
 function todayLabel() {
   const local = new Date(Date.now() - 3 * 3_600_000).toISOString();
@@ -185,10 +198,10 @@ export const shows = [
     artist: 'Coletivo Pé de Serra',
     description:
       'Ensaio aberto do Coletivo Pé de Serra, com forró, xote e baião. Portões já abertos: o show da demonstração da portaria.',
-    startsAt: inHours(3),
+    startsAt: tonight().startsAt,
     doorsOpenAt: inHours(-1),
     salesStartAt: inHours(-48),
-    salesEndAt: inHours(2),
+    salesEndAt: tonight().salesEndAt,
     highDemand: false,
     sectors: {
       Pista: [lot('Lote único', 40, 2_000)],

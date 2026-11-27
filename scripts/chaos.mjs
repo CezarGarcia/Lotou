@@ -121,7 +121,7 @@ async function pista(accept) {
 
 const farShow = () => pista((show) => Date.parse(show.startsAt) - Date.now() > 3 * 86_400_000);
 const tonightShow = () =>
-  pista((show) => Date.parse(show.startsAt) > Date.now() && Date.parse(show.startsAt) - Date.now() < 12 * 3_600_000);
+  pista((show) => Date.parse(show.startsAt) > Date.now() && Date.parse(show.startsAt) - Date.now() < 26 * 3_600_000);
 
 /** Reserva e cria o pedido; não espera a saga. O gateway limita 2 pedidos por segundo por usuário. */
 async function place(buyer, { show, sector }, quantity = 1) {
