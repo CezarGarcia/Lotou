@@ -1,4 +1,9 @@
 {
+  "/api/v1/analytics/live": {
+    "target": "http://localhost:8080",
+    "ws": true,
+    "xfwd": true
+  },
   "/api": {
     "target": "http://localhost:8080",
     "xfwd": true,

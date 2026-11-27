@@ -2,8 +2,9 @@ import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRouteSnapshot, RouterStateSnapshot, provideRouter } from '@angular/router';
+import { EventTypes, OidcSecurityService, PublicEventsService } from 'angular-auth-oidc-client';
+import { firstValueFrom, of, throwError } from 'rxjs';
 import { firstNameOf, rolesFromAccessToken, safeReturnUrl } from './auth.claims';
 import { authGuard } from './auth.guard';
 import { authInterceptor, isApiUrl } from './auth.interceptor';
@@ -136,5 +137,56 @@ describe('claims', () => {
     expect(safeReturnUrl('/\\outro.site')).toBeNull();
     expect(safeReturnUrl('https://outro.site')).toBeNull();
     expect(safeReturnUrl(null)).toBeNull();
+  });
+});
+
+describe('AuthService: renovação do token', () => {
+  function setup(forceRefreshSession = () => of({ isAuthenticated: true, accessToken: 'novo' })) {
+    let token = 'token-1';
+    const events = new PublicEventsService();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: PublicEventsService, useValue: events },
+        {
+          provide: OidcSecurityService,
+          useValue: {
+            authenticated: signal({ isAuthenticated: true }),
+            userData: signal({ userData: null }),
+            isAuthenticated$: of({ isAuthenticated: true }),
+            getAccessToken: () => of(token),
+            forceRefreshSession,
+          },
+        },
+      ],
+    });
+    const auth = TestBed.inject(AuthService);
+    return { auth, events, setToken: (value: string) => (token = value) };
+  }
+
+  it('avisa cada access token novo, sem repetir e sem os resultados de falha', () => {
+    const { auth, events, setToken } = setup();
+    const tokens: string[] = [];
+    auth.tokenRenewed().subscribe((token) => tokens.push(token));
+
+    events.fireEvent(EventTypes.NewAuthenticationResult, { isAuthenticated: true });
+    setToken('token-2');
+    events.fireEvent(EventTypes.SilentRenewStarted);
+    events.fireEvent(EventTypes.NewAuthenticationResult, { isAuthenticated: true });
+    events.fireEvent(EventTypes.NewAuthenticationResult, { isAuthenticated: true });
+    setToken('token-3');
+    events.fireEvent(EventTypes.NewAuthenticationResult, { isAuthenticated: false });
+
+    expect(tokens).toEqual(['token-1', 'token-2']);
+  });
+
+  it('renova a sessão sob demanda e devolve vazio se não der', async () => {
+    expect(await firstValueFrom(setup().auth.refreshSession())).toBe('novo');
+    TestBed.resetTestingModule();
+    expect(
+      await firstValueFrom(
+        setup(() => throwError(() => new Error('expirou'))).auth.refreshSession(),
+      ),
+    ).toBe('');
   });
 });

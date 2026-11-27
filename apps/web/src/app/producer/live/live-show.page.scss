@@ -1,0 +1,185 @@
+.page {
+  display: grid;
+  gap: 20px;
+  padding-block: 16px 64px;
+}
+
+.back {
+  justify-self: start;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font: var(--mat-sys-title-large);
+  font-weight: 700;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+
+  .title {
+    min-width: 0;
+  }
+
+  .eyebrow {
+    margin: 0;
+    font: var(--mat-sys-label-large);
+    font-weight: 600;
+    color: var(--mat-sys-primary);
+  }
+
+  h1 {
+    margin: 4px 0;
+    font-size: clamp(1.6rem, 4vw, 2.2rem);
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .meta {
+    margin: 0;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.connection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font: var(--mat-sys-label-large);
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--mat-sys-outline);
+  }
+
+  .updated {
+    color: var(--mat-sys-on-surface-variant);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &[data-status='live'] .dot {
+    background: var(--mat-sys-primary);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
+  }
+
+  &[data-status='reconnecting'] .dot {
+    background: var(--mat-sys-tertiary);
+  }
+
+  &[data-status='denied'] .dot {
+    background: var(--mat-sys-error);
+  }
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+
+  @media (max-width: 700px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.kpi,
+.skeleton {
+  min-height: 96px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-low);
+}
+
+.skeleton {
+  background: var(--mat-sys-surface-container-high);
+}
+
+.kpi {
+  dt {
+    font: var(--mat-sys-label-large);
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  dd {
+    margin: 6px 0 0;
+    // Receita com sete dígitos ainda cabe no card do celular.
+    font-size: clamp(1.2rem, 4.5vw, 1.8rem);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  small {
+    font: var(--mat-sys-body-small);
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  &.main {
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
+
+    dt,
+    small {
+      color: inherit;
+    }
+  }
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 24px;
+  align-items: start;
+
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.empty {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 16px;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 20px;
+  text-align: center;
+
+  mat-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 48px;
+    color: var(--mat-sys-outline);
+  }
+
+  h2 {
+    margin: 0;
+  }
+
+  p {
+    margin: 0 0 8px;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
