@@ -1,30 +1,274 @@
-// Tema do Angular Material (Material 3). O mixin define as variáveis CSS
-// `--mat-sys-*`, usadas também pelos componentes próprios do Lotou.
+// Visual do Lotou: "cartaz de show" (veja o ADR 0036).
+//
+// Duas camadas de variáveis CSS:
+// - `--lt-*`: os tokens do Lotou (cores, fontes, raios), usados pelos
+//   componentes próprios;
+// - `--mat-sys-*`: as variáveis do Angular Material, redefinidas a partir dos
+//   tokens, para os componentes do Material seguirem o mesmo visual.
+//
+// Há dois temas, escolhidos pela área da rota (veja `AppTheme`):
+// - noite (loja e portaria): fundo escuro, como a rua à noite, e o amarelo
+//   do lambe-lambe nas ações;
+// - dia (painel do produtor): fundo claro, para ler números por horas.
 @use '@angular/material' as mat;
+
+// Fontes servidas pelo próprio site (Fontsource), sem chamar o Google Fonts.
+@use '@fontsource-variable/inter/wght' as inter;
+@use '@fontsource-variable/big-shoulders-display/wght' as big-shoulders;
+@use '@fontsource/dm-mono/400' as dm-mono-400;
+@use '@fontsource/dm-mono/500' as dm-mono-500;
 
 html {
   height: 100%;
   @include mat.theme(
     (
       color: (
-        primary: mat.$violet-palette,
-        tertiary: mat.$orange-palette,
+        primary: mat.$yellow-palette,
+        tertiary: mat.$magenta-palette,
+        theme-type: color-scheme,
       ),
-      typography: Inter,
+      typography: (
+        plain-family: (
+          'Inter Variable',
+          Inter,
+          system-ui,
+          sans-serif,
+        ),
+        brand-family: (
+          'Inter Variable',
+          Inter,
+          system-ui,
+          sans-serif,
+        ),
+      ),
       density: 0,
+    )
+  );
+
+  // Tokens comuns aos dois temas.
+  --lt-font: 'Inter Variable', Inter, system-ui, sans-serif;
+  --lt-display: 'Big Shoulders Display Variable', 'Arial Narrow', Impact, sans-serif;
+  --lt-mono: 'DM Mono', ui-monospace, monospace;
+  --lt-cta: #ffd23f;
+  --lt-cta-hover: #ffe27a;
+  --lt-on-cta: #121015;
+  --lt-header: #121015;
+  --lt-on-header: #f4efe6;
+  --lt-radius-sm: 10px;
+  --lt-radius: 16px;
+  --lt-radius-lg: 24px;
+  --lt-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+// Noite: loja e portaria.
+.tema-noite {
+  color-scheme: dark;
+
+  --lt-bg: #121015;
+  --lt-bg-deep: #0b0a0d;
+  --lt-surface: #1c1921;
+  --lt-raised: #26222c;
+  --lt-line: #2a2630;
+  --lt-line-strong: #332e3a;
+  --lt-text: #f4efe6;
+  --lt-text-2: #e2dcea;
+  --lt-text-3: #c9c3d2;
+  --lt-muted: #aba4b5;
+  --lt-accent: #ffd23f;
+  --lt-ok: #3ddc84;
+  --lt-ok-soft: rgb(61 220 132 / 0.16);
+  --lt-warn: #ffd23f;
+  --lt-warn-soft: rgb(255 210 63 / 0.16);
+  --lt-danger: #ff5a5a;
+  --lt-danger-soft: rgb(255 90 90 / 0.16);
+  --lt-info: #59c3ff;
+  --lt-info-soft: rgb(89 195 255 / 0.16);
+
+  --mat-sys-background: var(--lt-bg);
+  --mat-sys-on-background: var(--lt-text);
+  --mat-sys-surface: var(--lt-bg);
+  --mat-sys-surface-dim: var(--lt-bg-deep);
+  --mat-sys-surface-bright: var(--lt-raised);
+  --mat-sys-on-surface: var(--lt-text);
+  --mat-sys-surface-variant: var(--lt-raised);
+  --mat-sys-on-surface-variant: var(--lt-muted);
+  --mat-sys-surface-container-lowest: var(--lt-bg-deep);
+  --mat-sys-surface-container-low: #17141b;
+  --mat-sys-surface-container: var(--lt-surface);
+  --mat-sys-surface-container-high: var(--lt-raised);
+  --mat-sys-surface-container-highest: #2e2935;
+  --mat-sys-surface-tint: transparent;
+  --mat-sys-outline: #5a5364;
+  --mat-sys-outline-variant: var(--lt-line-strong);
+  --mat-sys-primary: var(--lt-cta);
+  --mat-sys-on-primary: var(--lt-on-cta);
+  --mat-sys-primary-container: #3b3118;
+  --mat-sys-on-primary-container: #ffe27a;
+  --mat-sys-inverse-primary: #7a5c00;
+  --mat-sys-secondary: var(--lt-text-2);
+  --mat-sys-on-secondary: #121015;
+  --mat-sys-secondary-container: var(--lt-raised);
+  --mat-sys-on-secondary-container: var(--lt-text);
+  --mat-sys-tertiary: #ff4d8d;
+  --mat-sys-on-tertiary: #121015;
+  --mat-sys-tertiary-container: #4a1830;
+  --mat-sys-on-tertiary-container: #ffc2d7;
+  --mat-sys-error: var(--lt-danger);
+  --mat-sys-on-error: #121015;
+  --mat-sys-error-container: #4a1717;
+  --mat-sys-on-error-container: #ffc9c9;
+  --mat-sys-inverse-surface: var(--lt-text);
+  --mat-sys-inverse-on-surface: #121015;
+}
+
+// Dia: painel do produtor.
+.tema-dia {
+  color-scheme: light;
+
+  --lt-bg: #f3f1f6;
+  --lt-bg-deep: #ebe7f0;
+  --lt-surface: #ffffff;
+  --lt-raised: #f7f5fa;
+  --lt-line: #e8e3ee;
+  --lt-line-strong: #d9d3e0;
+  --lt-text: #121015;
+  --lt-text-2: #2b2730;
+  --lt-text-3: #3d3846;
+  --lt-muted: #5d5768;
+  --lt-accent: #121015;
+  --lt-ok: #1f8a62;
+  --lt-ok-soft: #e3f5ec;
+  --lt-warn: #8a6a00;
+  --lt-warn-soft: #fff3c4;
+  --lt-danger: #a11d1d;
+  --lt-danger-soft: #fde7e7;
+  --lt-info: #1d5fa1;
+  --lt-info-soft: #e4f0fb;
+
+  --mat-sys-background: var(--lt-bg);
+  --mat-sys-on-background: var(--lt-text);
+  --mat-sys-surface: var(--lt-bg);
+  --mat-sys-surface-dim: var(--lt-bg-deep);
+  --mat-sys-surface-bright: #ffffff;
+  --mat-sys-on-surface: var(--lt-text);
+  --mat-sys-surface-variant: var(--lt-raised);
+  --mat-sys-on-surface-variant: var(--lt-muted);
+  --mat-sys-surface-container-lowest: #ffffff;
+  --mat-sys-surface-container-low: #ffffff;
+  --mat-sys-surface-container: #ffffff;
+  --mat-sys-surface-container-high: #ffffff;
+  --mat-sys-surface-container-highest: #efebf3;
+  --mat-sys-surface-tint: transparent;
+  --mat-sys-outline: #8e879a;
+  --mat-sys-outline-variant: var(--lt-line-strong);
+  --mat-sys-primary: #121015;
+  --mat-sys-on-primary: #f4efe6;
+  --mat-sys-primary-container: #fff3c4;
+  --mat-sys-on-primary-container: #4a3a00;
+  --mat-sys-inverse-primary: var(--lt-cta);
+  --mat-sys-secondary: var(--lt-muted);
+  --mat-sys-on-secondary: #ffffff;
+  --mat-sys-secondary-container: #ece8f1;
+  --mat-sys-on-secondary-container: #121015;
+  --mat-sys-tertiary: #1f8a62;
+  --mat-sys-on-tertiary: #ffffff;
+  --mat-sys-tertiary-container: #e3f5ec;
+  --mat-sys-on-tertiary-container: #145c42;
+  --mat-sys-error: var(--lt-danger);
+  --mat-sys-on-error: #ffffff;
+  --mat-sys-error-container: var(--lt-danger-soft);
+  --mat-sys-on-error-container: #7a1414;
+  --mat-sys-inverse-surface: #121015;
+  --mat-sys-inverse-on-surface: #f4efe6;
+}
+
+// Ajustes dos componentes do Material ao visual do Lotou.
+html {
+  @include mat.button-overrides(
+    (
+      filled-label-text-weight: 700,
+      outlined-label-text-weight: 600,
+      text-label-text-weight: 600,
+      tonal-label-text-weight: 600,
+      filled-container-height: 48px,
+      outlined-container-height: 48px,
+      tonal-container-height: 48px,
+      outlined-outline-color: var(--lt-line-strong),
+    )
+  );
+  @include mat.form-field-overrides(
+    (
+      outlined-container-shape: 14px,
+      outlined-outline-color: var(--lt-line-strong),
+      outlined-hover-outline-color: var(--lt-muted),
+    )
+  );
+  @include mat.dialog-overrides(
+    (
+      container-shape: var(--lt-radius-lg),
+      container-color: var(--lt-surface),
+    )
+  );
+  @include mat.card-overrides(
+    (
+      elevated-container-shape: var(--lt-radius),
+      outlined-container-shape: var(--lt-radius),
+      outlined-outline-color: var(--lt-line),
+      outlined-container-color: var(--lt-surface),
+      elevated-container-color: var(--lt-surface),
+    )
+  );
+  @include mat.snack-bar-overrides(
+    (
+      container-color: var(--lt-text),
+      supporting-text-color: var(--lt-bg),
+      button-color: var(--lt-accent),
+      container-shape: 14px,
+    )
+  );
+  @include mat.progress-bar-overrides(
+    (
+      active-indicator-color: var(--lt-cta),
+      track-color: var(--lt-raised),
+      active-indicator-height: 6px,
+      track-height: 6px,
+      track-shape: 999px,
+    )
+  );
+  @include mat.tabs-overrides(
+    (
+      active-indicator-color: var(--lt-text),
+      active-indicator-height: 3px,
+      active-label-text-color: var(--lt-text),
+      active-focus-label-text-color: var(--lt-text),
+      active-hover-label-text-color: var(--lt-text),
+      inactive-label-text-color: var(--lt-muted),
+      label-text-weight: 600,
     )
   );
 }
 
+// Na portaria e na loja, o fundo das caixas de texto é a superfície escura.
+.tema-noite .mat-mdc-text-field-wrapper.mdc-text-field--outlined {
+  background: var(--lt-surface);
+  border-radius: 14px;
+}
+
+.tema-dia .mat-mdc-text-field-wrapper.mdc-text-field--outlined {
+  background: #ffffff;
+  border-radius: 14px;
+}
+
 body {
-  // Claro ou escuro, conforme o sistema do usuário.
-  color-scheme: light dark;
   margin: 0;
   min-height: 100%;
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-medium);
+  background-color: var(--lt-bg);
+  color: var(--lt-text);
+  font: var(--mat-sys-body-large);
+  font-family: var(--lt-font);
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 *,
@@ -33,12 +277,275 @@ body {
   box-sizing: border-box;
 }
 
+a {
+  color: var(--lt-accent);
+  text-underline-offset: 0.18em;
+}
+
+:focus-visible {
+  outline: 3px solid var(--lt-cta);
+  outline-offset: 2px;
+}
+
+.tema-dia :focus-visible {
+  outline-color: #121015;
+}
+
+::selection {
+  background: var(--lt-cta);
+  color: var(--lt-on-cta);
+}
+
 // Largura máxima do conteúdo, igual em todas as telas.
 .container {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1280px;
   margin-inline: auto;
-  padding-inline: 20px;
+  padding-inline: 16px;
+
+  @media (min-width: 720px) {
+    padding-inline: 32px;
+  }
+}
+
+// Tipografia do cartaz: títulos altos e estreitos, em caixa alta.
+.display {
+  font-family: var(--lt-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.88;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+// Etiqueta em monoespaçada: data, local, estado, rótulo de métrica.
+.eyebrow {
+  font-family: var(--lt-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mono {
+  font-family: var(--lt-mono);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--lt-muted);
+}
+
+// Título de seção: "Hoje à noite", "Próximos shows", "Setores".
+.section-title {
+  margin: 0;
+  font-family: var(--lt-display);
+  font-size: clamp(2rem, 4vw, 2.5rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+// Cartão: a superfície padrão de conteúdo.
+.panel {
+  background: var(--lt-surface);
+  border: 1px solid var(--lt-line);
+  border-radius: var(--lt-radius);
+}
+
+// Botões próprios (links que parecem botão, ações fora do Material).
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 24px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--lt-raised);
+  color: var(--lt-text);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s var(--lt-ease);
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &:disabled,
+  &[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.btn-cta {
+    background: var(--lt-cta);
+    color: var(--lt-on-cta);
+
+    &:hover {
+      background: var(--lt-cta-hover);
+    }
+  }
+
+  &.btn-light {
+    background: var(--lt-text);
+    color: var(--lt-bg);
+  }
+
+  &.btn-outline {
+    background: transparent;
+    border-color: var(--lt-line-strong);
+
+    &:hover {
+      border-color: var(--lt-muted);
+    }
+  }
+
+  &.btn-lg {
+    min-height: 56px;
+    padding: 0 30px;
+    font-size: 1.0625rem;
+  }
+}
+
+// Filtro rápido em pílula.
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--lt-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--lt-text-2);
+  font: inherit;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lt-accent);
+    color: var(--lt-accent);
+  }
+
+  &[aria-pressed='true'],
+  &.active {
+    border-color: var(--lt-cta);
+    background: var(--lt-cta);
+    color: var(--lt-on-cta);
+    font-weight: 600;
+  }
+}
+
+// Etiqueta pequena de estado (com a cor em `--tag`).
+.tag {
+  --tag: var(--lt-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--tag);
+  border-radius: 999px;
+  color: var(--tag);
+  font-family: var(--lt-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+// Ponto aceso ("ao vivo", "portões abertos").
+.live-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--lt-ok);
+  box-shadow: 0 0 0 5px var(--lt-ok-soft);
+}
+
+// Retícula de impressão sobre as cores do cartaz.
+.halftone {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: radial-gradient(rgb(0 0 0 / 0.24) 1.1px, transparent 1.5px);
+    background-size: 7px 7px;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+  }
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+// Esqueleto de carregamento.
+.skeleton {
+  border-radius: var(--lt-radius);
+  background: linear-gradient(
+    100deg,
+    var(--lt-surface) 30%,
+    var(--lt-raised) 50%,
+    var(--lt-surface) 70%
+  );
+  background-size: 300% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+// Ícones (ng-icon) alinhados ao texto.
+ng-icon {
+  flex: none;
+}
+
+// Transição entre telas (View Transitions API).
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.18s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 // Texto só para leitores de tela (anúncios ao vivo, rótulos extras).

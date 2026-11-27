@@ -12,11 +12,12 @@ main {
   position: absolute;
   left: 16px;
   top: -64px;
-  z-index: 20;
+  z-index: 30;
   padding: 10px 16px;
-  border-radius: 8px;
-  background: var(--mat-sys-primary);
-  color: var(--mat-sys-on-primary);
+  border-radius: 999px;
+  background: var(--lt-cta);
+  color: var(--lt-on-cta);
+  font-weight: 700;
   text-decoration: none;
 
   &:focus {
@@ -24,139 +25,268 @@ main {
   }
 }
 
+// O cabeçalho é sempre escuro: na loja ele some no fundo; no painel claro,
+// vira a faixa preta que separa a marca do trabalho.
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
-  border-bottom: 1px solid var(--mat-sys-outline-variant);
-  background: color-mix(in srgb, var(--mat-sys-surface) 88%, transparent);
-  backdrop-filter: blur(12px);
+  z-index: 20;
+  border-bottom: 1px solid #2a2630;
+  background: rgb(18 16 21 / 0.92);
+  color: var(--lt-on-header);
+  backdrop-filter: blur(10px);
 
   .container {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    height: 64px;
-  }
-
-  .container {
-    gap: 8px;
-  }
-
-  // Com todos os papéis (comprador, produtor e portaria), os links não cabem
-  // num celular: o menu rola dentro dele, sem alargar a página.
-  nav {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  nav a,
-  .action {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
-    border: 0;
-    border-radius: 999px;
-    background: none;
-    color: var(--mat-sys-on-surface);
-    font: var(--mat-sys-label-large);
-    text-decoration: none;
-    white-space: nowrap;
-    cursor: pointer;
-
-    &:hover,
-    &.active {
-      background: var(--mat-sys-surface-container);
-    }
-
-    &:focus-visible {
-      outline: 3px solid var(--mat-sys-primary);
-      outline-offset: 2px;
-    }
-  }
-
-  .action.primary {
-    padding-inline: 16px;
-    background: var(--mat-sys-secondary-container);
-    color: var(--mat-sys-on-secondary-container);
-
-    &:hover {
-      background: color-mix(
-        in srgb,
-        var(--mat-sys-secondary-container) 85%,
-        var(--mat-sys-on-surface)
-      );
-    }
-  }
-
-  .material-symbols-outlined {
-    font-size: 20px;
-  }
-
-  .user {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-inline: 8px;
-    font: var(--mat-sys-label-large);
-    color: var(--mat-sys-on-surface-variant);
-  }
-
-  // No celular, a marca já leva à busca e o nome cede espaço aos botões.
-  @media (max-width: 600px) {
-    .user {
-      display: none;
-    }
-
-    nav a,
-    .action {
-      padding-inline: 8px;
-    }
-  }
-
-  @media (max-width: 420px) {
-    nav a.shows {
-      display: none;
-    }
+    gap: 12px 24px;
+    min-height: 68px;
   }
 }
 
 .brand {
-  color: var(--mat-sys-on-surface);
-  font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  display: inline-flex;
+  flex: none;
   text-decoration: none;
+}
 
-  span {
-    color: var(--mat-sys-primary);
+.area-label {
+  font-family: var(--lt-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #aba4b5;
+  white-space: nowrap;
+}
+
+.search {
+  flex: 1 1 280px;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid #332e3a;
+  border-radius: 999px;
+  background: #1c1921;
+  color: #aba4b5;
+
+  &:focus-within {
+    border-color: var(--lt-cta);
   }
 
-  &.small {
-    font-size: 1.2rem;
+  input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #f4efe6;
+    font: inherit;
+    font-size: 0.9375rem;
+
+    &::placeholder {
+      color: #8e879a;
+    }
+  }
+}
+
+nav[aria-label='Principal'] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 0;
+
+  > a,
+  .login,
+  .account {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: none;
+    color: #f4efe6;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background: #26222c;
+    }
+
+    &.active {
+      background: #26222c;
+      font-weight: 600;
+    }
+  }
+
+  .login {
+    margin-left: 4px;
+    background: var(--lt-cta);
+    color: var(--lt-on-cta);
+    font-weight: 700;
+
+    &:hover {
+      background: var(--lt-cta-hover);
+    }
+  }
+
+  .account {
+    margin-left: 4px;
+    padding: 0 14px 0 5px;
+    border-color: #332e3a;
+  }
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #ff4d8d;
+  color: #121015;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+// Menu da conta: popover nativo, ancorado no canto do cabeçalho.
+.account-menu {
+  inset: 72px 16px auto auto;
+  margin: 0;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid #332e3a;
+  border-radius: var(--lt-radius);
+  background: #1c1921;
+  color: #f4efe6;
+  box-shadow: 0 24px 48px -16px rgb(0 0 0 / 0.6);
+
+  .eyebrow {
+    margin: 6px 10px 8px;
+    color: #aba4b5;
+  }
+
+  a,
+  button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+      background: #26222c;
+    }
+  }
+}
+
+main.with-tabs {
+  @media (max-width: 719px) {
+    padding-bottom: 72px;
   }
 }
 
 .footer {
-  border-top: 1px solid var(--mat-sys-outline-variant);
-  background: var(--mat-sys-surface-container-low);
+  border-top: 1px solid var(--lt-line);
 
   .container {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 20px;
-    padding-block: 24px;
+    justify-content: space-between;
+    gap: 12px 20px;
+    padding-block: 28px;
+  }
+
+  .small {
+    --logo-size: 20px;
   }
 
   p {
     margin: 0;
-    font: var(--mat-sys-body-small);
-    color: var(--mat-sys-on-surface-variant);
+    font-size: 0.875rem;
+    color: var(--lt-muted);
+  }
+}
+
+// Barra de abas da loja, só no celular.
+.tabs {
+  display: none;
+
+  @media (max-width: 719px) {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+    border-top: 1px solid #2a2630;
+    background: #1c1921;
+
+    a {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-height: 48px;
+      color: #aba4b5;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-decoration: none;
+
+      ng-icon {
+        font-size: 22px;
+      }
+
+      &.active {
+        color: var(--lt-cta);
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+// No celular, a busca vai para a página inicial e os links de navegação para
+// a barra de abas; o cabeçalho fica com a marca e a conta.
+@media (max-width: 719px) {
+  .topbar .container {
+    min-height: 60px;
+  }
+
+  .search,
+  .desk,
+  .account .name {
+    display: none !important;
+  }
+
+  .area-label {
+    display: none;
+  }
+
+  nav[aria-label='Principal'] .account {
+    padding: 0 5px;
+  }
+
+  .brand app-logo {
+    --logo-size: 26px;
   }
 }

@@ -1,0 +1,73 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  container-type: inline-size;
+  background: var(--cartaz-bg);
+  color: var(--cartaz-ink);
+  padding: 18px;
+  user-select: none;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.where {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+.artist {
+  margin: 0;
+  font-size: clamp(1.5rem, 21cqi, 4rem);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+:host([data-size='card']) {
+  aspect-ratio: 3 / 4;
+}
+
+:host([data-size='hero']) {
+  aspect-ratio: 4 / 5;
+  padding: clamp(20px, 7cqi, 40px);
+  --stamp-size: 18px;
+
+  .where {
+    font-size: 14px;
+  }
+
+  .artist {
+    font-size: clamp(2.5rem, 20cqi, 8.5rem);
+  }
+}
+
+:host([data-size='faixa']) {
+  min-height: 150px;
+  border-radius: var(--lt-radius-sm);
+  justify-content: flex-end;
+
+  .top {
+    display: none;
+  }
+
+  .artist {
+    font-size: clamp(1.75rem, 15cqi, 3.5rem);
+  }
+}
+
+:host([data-size='mini']) {
+  justify-content: flex-end;
+  padding: 8px;
+
+  .artist {
+    font-size: clamp(0.875rem, 24cqi, 1.75rem);
+    line-height: 0.92;
+  }
+}

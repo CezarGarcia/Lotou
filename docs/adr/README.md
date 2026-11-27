@@ -57,3 +57,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0033](0033-uso-do-cupom-contado-no-postgres.md) | Uso do cupom contado no Postgres, na transação do pedido | aceita |
 | [0034](0034-reembolso-em-massa-com-fila-e-vazao.md) | Reembolso em massa com fila no Postgres e vazão controlada | aceita |
 | [0035](0035-slos-burn-rate-e-alertas-no-grafana.md) | SLOs com burn rate, alertas no Grafana e invariantes consultadas nos bancos | aceita |
+| [0036](0036-visual-de-cartaz-e-design-system-da-loja.md) | Visual de cartaz de show, com o Angular Material restilizado e dois temas | aceita |

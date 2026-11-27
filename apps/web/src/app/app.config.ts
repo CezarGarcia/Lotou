@@ -8,7 +8,13 @@ import {
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
-import { provideRouter, withComponentInputBinding, withInMemoryScrolling } from '@angular/router';
+import {
+  provideRouter,
+  withComponentInputBinding,
+  withInMemoryScrolling,
+  withViewTransitions,
+} from '@angular/router';
+import { provideNgIconsConfig } from '@ng-icons/core';
 import { MAT_ICON_DEFAULT_OPTIONS } from '@angular/material/icon';
 import { provideAuth } from 'angular-auth-oidc-client';
 import { routes } from './app.routes';
@@ -25,7 +31,9 @@ export const appConfig: ApplicationConfig = {
       routes,
       // Parâmetros de rota e de query chegam aos componentes como inputs.
       withComponentInputBinding(),
-      withInMemoryScrolling({ scrollPositionRestoration: 'enabled' }),
+      withInMemoryScrolling({ scrollPositionRestoration: 'enabled', anchorScrolling: 'enabled' }),
+      // Troca de tela com a View Transitions API do navegador (sem biblioteca).
+      withViewTransitions({ skipInitialTransition: true }),
     ),
     // fetch em vez de XHR: é o que o OpenTelemetry instrumenta melhor.
     provideHttpClient(withFetch(), withInterceptors([authInterceptor])),
@@ -34,5 +42,7 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => inject(AuthService).start()),
     { provide: LOCALE_ID, useValue: 'pt-BR' },
     { provide: MAT_ICON_DEFAULT_OPTIONS, useValue: { fontSet: 'material-symbols-outlined' } },
+    // Ícones Lucide: traço fino, do tamanho da letra ao redor.
+    provideNgIconsConfig({ size: '1.25em', strokeWidth: 2 }),
   ],
 };

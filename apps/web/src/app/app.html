@@ -1,46 +1,135 @@
 <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
 
-<header class="topbar">
-  <div class="container">
-    <a class="brand" routerLink="/" aria-label="Lotou, página inicial">Lotou<span>.</span></a>
-    <nav aria-label="Principal">
-      <a routerLink="/" class="shows">Shows</a>
-      @if (auth.authenticated()) {
-        @if (auth.hasRole('producer')) {
-          <a routerLink="/painel" routerLinkActive="active" ariaCurrentWhenActive="page">Painel</a>
-        }
-        @if (auth.hasRole('gate-staff')) {
-          <a routerLink="/portaria" routerLinkActive="active" ariaCurrentWhenActive="page">
-            Portaria
-          </a>
-        }
-        <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
-          Meus ingressos
-        </a>
-        @if (auth.firstName(); as name) {
-          <span class="user">
-            <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
-            {{ name }}
-          </span>
-        }
-        <button type="button" class="action" (click)="auth.logout()">Sair</button>
-      } @else {
-        <button type="button" class="action primary" (click)="auth.login()">
-          <span class="material-symbols-outlined" aria-hidden="true">login</span>
-          Entrar
-        </button>
-      }
-    </nav>
-  </div>
-</header>
+@if (!area.focus()) {
+  <header class="topbar" [attr.data-area]="area.area()">
+    <div class="container">
+      <a
+        class="brand"
+        [routerLink]="area.area() === 'painel' ? '/painel' : '/'"
+        aria-label="Lotou, página inicial"
+      >
+        <app-logo />
+      </a>
 
-<main id="conteudo">
+      @switch (area.area()) {
+        @case ('painel') {
+          <span class="area-label">Painel do produtor</span>
+        }
+        @case ('portaria') {
+          <span class="area-label">Portaria</span>
+        }
+        @default {
+          <form class="search" role="search" (submit)="search($event, query.value)">
+            <label class="sr-only" for="busca-topo">Buscar artista</label>
+            <ng-icon name="lucideSearch" aria-hidden="true" />
+            <input
+              #query
+              id="busca-topo"
+              type="search"
+              name="artist"
+              placeholder="Buscar artista"
+              maxlength="100"
+              autocomplete="off"
+            />
+          </form>
+        }
+      }
+
+      <nav aria-label="Principal">
+        @if (area.area() === 'loja') {
+          <a
+            routerLink="/"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            ariaCurrentWhenActive="page"
+            class="desk"
+          >
+            Shows
+          </a>
+        } @else {
+          <a routerLink="/" class="desk">Ver a loja</a>
+        }
+        @if (auth.authenticated()) {
+          @if (auth.hasRole('producer')) {
+            <a routerLink="/painel" routerLinkActive="active" ariaCurrentWhenActive="page">
+              Painel
+            </a>
+          }
+          @if (auth.hasRole('gate-staff')) {
+            <a routerLink="/portaria" routerLinkActive="active" ariaCurrentWhenActive="page">
+              Portaria
+            </a>
+          }
+          <a
+            routerLink="/meus-ingressos"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+            class="desk"
+          >
+            Meus ingressos
+          </a>
+          <button
+            type="button"
+            class="account"
+            popovertarget="menu-conta"
+            [attr.aria-label]="'Conta de ' + auth.firstName()"
+          >
+            <span class="avatar" aria-hidden="true">{{ initial() }}</span>
+            <span class="name">{{ auth.firstName() }}</span>
+          </button>
+          <div id="menu-conta" popover class="account-menu">
+            <p class="eyebrow">Olá, {{ auth.firstName() }}</p>
+            <a routerLink="/meus-ingressos" (click)="closeMenu()">
+              <ng-icon name="lucideTicket" aria-hidden="true" />
+              Meus ingressos
+            </a>
+            <button type="button" (click)="auth.logout()">
+              <ng-icon name="lucideLogOut" aria-hidden="true" />
+              Sair
+            </button>
+          </div>
+        } @else {
+          <button type="button" class="login" (click)="auth.login()">
+            <ng-icon name="lucideLogIn" aria-hidden="true" />
+            Entrar
+          </button>
+        }
+      </nav>
+    </div>
+  </header>
+}
+
+<main id="conteudo" [class.with-tabs]="area.tabs()">
   <router-outlet />
 </main>
 
-<footer class="footer">
-  <div class="container">
-    <span class="brand small">Lotou<span>.</span></span>
-    <p>Projeto de portfólio. Os shows, artistas e locais desta página são fictícios.</p>
-  </div>
-</footer>
+@if (!area.focus()) {
+  <footer class="footer">
+    <div class="container">
+      <app-logo class="small" />
+      <p>Projeto de portfólio. Os shows, artistas e locais desta página são fictícios.</p>
+    </div>
+  </footer>
+}
+
+@if (area.tabs()) {
+  <nav class="tabs" aria-label="Atalhos">
+    <a
+      routerLink="/"
+      routerLinkActive="active"
+      [routerLinkActiveOptions]="{ exact: true }"
+      ariaCurrentWhenActive="page"
+    >
+      <ng-icon name="lucideHouse" aria-hidden="true" />
+      Início
+    </a>
+    <a routerLink="/" fragment="busca">
+      <ng-icon name="lucideSearch" aria-hidden="true" />
+      Buscar
+    </a>
+    <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
+      <ng-icon name="lucideTicket" aria-hidden="true" />
+      Ingressos
+    </a>
+  </nav>
+}

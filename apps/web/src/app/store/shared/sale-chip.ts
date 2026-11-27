@@ -10,30 +10,32 @@ import { SALE_LABELS } from './live-availability';
   host: { '[attr.data-sale]': 'sale()' },
   styles: `
     :host {
-      display: inline-block;
-      padding: 3px 10px;
+      --tag: var(--lt-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 10px;
+      border: 1px solid var(--tag);
       border-radius: 999px;
-      font: var(--mat-sys-label-medium);
-      font-weight: 600;
+      color: var(--tag);
+      font-family: var(--lt-mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
       white-space: nowrap;
-      background: var(--mat-sys-surface-container-highest);
-      color: var(--mat-sys-on-surface-variant);
     }
     :host([data-sale='ON_SALE']) {
-      background: var(--mat-sys-primary-container);
-      color: var(--mat-sys-on-primary-container);
+      --tag: var(--lt-ok);
     }
     :host([data-sale='NOT_OPEN']) {
-      background: var(--mat-sys-secondary-container);
-      color: var(--mat-sys-on-secondary-container);
+      --tag: var(--lt-info);
     }
     :host([data-sale='PAUSED']) {
-      background: var(--mat-sys-tertiary-container);
-      color: var(--mat-sys-on-tertiary-container);
+      --tag: var(--lt-warn);
     }
     :host([data-sale='SOLD_OUT']) {
-      background: var(--mat-sys-error-container);
-      color: var(--mat-sys-on-error-container);
+      --tag: var(--lt-danger);
     }
   `,
 })
