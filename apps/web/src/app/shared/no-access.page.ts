@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
 
-/** Quem entrou sem o papel de produtor e tentou abrir o painel. */
+/**
+ * Quem entrou sem o papel da área (produtor ou portaria) e tentou abri-la. O
+ * texto vem do `data` da rota, como input.
+ */
 @Component({
   selector: 'app-no-access-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -13,7 +16,7 @@ import { RouterLink } from '@angular/router';
       <section class="state" role="alert">
         <mat-icon aria-hidden="true">lock</mat-icon>
         <h1>Acesso restrito</h1>
-        <p>O painel é só para produtores. Sua conta não tem esse acesso.</p>
+        <p>{{ message() }}</p>
         <a matButton="filled" routerLink="/">Ver os shows</a>
       </section>
     </div>
@@ -51,4 +54,6 @@ import { RouterLink } from '@angular/router';
     }
   `,
 })
-export class NoAccessPage {}
+export class NoAccessPage {
+  readonly message = input('Sua conta não tem acesso a esta área.');
+}

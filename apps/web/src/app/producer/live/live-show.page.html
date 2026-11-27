@@ -1,27 +1,6 @@
-<div class="container page">
-  <a matButton routerLink="/painel" class="back">
-    <mat-icon aria-hidden="true">arrow_back</mat-icon>
-    Meus shows
-  </a>
-
+<div class="page">
   <header class="head">
-    <div class="title">
-      <p class="eyebrow">Painel ao vivo</p>
-      @if (show.hasValue()) {
-        @let s = show.value();
-        <h1>{{ s.artist }}</h1>
-        <p class="meta">
-          {{ s.title }} · {{ s.startsAt | showDate: timezone() : 'date' }} às
-          {{ s.startsAt | showDate: timezone() : 'time' }}
-          @if (s.venue; as venue) {
-            · {{ venue.name }}, {{ venue.city }}/{{ venue.state }}
-          }
-        </p>
-      } @else {
-        <h1>{{ show.isLoading() ? 'Carregando...' : 'Show' }}</h1>
-      }
-    </div>
-
+    <h2 class="sr-only">Ao vivo</h2>
     <div class="connection" [attr.data-status]="store.status()">
       <span class="dot" aria-hidden="true"></span>
       <span class="label" role="status">{{ statusText() }}</span>
@@ -86,8 +65,46 @@
           <dt>Pedidos no último minuto</dt>
           <dd>{{ m.ordersLastMinute | count }}</dd>
         </div>
+        @if (m.ordersRefunded !== undefined) {
+          <div class="kpi">
+            <dt>Pedidos reembolsados</dt>
+            <dd>{{ m.ordersRefunded | count }}</dd>
+          </div>
+        }
       </dl>
     </section>
+
+    @if (m.checkedIn !== undefined) {
+      <section class="gates" aria-labelledby="gates-title">
+        <h2 id="gates-title">Portaria</h2>
+        <p class="gate-total">
+          <strong>{{ m.checkedIn | count }}</strong>
+          {{ m.checkedIn === 1 ? 'entrada' : 'entradas' }} de {{ m.ticketsSold | count }}
+          ingressos vendidos
+        </p>
+        <div
+          class="bar"
+          role="meter"
+          aria-label="Entradas na portaria"
+          aria-valuemin="0"
+          [attr.aria-valuemax]="m.ticketsSold"
+          [attr.aria-valuenow]="m.checkedIn"
+          [attr.aria-valuetext]="entryText()"
+        >
+          <span [style.width.%]="entryPercent()"></span>
+        </div>
+        @if (m.checkinsByGate?.length) {
+          <ul class="gate-list" aria-label="Entradas por portão">
+            @for (gate of m.checkinsByGate; track gate.gate) {
+              <li>
+                <span>{{ gate.gate }}</span>
+                <strong>{{ gate.count | count }}</strong>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
 
     <div class="columns">
       <section class="sectors" aria-labelledby="sectors-title">

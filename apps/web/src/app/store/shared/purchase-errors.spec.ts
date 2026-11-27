@@ -5,6 +5,22 @@ const problem = (code: string, details?: Record<string, unknown>, extra: Partial
   purchaseErrorMessage({ status: 409, message: 'detalhe da API', code, details, ...extra });
 
 describe('purchaseErrorMessage', () => {
+  it('explica cada motivo de recusa do cupom', () => {
+    expect(problem('coupon-invalid', { reason: 'NOT_FOUND' })).toBe(
+      'Não encontramos esse cupom. Confira o código.',
+    );
+    expect(problem('coupon-invalid', { reason: 'EXPIRED' })).toContain('prazo dele acabou');
+    expect(problem('coupon-invalid', { reason: 'PAUSED' })).toContain('pausado');
+    expect(problem('coupon-invalid', { reason: 'EXHAUSTED' })).toContain('máximo de vezes');
+    expect(problem('coupon-invalid', { reason: 'WRONG_SHOW' })).toContain('este show');
+    expect(problem('coupon-invalid', { reason: 'WRONG_SECTOR' })).toContain('setor');
+    // Motivo novo ou ausente: uma frase neutra, nunca o código cru.
+    expect(problem('coupon-invalid', { reason: 'OUTRO' })).toBe(
+      'Este cupom não pode ser usado neste pedido.',
+    );
+    expect(problem('coupon-invalid')).toBe('Este cupom não pode ser usado neste pedido.');
+  });
+
   it('diz quantos ingressos restam no lote', () => {
     expect(problem('insufficient-stock', { available: 2 })).toBe(
       'Só restam 2 ingressos neste lote. Diminua a quantidade e tente de novo.',

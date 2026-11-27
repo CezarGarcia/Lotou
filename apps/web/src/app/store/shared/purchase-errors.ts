@@ -18,6 +18,24 @@ const asNumber = (value: unknown) => (typeof value === 'number' ? value : undefi
 const asStrings = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
+/** Motivos de recusa de um cupom (`coupon-invalid`), em português. */
+export const COUPON_INVALID_MESSAGES: Record<string, string> = {
+  NOT_FOUND: 'Não encontramos esse cupom. Confira o código.',
+  EXPIRED: 'Este cupom não está mais válido: o prazo dele acabou.',
+  PAUSED: 'Este cupom está pausado pelo produtor no momento.',
+  EXHAUSTED: 'Este cupom já foi usado o máximo de vezes.',
+  WRONG_SHOW: 'Este cupom não vale para este show.',
+  WRONG_SECTOR: 'Este cupom não vale para o setor que você escolheu.',
+};
+
+/** A mensagem de um cupom recusado, pelo `reason` do problema. */
+export function couponInvalidMessage(reason: unknown): string {
+  return (
+    (typeof reason === 'string' ? COUPON_INVALID_MESSAGES[reason] : undefined) ??
+    'Este cupom não pode ser usado neste pedido.'
+  );
+}
+
 const tickets = (count: number) => (count === 1 ? '1 ingresso' : `${count} ingressos`);
 
 /**
@@ -73,6 +91,8 @@ export function purchaseErrorMessage(error: ApiError): string {
         ? `Muitas tentativas em pouco tempo. Aguarde ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'} e tente de novo.`
         : 'Muitas tentativas em pouco tempo. Aguarde um pouco e tente de novo.';
     }
+    case 'coupon-invalid':
+      return couponInvalidMessage(details['reason']);
     case 'reservation-not-held':
       return 'Sua reserva expirou antes do pagamento, e os ingressos voltaram à venda.';
     case 'validation-error': {

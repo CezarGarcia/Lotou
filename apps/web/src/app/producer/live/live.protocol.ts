@@ -27,6 +27,11 @@ export interface SectorMetrics {
   currentLot: LiveLot | null;
 }
 
+export interface GateCount {
+  gate: string;
+  count: number;
+}
+
 export interface LiveMetrics {
   /** Quando o analytics calculou as métricas (UTC). */
   at: string;
@@ -36,6 +41,11 @@ export interface LiveMetrics {
   ordersCancelled: number;
   ordersLastMinute: number;
   sectors: SectorMetrics[];
+  // Fase 6: opcionais. Um analytics de antes não manda, e o painel não mostra.
+  /** Ingressos que já entraram pela portaria. */
+  checkedIn?: number;
+  checkinsByGate?: GateCount[];
+  ordersRefunded?: number;
 }
 
 interface EntryBase {
@@ -78,8 +88,27 @@ export interface LotSoldOutEntry extends EntryBase {
   lotName: string | null;
 }
 
+export interface TicketCheckedInEntry extends EntryBase {
+  type: 'TicketCheckedIn';
+  sectorName: string | null;
+  gate: string;
+}
+
+export interface OrderRefundedEntry extends EntryBase {
+  type: 'OrderRefunded';
+  orderId: string;
+  refundedCents: number;
+  /** `ORDER_CANCELLED` (o comprador cancelou) ou `SHOW_CANCELLED`. */
+  reason: string;
+}
+
 export type ActivityEntry =
-  OrderConfirmedEntry | OrderCancelledEntry | LotOpenedEntry | LotSoldOutEntry;
+  | OrderConfirmedEntry
+  | OrderCancelledEntry
+  | LotOpenedEntry
+  | LotSoldOutEntry
+  | TicketCheckedInEntry
+  | OrderRefundedEntry;
 
 export type ServerMessage =
   | { type: 'ready'; user: string }
@@ -138,6 +167,35 @@ function parseSector(value: unknown): SectorMetrics | undefined {
     : undefined;
 }
 
+/** Entradas por portão; `undefined` se o campo não veio ou veio fora do formato. */
+function parseGates(value: unknown): GateCount[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const gates = value.map((item) =>
+    isObject(item) && isText(item['gate']) && isCount(item['count'])
+      ? { gate: item['gate'], count: item['count'] }
+      : undefined,
+  );
+  return gates.every((gate) => gate !== undefined) ? (gates as GateCount[]) : undefined;
+}
+
+/**
+ * Os campos da fase 6 são opcionais: ausentes ou fora do formato, ficam de
+ * fora sem invalidar o resto das métricas.
+ */
+function optionalMetrics(
+  value: Json,
+): Pick<LiveMetrics, 'checkedIn' | 'checkinsByGate' | 'ordersRefunded'> {
+  const { checkedIn, ordersRefunded } = value;
+  const checkinsByGate = parseGates(value['checkinsByGate']);
+  return {
+    ...(isCount(checkedIn) ? { checkedIn } : {}),
+    ...(checkinsByGate ? { checkinsByGate } : {}),
+    ...(isCount(ordersRefunded) ? { ordersRefunded } : {}),
+  };
+}
+
 export function parseMetrics(value: unknown): LiveMetrics | undefined {
   if (!isObject(value) || !Array.isArray(value['sectors'])) {
     return undefined;
@@ -164,6 +222,7 @@ export function parseMetrics(value: unknown): LiveMetrics | undefined {
     ordersCancelled,
     ordersLastMinute,
     sectors: sectors as SectorMetrics[],
+    ...optionalMetrics(value),
   };
 }
 
@@ -177,7 +236,7 @@ export function parseEntry(value: unknown): ActivityEntry | undefined {
     eventId: typeof value['eventId'] === 'string' ? value['eventId'] : '',
     at: value['at'],
   };
-  const { orderId, sectorName, lotName, quantity, totalCents, priceCents, reason } = value;
+  const { orderId, sectorName, lotName, quantity, totalCents, priceCents, reason, gate } = value;
   switch (value['type']) {
     case 'OrderConfirmed':
       return isText(orderId) && isText(sectorName) && isCount(quantity) && isCount(totalCents)
@@ -201,6 +260,22 @@ export function parseEntry(value: unknown): ActivityEntry | undefined {
       return isTextOrNull(sectorName) && isTextOrNull(lotName)
         ? { ...base, type: 'LotSoldOut', sectorName, lotName }
         : undefined;
+    case 'TicketCheckedIn':
+      return isText(gate) && (sectorName === undefined || isTextOrNull(sectorName))
+        ? { ...base, type: 'TicketCheckedIn', sectorName: sectorName ?? null, gate }
+        : undefined;
+    case 'OrderRefunded': {
+      const { refundedCents } = value;
+      return isText(orderId) && isCount(refundedCents)
+        ? {
+            ...base,
+            type: 'OrderRefunded',
+            orderId,
+            refundedCents,
+            reason: typeof reason === 'string' ? reason : '',
+          }
+        : undefined;
+    }
     default:
       return undefined;
   }

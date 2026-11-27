@@ -24,6 +24,14 @@ export const ACTIVITY_ICONS: Record<ActivityEntry['type'], string> = {
   OrderCancelled: 'remove_shopping_cart',
   LotOpened: 'lock_open',
   LotSoldOut: 'block',
+  TicketCheckedIn: 'how_to_reg',
+  OrderRefunded: 'currency_exchange',
+};
+
+/** Por que um pedido foi reembolsado. */
+const REFUND_REASONS: Record<string, string> = {
+  ORDER_CANCELLED: 'cancelado pelo comprador',
+  SHOW_CANCELLED: 'show cancelado',
 };
 
 export interface ActivityText {
@@ -55,6 +63,16 @@ export function describeActivity(entry: ActivityEntry): ActivityText {
       };
     case 'LotSoldOut':
       return { title: 'Lote esgotado', detail: lotIn(entry.lotName, entry.sectorName) };
+    case 'TicketCheckedIn':
+      return {
+        title: 'Entrada na portaria',
+        detail: entry.sectorName ? `${entry.sectorName} · ${entry.gate}` : entry.gate,
+      };
+    case 'OrderRefunded': {
+      const reason = REFUND_REASONS[entry.reason];
+      const amount = formatCents(entry.refundedCents);
+      return { title: 'Pedido reembolsado', detail: reason ? `${reason} · ${amount}` : amount };
+    }
   }
 }
 

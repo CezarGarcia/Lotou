@@ -97,7 +97,7 @@
   }
 }
 
-.pay dl {
+.breakdown {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -107,13 +107,28 @@
     justify-content: space-between;
   }
 
+  div {
+    gap: 12px;
+  }
+
   dt {
     color: var(--mat-sys-on-surface-variant);
   }
 
+  small {
+    display: block;
+    font: var(--mat-sys-body-small);
+  }
+
   dd {
     margin: 0;
+    white-space: nowrap;
     font-variant-numeric: tabular-nums;
+  }
+
+  .discount dd {
+    color: var(--mat-sys-primary);
+    font-weight: 600;
   }
 
   .total {
@@ -128,6 +143,72 @@
   }
 }
 
+.code {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+  font: var(--mat-sys-label-medium);
+  letter-spacing: 0.04em;
+}
+
+.fee-note,
+.calculating {
+  margin: -6px 0 0;
+  font: var(--mat-sys-body-small);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.calculating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.coupon {
+  .toggle {
+    padding-inline: 4px;
+  }
+
+  .applied {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 12px;
+    border-radius: 12px;
+    background: var(--mat-sys-surface-container);
+
+    span {
+      flex: 1;
+    }
+  }
+}
+
+.pay {
+  // O campo de cupom não alarga a coluna de 340 px.
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.coupon-form {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  mat-form-field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  button {
+    height: 56px;
+  }
+}
+
+.coupon-error {
+  color: var(--mat-sys-error);
+}
+
 .error {
   padding: 12px;
   border-radius: 12px;
@@ -139,6 +220,7 @@
   }
 
   small {
+    display: block;
     font-family: monospace;
   }
 }

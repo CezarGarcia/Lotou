@@ -7,6 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { LIVE_CLIENT_OPTIONS, WEB_SOCKET_FACTORY } from './live-dashboard.client';
 import { LiveShowPage } from './live-show.page';
 import { ANNOUNCE_EVERY_MS } from './live-show.store';
+import { ProducerShowContext } from '../show/show-context';
 import { FakeWebSocket, confirmedEntry, liveMetrics } from './live.testing';
 
 /** O documento do show no catálogo: o local fica em Manaus (UTC-4). */
@@ -69,11 +70,13 @@ describe('LiveShowPage', () => {
           },
         },
         { provide: LIVE_CLIENT_OPTIONS, useValue: { url: 'ws://teste/live', random: () => 1 } },
+        // A moldura das abas fornece o show; aqui o teste faz esse papel.
+        ProducerShowContext,
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(ProducerShowContext).id.set('s1');
     fixture = TestBed.createComponent(LiveShowPage);
-    fixture.componentRef.setInput('id', 's1');
     fixture.detectChanges();
     await tick();
     http.expectOne('/api/v1/shows/s1').flush(SHOW);
@@ -94,7 +97,6 @@ describe('LiveShowPage', () => {
 
   it('assina o show e mostra "Conectando..." até o servidor aceitar', async () => {
     await render();
-    expect(text()).toContain('Banda do Mar');
     expect(text()).toContain('Conectando...');
     expect(element().querySelector('[aria-busy="true"]')).not.toBeNull();
 
@@ -206,6 +208,70 @@ describe('LiveShowPage', () => {
     retry.click();
     await tick();
     expect(sockets).toHaveLength(2);
+  });
+
+  it('mostra as entradas na portaria e os reembolsos quando o analytics manda', async () => {
+    await render();
+    await goLive();
+    socket().receive({
+      type: 'snapshot',
+      showId: 's1',
+      metrics: {
+        ...liveMetrics(),
+        checkedIn: 310,
+        checkinsByGate: [
+          { gate: 'Portão A', count: 200 },
+          { gate: 'Portão B', count: 110 },
+        ],
+        ordersRefunded: 3,
+      },
+      activity: [
+        {
+          id: '1764180009000-0',
+          eventId: 'e9',
+          type: 'TicketCheckedIn',
+          at: '2026-11-26T18:00:09Z',
+          sectorName: 'Pista',
+          gate: 'Portão B',
+        },
+        {
+          id: '1764180008000-0',
+          eventId: 'e8',
+          type: 'OrderRefunded',
+          at: '2026-11-26T18:00:08Z',
+          orderId: 'o8',
+          refundedCents: 33_000,
+          reason: 'ORDER_CANCELLED',
+        },
+      ],
+    });
+    await tick();
+
+    const gates = element().querySelector('.gates')!;
+    expect(plain(gates.textContent!)).toContain('310 entradas de 1.240 ingressos vendidos');
+    const meter = gates.querySelector('[role="meter"]')!;
+    expect(meter.getAttribute('aria-valuetext')).toBe('310 de 1.240 já entraram (25%)');
+    const byGate = [...gates.querySelectorAll('li')].map(
+      (li) =>
+        `${li.querySelector('span')!.textContent}: ${li.querySelector('strong')!.textContent}`,
+    );
+    expect(byGate).toEqual(['Portão A: 200', 'Portão B: 110']);
+    expect(text()).toContain('Pedidos reembolsados');
+
+    const entries = element().querySelectorAll('app-activity-feed li');
+    expect(plain(entries[0].textContent!)).toContain('Entrada na portaria');
+    expect(plain(entries[0].textContent!)).toContain('Pista · Portão B');
+    expect(plain(entries[1].textContent!)).toContain('Pedido reembolsado');
+    expect(plain(entries[1].textContent!)).toContain('cancelado pelo comprador · R$ 330,00');
+  });
+
+  it('sem os números da portaria, não inventa nada', async () => {
+    await render();
+    await goLive();
+    socket().receive({ type: 'snapshot', showId: 's1', metrics: liveMetrics(), activity: [] });
+    await tick();
+    expect(element().querySelector('.gates')).toBeNull();
+    expect(text()).not.toContain('Pedidos reembolsados');
   });
 
   it('show de outro produtor: avisa sem mostrar dados', async () => {

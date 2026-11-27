@@ -1,0 +1,176 @@
+<div class="page">
+  <section class="card" aria-labelledby="statement-title">
+    <header class="top">
+      <div>
+        <h2 id="statement-title">
+          Relatório financeiro
+          @if (store.statement(); as state) {
+            @if (state.status === 'ready') {
+              <span class="badge" [class.final]="!state.value.partial">
+                {{ state.value.partial ? 'Parcial' : 'Final' }}
+              </span>
+            }
+          }
+        </h2>
+        @if (store.statement(); as state) {
+          @if (state.status === 'ready') {
+            <p class="note">
+              {{
+                state.value.partial
+                  ? 'Parcial: enquanto o show não acontece, vendas e reembolsos ainda mudam os números.'
+                  : 'Final: o show já aconteceu e os números não mudam mais.'
+              }}
+            </p>
+          }
+        }
+      </div>
+      <button
+        matButton="tonal"
+        type="button"
+        [disabled]="store.requestingPdf() || store.statement().status !== 'ready'"
+        (click)="requestPdf()"
+      >
+        @if (store.requestingPdf()) {
+          <mat-spinner diameter="18" aria-label="Pedindo o PDF" />
+        } @else {
+          <mat-icon aria-hidden="true">mail</mat-icon>
+        }
+        Receber PDF por e-mail
+      </button>
+    </header>
+
+    @switch (store.statement().status) {
+      @case ('loading') {
+        <div class="skeleton" aria-busy="true" aria-label="Carregando o relatório"></div>
+      }
+      @case ('error') {
+        @let state = store.statement();
+        <div class="state" role="alert">
+          <p>
+            Não foi possível carregar o relatório.
+            {{ state.status === 'error' ? state.error.message : '' }}
+          </p>
+          <button matButton="tonal" type="button" (click)="store.reloadStatement()">
+            Tentar de novo
+          </button>
+        </div>
+      }
+      @default {
+        @let state = store.statement();
+        @if (state.status === 'ready') {
+          @let s = state.value;
+          <dl class="statement">
+            @for (line of store.lines(); track line.key) {
+              <div class="line" [attr.data-key]="line.key">
+                <dt>
+                  <span class="label"
+                    ><span class="sign" aria-hidden="true">{{ line.sign ? '−' : '' }}</span
+                    >{{ line.label }}</span
+                  >
+                  <small>{{ line.explanation }}</small>
+                </dt>
+                <dd>
+                  @if (line.sign && line.cents > 0) {
+                    <span class="sr-only">menos</span><span aria-hidden="true">− </span>
+                  }
+                  {{ line.cents | brl }}
+                </dd>
+              </div>
+            }
+            <div class="line total">
+              <dt>
+                <span class="label">Valor a receber</span>
+                <small>
+                  Vendas brutas − descontos − reembolsos − taxa absorvida:
+                  {{ s.grossSalesCents | brl }} − {{ s.discountsCents | brl }} −
+                  {{ s.refundsCents | brl }} − {{ s.platformFeeCents | brl }}
+                </small>
+              </dt>
+              <dd>{{ s.receivableCents | brl }}</dd>
+            </div>
+          </dl>
+          <p class="info">
+            <mat-icon aria-hidden="true">info</mat-icon>
+            <span>
+              Taxa paga pelos compradores: <strong>{{ s.buyerFeesCents | brl }}</strong>. Quando o
+              show repassa a taxa, ela é cobrada à parte do comprador e fica com a plataforma: não
+              entra nem sai do seu valor a receber.
+            </span>
+          </p>
+        }
+      }
+    }
+  </section>
+
+  <section class="card" aria-labelledby="refunds-title">
+    <h2 id="refunds-title">Reembolsos travados</h2>
+    <p class="note">
+      Pedidos em que o estorno falhou 5 vezes seguidas. Confira com o meio de pagamento e mande de
+      novo; o comprador recebe o e-mail quando o dinheiro voltar.
+    </p>
+    @if (store.retryError(); as message) {
+      <p class="error" role="alert">{{ message }}</p>
+    }
+    @switch (store.refundFailed().status) {
+      @case ('loading') {
+        <div class="skeleton small" aria-busy="true" aria-label="Carregando os reembolsos"></div>
+      }
+      @case ('error') {
+        <div class="state" role="alert">
+          <p>Não foi possível carregar os reembolsos travados.</p>
+          <button matButton="tonal" type="button" (click)="store.reloadRefunds()">
+            Tentar de novo
+          </button>
+        </div>
+      }
+      @default {
+        @let state = store.refundFailed();
+        @if (state.status === 'ready') {
+          @if (state.value.length === 0) {
+            <p class="empty">
+              <mat-icon aria-hidden="true">check_circle</mat-icon>
+              Nenhum reembolso travado.
+            </p>
+          } @else {
+            <ul class="refunds">
+              @for (order of state.value; track order.id) {
+                <li>
+                  <span class="order">
+                    <strong
+                      >Pedido <code [title]="order.id">{{ shortId(order.id) }}</code></strong
+                    >
+                    <small>
+                      {{ order.totalCents | brl }}
+                      @if (order.tickets) {
+                        · {{ order.tickets === 1 ? '1 ingresso' : order.tickets + ' ingressos' }}
+                      }
+                      @if (order.confirmedAt || order.createdAt) {
+                        · comprado em
+                        {{
+                          order.confirmedAt || order.createdAt
+                            | showDate: context.timezone() : 'date'
+                        }}
+                      }
+                    </small>
+                  </span>
+                  <button
+                    matButton="outlined"
+                    type="button"
+                    [disabled]="store.retrying().has(order.id)"
+                    (click)="retry(order)"
+                  >
+                    @if (store.retrying().has(order.id)) {
+                      <mat-spinner diameter="18" aria-label="Enviando" />
+                    }
+                    Tentar reembolso de novo
+                    <span class="sr-only">do pedido {{ shortId(order.id) }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        }
+      }
+    }
+  </section>
+</div>

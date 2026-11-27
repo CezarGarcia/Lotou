@@ -50,8 +50,74 @@
     color: var(--mat-sys-primary);
   }
 
-  &.cancelled mat-icon {
+  &.cancelled mat-icon,
+  &.failed mat-icon {
     color: var(--mat-sys-error);
+  }
+
+  &.refunded mat-icon {
+    color: var(--mat-sys-tertiary);
+  }
+}
+
+.cancellation {
+  gap: 12px;
+
+  h2 {
+    margin: 0;
+    font: var(--mat-sys-title-medium);
+    font-weight: 700;
+  }
+
+  p {
+    margin: 0;
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  .blocked {
+    display: flex;
+    gap: 8px;
+  }
+
+  .danger {
+    justify-self: start;
+    min-height: 44px;
+    --mat-button-outlined-label-text-color: var(--mat-sys-error);
+  }
+
+  .error {
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--mat-sys-error-container);
+    color: var(--mat-sys-on-error-container);
+
+    p {
+      color: inherit;
+    }
+  }
+}
+
+// No lugar do QR: a entrada registrada ou o cancelamento.
+.stamp {
+  display: grid;
+  flex: none;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 160px;
+  aspect-ratio: 1;
+  border: 2px dashed var(--mat-sys-outline-variant);
+  border-radius: 12px;
+  text-align: center;
+
+  mat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 36px;
+  }
+
+  &.used mat-icon {
+    color: var(--mat-sys-primary);
   }
 }
 
@@ -168,6 +234,10 @@
 
   strong {
     font-variant-numeric: tabular-nums;
+  }
+
+  .discount strong {
+    color: var(--mat-sys-primary);
   }
 
   .total {

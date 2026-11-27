@@ -1,0 +1,137 @@
+<section class="page" aria-labelledby="coupons-title">
+  <header class="top">
+    <div>
+      <h2 id="coupons-title">Cupons</h2>
+      <p>Descontos para divulgar o show. O uso é contado no pedido e volta se ele for cancelado.</p>
+    </div>
+    @if (!formOpen()) {
+      <button matButton="filled" type="button" (click)="openForm()">
+        <mat-icon aria-hidden="true">add</mat-icon>
+        Novo cupom
+      </button>
+    }
+  </header>
+
+  @if (formOpen() && context.id(); as showId) {
+    <div class="card">
+      <app-coupon-form
+        [showId]="showId"
+        [timezone]="context.timezone()"
+        [sectors]="context.sectors()"
+        [defaultValidUntil]="context.value()?.startsAt"
+        [pending]="store.creating()"
+        [codeError]="codeError()"
+        (save)="create($event)"
+        (cancel)="formOpen.set(false)"
+      />
+      @if (createError(); as error) {
+        <div class="error" role="alert">
+          <p>Não foi possível criar o cupom. {{ error.message }}</p>
+          @if (error.traceId) {
+            <small>Código para o suporte: {{ error.traceId }}</small>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (store.actionError(); as message) {
+    <p class="error" role="alert">{{ message }}</p>
+  }
+
+  <div aria-live="polite" [attr.aria-busy]="store.loading()">
+    @if (store.loading()) {
+      <div class="list" aria-hidden="true">
+        @for (item of skeletons; track item) {
+          <div class="skeleton"></div>
+        }
+      </div>
+    } @else if (store.error() && store.coupons().length === 0) {
+      @let error = store.error()!;
+      <div class="state" role="alert">
+        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <p>Não foi possível carregar os cupons. {{ error.message }}</p>
+        <button matButton="tonal" type="button" (click)="store.retry()">Tentar de novo</button>
+      </div>
+    } @else if (store.empty()) {
+      <div class="state">
+        <mat-icon aria-hidden="true">sell</mat-icon>
+        <p>Nenhum cupom ainda. Crie o primeiro para a divulgação do show.</p>
+      </div>
+    } @else {
+      <ul class="list">
+        @for (coupon of store.coupons(); track coupon.id) {
+          <li class="card coupon" [attr.data-status]="coupon.status">
+            <div class="head">
+              <code>{{ coupon.code }}</code>
+              <span class="status">{{ status(coupon) }}</span>
+            </div>
+            <p class="discount">{{ describe(coupon) }}</p>
+            <p class="meta">
+              {{ sectorsText(coupon) }} · válido até
+              {{ coupon.validUntil | showDate: context.timezone() : 'date' }} às
+              {{ coupon.validUntil | showDate: context.timezone() : 'time' }}
+            </p>
+            <div
+              class="bar"
+              role="meter"
+              [attr.aria-label]="'Usos do cupom ' + coupon.code"
+              aria-valuemin="0"
+              [attr.aria-valuemax]="coupon.maxUses"
+              [attr.aria-valuenow]="coupon.uses"
+              [attr.aria-valuetext]="usesText(coupon)"
+            >
+              <span [style.width.%]="usedPercent(coupon)"></span>
+            </div>
+            <dl>
+              <div>
+                <dt>Usos</dt>
+                <dd>{{ coupon.uses | count }} de {{ coupon.maxUses | count }}</dd>
+              </div>
+              <div>
+                <dt>Restantes</dt>
+                <dd>{{ coupon.remaining | count }}</dd>
+              </div>
+              <div>
+                <dt>Desconto dado</dt>
+                <dd>{{ coupon.discountGivenCents | brl }}</dd>
+              </div>
+            </dl>
+            @if (coupon.status === 'ACTIVE' || coupon.status === 'PAUSED') {
+              <div class="actions">
+                @if (coupon.status === 'ACTIVE') {
+                  <button
+                    matButton="outlined"
+                    type="button"
+                    [disabled]="store.busy().has(coupon.id)"
+                    (click)="store.pause(coupon)"
+                  >
+                    <mat-icon aria-hidden="true">pause</mat-icon>
+                    Pausar <span class="sr-only">{{ coupon.code }}</span>
+                  </button>
+                } @else {
+                  <button
+                    matButton="tonal"
+                    type="button"
+                    [disabled]="store.busy().has(coupon.id)"
+                    (click)="store.resume(coupon)"
+                  >
+                    <mat-icon aria-hidden="true">play_arrow</mat-icon>
+                    Retomar <span class="sr-only">{{ coupon.code }}</span>
+                  </button>
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+      @if (store.hasMore()) {
+        <div class="more">
+          <button matButton="outlined" type="button" (click)="store.loadMore()">
+            Carregar mais
+          </button>
+        </div>
+      }
+    }
+  </div>
+</section>

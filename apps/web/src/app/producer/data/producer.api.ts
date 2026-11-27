@@ -2,6 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import { Page, ShowStatus } from '../../store/data/show.models';
+import { SHOWS_URL } from '../../store/data/shows.api';
 
 /** Shows do produtor no analytics (read models), via gateway. */
 export const PRODUCER_SHOWS_URL = '/api/v1/analytics/shows';
@@ -68,5 +69,13 @@ export class ProducerApi {
         nextCursor: page.nextCursor ?? null,
       })),
     );
+  }
+
+  /**
+   * Cancela o show (só o dono, em PUBLISHED ou ON_SALE). Todos os pedidos
+   * confirmados entram em reembolso automático, com controle de vazão.
+   */
+  cancelShow(showId: string): Observable<unknown> {
+    return this.http.post(`${SHOWS_URL}/${showId}/cancel`, {});
   }
 }

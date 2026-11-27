@@ -1,0 +1,171 @@
+.page {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-lowest);
+}
+
+h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: var(--mat-sys-title-large);
+  font-weight: 700;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note,
+.empty {
+  margin: 4px 0 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--mat-sys-tertiary-container);
+  color: var(--mat-sys-on-tertiary-container);
+  font: var(--mat-sys-label-medium);
+  font-weight: 700;
+
+  &.final {
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
+  }
+}
+
+.statement {
+  margin: 0;
+
+  .line {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--mat-sys-outline-variant);
+  }
+
+  dt {
+    display: grid;
+    gap: 2px;
+  }
+
+  .label {
+    font-weight: 600;
+  }
+
+  .sign {
+    display: inline-block;
+    width: 1.2em;
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  small {
+    max-width: 60ch;
+    font: var(--mat-sys-body-small);
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  dd {
+    margin: 0;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .total {
+    border-top: 2px solid var(--mat-sys-on-surface);
+    font: var(--mat-sys-title-medium);
+    font-weight: 800;
+
+    dd {
+      font-size: 1.4rem;
+    }
+  }
+}
+
+.info,
+.empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.info {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--mat-sys-surface-container);
+  font: var(--mat-sys-body-small);
+}
+
+.refunds {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--mat-sys-outline-variant);
+  }
+
+  .order {
+    display: grid;
+  }
+
+  small {
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.error {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
+}
+
+.skeleton {
+  height: 280px;
+  border-radius: 12px;
+  background: var(--mat-sys-surface-container-high);
+
+  &.small {
+    height: 72px;
+  }
+}
+
+.state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+
+  p {
+    margin: 0;
+  }
+}
