@@ -1,96 +1,187 @@
-<section class="hero">
-  <div class="container">
-    <h1>Seu próximo show começa aqui.</h1>
-    <p class="lead">Busque por artista, cidade ou data e garanta seu lugar.</p>
+<h1 class="sr-only">Shows à venda no Lotou</h1>
 
-    <form class="filters" [formGroup]="form" (ngSubmit)="submit()" role="search">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>Artista</mat-label>
-        <mat-icon matPrefix aria-hidden="true">mic</mat-icon>
-        <input matInput formControlName="artist" maxlength="100" autocomplete="off" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>Cidade</mat-label>
-        <mat-icon matPrefix aria-hidden="true">location_on</mat-icon>
-        <input matInput formControlName="city" maxlength="100" autocomplete="off" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>De</mat-label>
-        <input matInput type="date" formControlName="from" />
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>Até</mat-label>
-        <input matInput type="date" formControlName="to" [min]="form.controls.from.value" />
-      </mat-form-field>
-
-      <button matButton="filled" type="submit" class="submit" [disabled]="invalidPeriod">
-        <mat-icon aria-hidden="true">search</mat-icon>
-        Buscar
-      </button>
-    </form>
-
-    @if (invalidPeriod) {
-      <p class="form-error" role="alert">A data final precisa ser igual ou posterior à inicial.</p>
-    }
-  </div>
-</section>
-
-<section class="results container" aria-live="polite" [attr.aria-busy]="store.loading()">
-  <header class="results-header">
-    <h2>{{ hasFilters ? 'Resultado da busca' : 'Próximos shows' }}</h2>
-    @if (hasFilters) {
-      <button matButton type="button" (click)="clear()">
-        <mat-icon aria-hidden="true">close</mat-icon>
-        Limpar filtros
-      </button>
-    }
-  </header>
-
-  @if (store.loading()) {
-    <div class="grid" aria-hidden="true">
-      @for (item of skeletons; track $index) {
-        <div class="skeleton"></div>
-      }
-    </div>
-  } @else if (store.error(); as error) {
-    <div class="state" role="alert">
-      <mat-icon aria-hidden="true">cloud_off</mat-icon>
-      <h3>Não foi possível carregar os shows</h3>
-      <p>{{ error.message }}</p>
-      @if (error.traceId) {
-        <p class="trace">Código para o suporte: {{ error.traceId }}</p>
-      }
-      <button matButton="tonal" type="button" (click)="store.retry()">Tentar de novo</button>
-    </div>
-  } @else if (store.empty()) {
-    <div class="state">
-      <mat-icon aria-hidden="true">search_off</mat-icon>
-      <h3>Nenhum show encontrado</h3>
-      <p>Tente outro artista, outra cidade ou um período maior.</p>
-      @if (hasFilters) {
-        <button matButton="tonal" type="button" (click)="clear()">Ver todos os shows</button>
-      }
-    </div>
-  } @else {
-    <div class="grid">
-      @for (show of store.shows(); track show.id) {
-        <app-show-card [show]="show" />
-      }
-    </div>
-
-    @if (store.hasMore()) {
-      <div class="more">
-        @if (store.loadingMore()) {
-          <mat-progress-bar mode="indeterminate" aria-label="Carregando mais shows" />
-        } @else {
-          <button matButton="outlined" type="button" (click)="store.loadMore()">
-            Carregar mais shows
-          </button>
-        }
+<div class="container page">
+  @if (!hasFilters()) {
+    @if (featured(); as show) {
+      <section aria-label="Show em destaque">
+        <app-featured-show [show]="show" />
+      </section>
+    } @else if (store.loading()) {
+      <div class="hero-skeleton" aria-hidden="true">
+        <div class="skeleton poster"></div>
+        <div class="lines">
+          <div class="skeleton line short"></div>
+          <div class="skeleton line big"></div>
+          <div class="skeleton line big"></div>
+          <div class="skeleton line"></div>
+          <div class="skeleton line cta"></div>
+        </div>
       </div>
     }
   }
-</section>
+
+  <section class="search" aria-label="Busca">
+    <!--
+      Âncora da aba "Buscar" do celular (`/#busca`). O roteador rola até o topo
+      do formulário sem contar o cabeçalho fixo, então o formulário começa um
+      pouco acima do título (veja `.search-form`).
+    -->
+    <form
+      id="busca"
+      class="search-form"
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      role="search"
+      aria-labelledby="busca-titulo"
+    >
+      <h2 id="busca-titulo" class="section-title">Pra onde vamos?</h2>
+
+      <div class="filters panel">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Artista</mat-label>
+          <ng-icon matIconPrefix name="lucideMicVocal" aria-hidden="true" />
+          <input matInput formControlName="artist" maxlength="100" autocomplete="off" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Cidade</mat-label>
+          <ng-icon matIconPrefix name="lucideMapPin" aria-hidden="true" />
+          <input matInput formControlName="city" maxlength="100" autocomplete="off" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>De</mat-label>
+          <input matInput type="date" formControlName="from" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Até</mat-label>
+          <input matInput type="date" formControlName="to" [min]="form.controls.from.value" />
+        </mat-form-field>
+
+        <button type="submit" class="btn btn-cta submit" [disabled]="invalidPeriod">
+          <ng-icon name="lucideSearch" aria-hidden="true" />
+          Buscar
+        </button>
+      </div>
+      @if (invalidPeriod) {
+        <p class="form-error" role="alert">
+          A data final precisa ser igual ou posterior à inicial.
+        </p>
+      }
+    </form>
+
+    <div class="chips" role="group" aria-label="Filtros rápidos">
+      <button type="button" class="chip" [attr.aria-pressed]="!hasFilters()" (click)="clear()">
+        Todos
+      </button>
+      @for (period of periods(); track period.id) {
+        <button
+          type="button"
+          class="chip"
+          [attr.aria-pressed]="activePeriod() === period.id"
+          (click)="togglePeriod(period)"
+        >
+          {{ period.label }}
+        </button>
+      }
+      @if (cities().length > 0) {
+        <span class="divider" aria-hidden="true"></span>
+        @for (city of cities(); track city) {
+          <button
+            type="button"
+            class="chip"
+            [attr.aria-pressed]="store.filters().city === city"
+            (click)="toggleCity(city)"
+          >
+            {{ city }}
+          </button>
+        }
+      }
+    </div>
+  </section>
+
+  @if (tonight().length > 0) {
+    <section class="tonight" aria-labelledby="hoje">
+      <h2 id="hoje" class="section-title">Hoje à noite</h2>
+      @for (show of tonight(); track show.id) {
+        <app-tonight-card [show]="show" />
+      }
+    </section>
+  }
+
+  @if (hasFilters() || grid().length > 0 || !store.shows().length) {
+    <section class="results" aria-labelledby="proximos" [attr.aria-busy]="store.loading()">
+      <header class="results-header">
+        <h2 id="proximos" class="section-title">
+          {{ hasFilters() ? 'Resultado da busca' : 'Próximos shows' }}
+        </h2>
+        <p class="summary" role="status">
+          @if (!store.loading() && !store.error() && !store.empty() && !store.hasMore()) {
+            {{ summary() }}
+          }
+        </p>
+        @if (hasFilters()) {
+          <button type="button" class="btn btn-outline clear" (click)="clear()">
+            <ng-icon name="lucideX" aria-hidden="true" />
+            Limpar filtros
+          </button>
+        }
+      </header>
+
+      @if (store.loading()) {
+        <div class="grid" aria-hidden="true">
+          @for (item of skeletons; track $index) {
+            <div class="card-skeleton">
+              <div class="skeleton cover"></div>
+              <div class="skeleton line"></div>
+              <div class="skeleton line short"></div>
+            </div>
+          }
+        </div>
+      } @else if (store.error(); as error) {
+        <div class="state panel" role="alert">
+          <ng-icon name="lucideCloudOff" aria-hidden="true" />
+          <h3>Não foi possível carregar os shows</h3>
+          <p>{{ error.message }}</p>
+          @if (error.traceId) {
+            <p class="trace mono">Código para o suporte: {{ error.traceId }}</p>
+          }
+          <button type="button" class="btn btn-cta" (click)="store.retry()">Tentar de novo</button>
+        </div>
+      } @else if (store.empty()) {
+        <div class="state panel">
+          <ng-icon name="lucideSearchX" aria-hidden="true" />
+          @if (hasFilters()) {
+            <h3>Nenhum show encontrado</h3>
+            <p>Tente outro artista, outra cidade ou um período maior.</p>
+            <button type="button" class="btn btn-cta" (click)="clear()">Ver todos os shows</button>
+          } @else {
+            <h3>Nenhum show à venda agora</h3>
+            <p>Os próximos shows aparecem aqui assim que forem publicados.</p>
+          }
+        </div>
+      } @else {
+        <div class="grid">
+          @for (show of grid(); track show.id) {
+            <app-show-card [show]="show" />
+          }
+        </div>
+
+        @if (store.hasMore()) {
+          <div class="more">
+            @if (store.loadingMore()) {
+              <mat-progress-bar mode="indeterminate" aria-label="Carregando mais shows" />
+            } @else {
+              <button type="button" class="btn btn-outline" (click)="store.loadMore()">
+                Carregar mais shows
+              </button>
+            }
+          </div>
+        }
+      }
+    </section>
+  }
+
+  <app-why-lotou />
+</div>

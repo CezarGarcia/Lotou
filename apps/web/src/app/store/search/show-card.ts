@@ -2,51 +2,48 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { MoneyPipe } from '../../core/format/money.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
+import { Cartaz } from '../../shared/ui/cartaz';
 import { ShowSummary } from '../data/show.models';
-import { ShowCover } from '../shared/show-cover';
+import { showBadge } from './vitrine';
 
-/** Card de um show na busca. O card inteiro é um link para a página do show. */
+/**
+ * Cartão de um show na vitrine: o cartaz em retrato e, embaixo, o que o
+ * comprador lê. O cartão inteiro é um link para a página do show; o cartaz é
+ * decorativo, então artista, data e local também aparecem em texto.
+ */
 @Component({
   selector: 'app-show-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, ShowCover, MoneyPipe, ShowDatePipe],
+  imports: [RouterLink, Cartaz, MoneyPipe, ShowDatePipe],
   template: `
     @let s = show();
-    <a class="card" [routerLink]="['/shows', s.id]" [attr.aria-label]="s.artist + ': ' + s.title">
-      <div class="cover">
-        <app-show-cover [artist]="s.artist" />
-        <div class="date" aria-hidden="true">
-          <span class="day">{{ s.startsAt | showDate: s.venue?.timezone : 'day' }}</span>
-          <span class="month">{{ s.startsAt | showDate: s.venue?.timezone : 'month' }}</span>
-        </div>
-        @if (s.highDemand) {
-          <span class="badge">Alta demanda</span>
-        }
-      </div>
+    @let tz = s.venue?.timezone;
+    <a class="card" [routerLink]="['/shows', s.id]">
+      <app-cartaz
+        size="card"
+        [artist]="s.artist"
+        [eyebrow]="eyebrow()"
+        [date]="s.startsAt"
+        [timezone]="tz"
+      />
       <div class="body">
+        @if (badge(); as badge) {
+          <span class="tag badge" [attr.data-tone]="badge.tone">{{ badge.label }}</span>
+        }
         <h3 class="artist">{{ s.artist }}</h3>
         <p class="title">{{ s.title }}</p>
-        <p class="meta">
-          {{ s.startsAt | showDate: s.venue?.timezone : 'weekday' }},
-          {{ s.startsAt | showDate: s.venue?.timezone : 'date' }} às
-          {{ s.startsAt | showDate: s.venue?.timezone : 'time' }}
+        <p class="meta when">
+          {{ s.startsAt | showDate: tz : 'weekday' }}, {{ s.startsAt | showDate: tz : 'date' }} às
+          {{ s.startsAt | showDate: tz : 'time' }}
         </p>
         @if (s.venue; as venue) {
           <p class="meta">{{ venue.name }} · {{ venue.city }}/{{ venue.state }}</p>
         }
-        <div class="footer">
-          @if (s.priceFromCents !== null) {
-            <span class="price">
-              <small>a partir de</small>
-              {{ s.priceFromCents | brl }}
-            </span>
-          }
-          @if (salesOpenLater()) {
-            <span class="sales">
-              Vendas em {{ s.salesStartAt | showDate: s.venue?.timezone : 'short' }}
-            </span>
-          }
-        </div>
+        @if (s.priceFromCents !== null) {
+          <p class="price">
+            a partir de <strong class="num">{{ s.priceFromCents | brl }}</strong>
+          </p>
+        }
       </div>
     </a>
   `,
@@ -55,8 +52,10 @@ import { ShowCover } from '../shared/show-cover';
 export class ShowCard {
   readonly show = input.required<ShowSummary>();
 
-  protected readonly salesOpenLater = computed(() => {
-    const salesStartAt = this.show().salesStartAt;
-    return salesStartAt !== null && new Date(salesStartAt).getTime() > Date.now();
+  protected readonly eyebrow = computed(() => {
+    const venue = this.show().venue;
+    return venue ? `${venue.city} · ${venue.state}` : '';
   });
+
+  protected readonly badge = computed(() => showBadge(this.show(), new Date()));
 }

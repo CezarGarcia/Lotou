@@ -41,14 +41,13 @@ import { countdownParts, injectNow } from '../shared/countdown';
     }
     .label {
       margin: 0 0 12px;
-      font: var(--mat-sys-body-medium);
-      color: var(--mat-sys-on-surface-variant);
+      color: var(--lt-muted);
+      font-size: 0.875rem;
     }
     .open {
       margin: 0;
-      font: var(--mat-sys-title-medium);
       font-weight: 700;
-      color: var(--mat-sys-primary);
+      color: var(--lt-ok);
     }
     .timer {
       display: grid;
@@ -58,21 +57,26 @@ import { countdownParts, injectNow } from '../shared/countdown';
     .unit {
       display: grid;
       justify-items: center;
-      padding: 10px 4px;
-      border-radius: 12px;
-      background: var(--mat-sys-primary-container);
-      color: var(--mat-sys-on-primary-container);
+      gap: 4px;
+      padding: 12px 4px 10px;
+      border-radius: var(--lt-radius-sm);
+      background: var(--lt-bg-deep);
+      border: 1px solid var(--lt-line);
     }
     strong {
-      font-size: 1.6rem;
-      font-weight: 800;
+      font-family: var(--lt-display);
+      font-size: clamp(2.25rem, 9vw, 3rem);
+      font-weight: 900;
       font-variant-numeric: tabular-nums;
-      line-height: 1.1;
+      line-height: 0.9;
+      color: var(--lt-accent);
     }
     span {
-      font: var(--mat-sys-label-small);
+      font-family: var(--lt-mono);
+      font-size: 0.6875rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.1em;
+      color: var(--lt-muted);
     }
   `,
 })

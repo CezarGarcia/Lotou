@@ -1,36 +1,29 @@
 import { HttpErrorResponse, httpResource } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
-import { MoneyPipe } from '../../core/format/money.pipe';
-import { ShowDatePipe } from '../../core/format/show-date.pipe';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCloudOff, lucideSearchX } from '@ng-icons/lucide';
 import { toApiError } from '../../core/http/problem';
+import { cartazPalette } from '../../shared/ui/cartaz-palette';
 import { Show } from '../data/show.models';
 import { SHOWS_URL } from '../data/shows.api';
 import { injectLiveAvailability } from '../shared/live-availability';
-import { SaleChip } from '../shared/sale-chip';
-import { ShowCover } from '../shared/show-cover';
 import { BuyPanel, KIND_LABELS } from './buy-panel';
+import { SectorCard } from './sector-card';
+import { ShowRules } from './show-rules';
+import { ShowTop } from './show-top';
 
 /**
- * Página do show: data, local, setores e preços. O lote em venda, o preço e
- * quantos ingressos restam vêm da disponibilidade, consultada a cada 5 s.
+ * Página do show: o cartaz, a data, o local, os setores e as regras, com o
+ * painel de compra ao lado. O lote em venda, o preço e quantos ingressos
+ * restam vêm da disponibilidade, consultada a cada 5 s.
  */
 @Component({
   selector: 'app-show-detail-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    MatButtonModule,
-    MatIconModule,
-    MoneyPipe,
-    ShowDatePipe,
-    ShowCover,
-    SaleChip,
-    BuyPanel,
-  ],
+  imports: [RouterLink, NgIcon, BuyPanel, SectorCard, ShowRules, ShowTop],
+  viewProviders: [provideIcons({ lucideCloudOff, lucideSearchX })],
   templateUrl: './show-detail.page.html',
   styleUrl: './show-detail.page.scss',
 })
@@ -63,6 +56,16 @@ export class ShowDetailPage {
       : [],
   );
 
+  /** Os tipos de setor do show (pista, cadeira numerada), sem repetir. */
+  protected readonly kinds = computed(() =>
+    this.show.hasValue() ? [...new Set(this.show.value().sectors.map((s) => s.kind))] : [],
+  );
+
+  /** A cor do cartaz, para as barras de venda e o palco do local. */
+  protected readonly color = computed(() =>
+    this.show.hasValue() ? cartazPalette(this.show.value().artist).background : null,
+  );
+
   protected readonly kindLabels = KIND_LABELS;
 
   constructor() {
@@ -72,9 +75,5 @@ export class ShowDetailPage {
         this.title.setTitle(`${artist}: ${title} | Lotou.`);
       }
     });
-  }
-
-  protected availableLabel(count: number): string {
-    return count === 1 ? '1 disponível' : `${count} disponíveis`;
   }
 }
