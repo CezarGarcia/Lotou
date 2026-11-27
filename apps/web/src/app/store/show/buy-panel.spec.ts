@@ -124,6 +124,21 @@ describe('BuyPanel', () => {
     });
   });
 
+  it('na barra do celular, troca "Escolher setor" pelo setor escolhido e o preço dele', async () => {
+    const { fixture, element, radio } = await render(SHOW, availability('ON_SALE', 'ON_SALE'));
+    const action = () => element.querySelector('.action')!;
+    expect(action().classList).not.toContain('chosen');
+    expect(element.querySelector('.jump')!.textContent).toContain('Escolher setor');
+    expect(element.querySelector('.bar-price')!.textContent).toContain('a partir de');
+
+    radio('camarote').click();
+    await fixture.whenStable();
+    expect(action().classList).toContain('chosen');
+    const bar = element.querySelector('.bar-price')!.textContent!.replace(/\s+/g, ' ');
+    expect(bar).toContain('Camarote');
+    expect(bar).toContain('R$ 400,00');
+  });
+
   it('explica quando está tudo esgotado', async () => {
     const { text, button } = await render(SHOW, availability('SOLD_OUT', 'SOLD_OUT'));
     expect(text()).toContain('Ingressos esgotados.');

@@ -1,136 +1,79 @@
-<div class="container page">
-  <a matButton routerLink="/" class="back">
-    <mat-icon aria-hidden="true">arrow_back</mat-icon>
-    Todos os shows
-  </a>
+@if (show.hasValue()) {
+  @let s = show.value();
 
-  @if (show.hasValue()) {
-    @let s = show.value();
-    @let tz = s.venue?.timezone;
+  <article class="page" [style.--show-cor]="color()">
+    <app-show-top [show]="s" />
 
-    <article class="layout">
-      <div class="main">
-        <div class="cover">
-          <app-show-cover [artist]="s.artist" />
-          @if (s.highDemand) {
-            <span class="badge">Alta demanda</span>
-          }
-        </div>
-
-        <header class="heading">
-          <p class="title">{{ s.title }}</p>
-          <h1>{{ s.artist }}</h1>
-        </header>
-
-        @if (s.status === 'CANCELLED') {
-          <p class="cancelled" role="status">
-            <mat-icon aria-hidden="true">event_busy</mat-icon>
-            Este show foi cancelado.
-          </p>
-        }
-
-        <ul class="facts">
-          <li>
-            <mat-icon aria-hidden="true">event</mat-icon>
-            <div>
-              <strong class="capitalize">{{ s.startsAt | showDate: tz : 'full' }}</strong>
-              <span>
-                Início às {{ s.startsAt | showDate: tz : 'time' }}
-                @if (s.doorsOpenAt) {
-                  · Portões às {{ s.doorsOpenAt | showDate: tz : 'time' }}
-                }
-              </span>
-            </div>
-          </li>
-          @if (s.venue; as venue) {
-            <li>
-              <mat-icon aria-hidden="true">location_on</mat-icon>
-              <div>
-                <strong>{{ venue.name }}</strong>
-                <span>{{ venue.city }}/{{ venue.state }} · horário local</span>
-              </div>
-            </li>
-          }
-        </ul>
-
-        @if (s.description) {
-          <section>
-            <h2>Sobre o show</h2>
-            <p class="description">{{ s.description }}</p>
-          </section>
-        }
-
-        <section>
-          <h2>Setores e preços</h2>
-          <div class="sectors">
-            @for (item of sectors(); track item.sector.id) {
-              @let sector = item.sector;
-              @let live = item.live;
-              <div class="sector">
-                <header>
-                  <h3>{{ sector.name }}</h3>
-                  @if (live) {
-                    <app-sale-chip [sale]="live.sale" />
-                  }
-                </header>
-                <p class="meta">
-                  {{ kindLabels[sector.kind] }}
-                  @if (live?.sale === 'ON_SALE') {
-                    · {{ availableLabel(live!.available) }}
-                  }
-                </p>
-                @if (sector.lots.length > 0) {
-                  <ol class="lots">
-                    @for (lot of sector.lots; track lot.id) {
-                      @let current = live?.lot?.id === lot.id;
-                      <li [class.current]="current">
-                        <span>
-                          {{ lot.name }}
-                          @if (current) {
-                            <em>{{ live?.sale === 'PAUSED' ? 'pausado' : 'em venda' }}</em>
-                          }
-                        </span>
-                        <strong>{{
-                          (current ? live!.lot!.priceCents : lot.priceCents) | brl
-                        }}</strong>
-                      </li>
-                    }
-                  </ol>
-                } @else {
-                  <p class="no-lots">Preços em breve.</p>
-                }
-              </div>
-            }
-          </div>
-        </section>
-      </div>
-
+    <div class="container layout">
       <aside class="side" aria-label="Ingressos">
         <app-buy-panel [show]="s" [availability]="availability.state()" />
       </aside>
-    </article>
-  } @else if (show.isLoading()) {
-    <div class="loading" aria-busy="true" aria-label="Carregando o show">
-      <div class="skeleton cover"></div>
-      <div class="skeleton line wide"></div>
+
+      <div class="main">
+        @if (s.description || s.sectors.length > 0) {
+          <section aria-labelledby="sobre">
+            <h2 id="sobre" class="section-title">Sobre o show</h2>
+            @if (s.description) {
+              <p class="description">{{ s.description }}</p>
+            }
+            <ul class="facts">
+              <li>Até 4 ingressos por CPF</li>
+              @for (kind of kinds(); track kind) {
+                <li>{{ kindLabels[kind] }}</li>
+              }
+              @if (s.highDemand) {
+                <li>Fila virtual com sorteio na abertura</li>
+              }
+            </ul>
+          </section>
+        }
+
+        <section aria-labelledby="setores">
+          <h2 id="setores" class="section-title">Setores e lotes</h2>
+          @if (sectors().length > 0) {
+            <div class="sectors">
+              @for (item of sectors(); track item.sector.id) {
+                <app-sector-card [sector]="item.sector" [live]="item.live" />
+              }
+            </div>
+          } @else {
+            <p class="muted">Os setores deste show ainda não foram definidos.</p>
+          }
+        </section>
+
+        <app-show-rules [show]="s" />
+      </div>
+    </div>
+  </article>
+} @else if (show.isLoading()) {
+  <div class="container loading" aria-busy="true" aria-label="Carregando o show">
+    <div class="skeleton poster"></div>
+    <div class="lines">
+      <div class="skeleton line short"></div>
+      <div class="skeleton line big"></div>
+      <div class="skeleton line big"></div>
       <div class="skeleton line"></div>
     </div>
-  } @else if (notFound()) {
-    <div class="state">
-      <mat-icon aria-hidden="true">search_off</mat-icon>
+  </div>
+} @else if (notFound()) {
+  <div class="container">
+    <div class="state panel">
+      <ng-icon name="lucideSearchX" aria-hidden="true" />
       <h1>Show não encontrado</h1>
       <p>O link pode estar errado, ou o show saiu do ar.</p>
-      <a matButton="tonal" routerLink="/">Ver todos os shows</a>
+      <a class="btn btn-cta" routerLink="/">Ver todos os shows</a>
     </div>
-  } @else if (error(); as error) {
-    <div class="state" role="alert">
-      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+  </div>
+} @else if (error(); as error) {
+  <div class="container">
+    <div class="state panel" role="alert">
+      <ng-icon name="lucideCloudOff" aria-hidden="true" />
       <h1>Não foi possível carregar o show</h1>
       <p>{{ error.message }}</p>
       @if (error.traceId) {
-        <p class="trace">Código para o suporte: {{ error.traceId }}</p>
+        <p class="trace mono">Código para o suporte: {{ error.traceId }}</p>
       }
-      <button matButton="tonal" type="button" (click)="show.reload()">Tentar de novo</button>
+      <button type="button" class="btn btn-cta" (click)="show.reload()">Tentar de novo</button>
     </div>
-  }
-</div>
+  </div>
+}

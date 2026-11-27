@@ -1,6 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideArrowRight, lucideInfo, lucideUsers } from '@ng-icons/lucide';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { MoneyPipe } from '../../core/format/money.pipe';
@@ -31,17 +39,23 @@ interface SectorOption {
 /**
  * Painel de compra da página do show: preço, contagem regressiva, a escolha do
  * setor e o botão que leva ao checkout (ou à fila, em show de alta demanda).
+ *
+ * No desktop, o painel acompanha a rolagem ao lado da página. No celular, o
+ * preço e o botão ficam numa barra presa embaixo da tela; antes de escolher o
+ * setor, a barra oferece "Escolher setor", que leva à lista de setores.
  */
 @Component({
   selector: 'app-buy-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatIconModule, MoneyPipe, ShowDatePipe, SaleChip, SalesCountdown],
+  imports: [NgIcon, MoneyPipe, ShowDatePipe, SaleChip, SalesCountdown],
+  viewProviders: [provideIcons({ lucideArrowRight, lucideInfo, lucideUsers })],
   templateUrl: './buy-panel.html',
   styleUrl: './buy-panel.scss',
 })
 export class BuyPanel {
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly show = input.required<Show>();
   readonly availability = input.required<AvailabilityState>();
@@ -61,6 +75,11 @@ export class BuyPanel {
       return { id: sector.id, name: sector.name, kind: sector.kind, live: current, selectable };
     });
   });
+
+  /** Algum setor pode ser escolhido agora. */
+  protected readonly selectable = computed(() =>
+    this.options().some((option) => option.selectable),
+  );
 
   protected readonly choice = computed(() =>
     this.options().find((option) => option.id === this.selected() && option.selectable),
@@ -136,5 +155,16 @@ export class BuyPanel {
     void (this.show().highDemand
       ? this.router.navigate(['/shows', id, 'fila'], { queryParams: { setor: choice.id } })
       : this.router.navigate(['/shows', id, 'comprar', choice.id]));
+  }
+
+  /** Leva à escolha do setor (a barra do celular, antes da escolha). */
+  protected showPicker(): void {
+    const element = this.host.nativeElement;
+    const target = element.querySelector<HTMLElement>('.picker') ?? element;
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+    element.querySelector<HTMLInputElement>('.picker input:not(:disabled)')?.focus({
+      preventScroll: true,
+    });
   }
 }

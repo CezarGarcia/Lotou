@@ -1,11 +1,13 @@
 @let s = show();
-<div class="buy">
-  @if (fromCents(); as from) {
-    <p class="from">
-      <small>Ingressos a partir de</small>
-      <strong>{{ from | brl }}</strong>
-    </p>
-  }
+<div class="buy panel">
+  <header class="head">
+    <h2 class="display">Ingressos</h2>
+    @if (fromCents(); as from) {
+      <p class="from">
+        a partir de <strong class="num">{{ from | brl }}</strong>
+      </p>
+    }
+  </header>
 
   @if (s.salesStartAt && s.status !== 'CANCELLED') {
     <app-sales-countdown [opensAt]="s.salesStartAt" [timezone]="tz()" />
@@ -13,7 +15,7 @@
 
   @if (s.highDemand && s.status !== 'CANCELLED') {
     <div class="note">
-      <mat-icon aria-hidden="true">groups</mat-icon>
+      <ng-icon name="lucideUsers" aria-hidden="true" />
       <div>
         <strong>Alta demanda: a compra passa por uma fila virtual.</strong>
         <p>
@@ -22,7 +24,7 @@
           5 minutos para reservar.
         </p>
         @if (waitingRoomOpensAt(); as opens) {
-          <p>Sala de espera: {{ opens | showDate: tz() : 'short' }} (horário local).</p>
+          <p class="mono">Sala de espera: {{ opens | showDate: tz() : 'short' }} (horário local)</p>
         }
       </div>
     </div>
@@ -43,11 +45,16 @@
           />
           <span class="name">
             {{ option.name }}
-            <small>{{ kindLabels[option.kind] }}</small>
+            <small>
+              {{ kindLabels[option.kind] }}
+              @if (option.live?.lot; as lot) {
+                · {{ lot.name }}
+              }
+            </small>
           </span>
           @if (option.live; as live) {
             @if (live.sale === 'ON_SALE' && live.lot) {
-              <strong class="price">{{ live.lot.priceCents | brl }}</strong>
+              <strong class="price num">{{ live.lot.priceCents | brl }}</strong>
             } @else {
               <app-sale-chip [sale]="live.sale" />
             }
@@ -57,14 +64,38 @@
     </fieldset>
   }
 
-  <button
-    matButton="filled"
-    type="button"
-    class="cta"
-    [disabled]="!canContinue()"
-    (click)="continue()"
+  <!-- No celular, o preço e o botão viram uma barra presa embaixo da tela. -->
+  <div
+    class="action"
+    [class.fixed]="s.status !== 'CANCELLED'"
+    [class.chosen]="!!choice() || !selectable()"
   >
-    {{ s.highDemand ? 'Entrar na fila' : 'Comprar ingressos' }}
-  </button>
-  <p class="hint" aria-live="polite">{{ hint() }}</p>
+    <p class="bar-price" aria-hidden="true">
+      @if (choice(); as choice) {
+        <span>{{ choice.name }}</span>
+        @if (choice.live?.lot; as lot) {
+          <strong class="num">{{ lot.priceCents | brl }}</strong>
+        }
+      } @else if (fromCents(); as from) {
+        <span>a partir de</span>
+        <strong class="num">{{ from | brl }}</strong>
+      }
+    </p>
+    <button
+      type="button"
+      class="btn btn-cta btn-lg cta"
+      [disabled]="!canContinue()"
+      (click)="continue()"
+    >
+      {{ s.highDemand ? 'Entrar na fila' : 'Comprar ingressos' }}
+      <ng-icon name="lucideArrowRight" aria-hidden="true" />
+    </button>
+    <button type="button" class="btn btn-cta btn-lg jump" (click)="showPicker()">
+      Escolher setor
+    </button>
+  </div>
+  <p class="hint" aria-live="polite">
+    <ng-icon name="lucideInfo" aria-hidden="true" />
+    {{ hint() }}
+  </p>
 </div>

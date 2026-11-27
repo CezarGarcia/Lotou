@@ -1,0 +1,82 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 18px;
+}
+
+p {
+  margin: 0;
+}
+
+header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.meta {
+  color: var(--lt-muted);
+  font-size: 0.875rem;
+}
+
+.current {
+  display: grid;
+  gap: 8px;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 0.875rem;
+}
+
+// A barra tem a cor do cartaz do show (`--show-cor`, posta pela página).
+.bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--lt-raised);
+
+  div {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--show-cor, var(--lt-cta));
+  }
+}
+
+.note {
+  color: var(--lt-muted);
+  font-size: 0.8125rem;
+}
+
+.lots {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--lt-line);
+    color: var(--lt-text-3);
+    font-size: 0.9375rem;
+  }
+
+  strong {
+    color: var(--lt-text);
+  }
+}
