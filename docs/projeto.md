@@ -280,7 +280,7 @@ Decisões pequenas que valem para todos os serviços e são caras de mudar depoi
 
 ## Arquitetura
 
-Nove serviços em três linguagens, ligados por HTTP síncrono só no caminho do usuário e por eventos no resto. Java fica onde há concorrência e transação, Node no catálogo de shows, no mock e na portaria, e Python em dados, tempo real e IA.
+Nove serviços em três linguagens, ligados por HTTP síncrono só no caminho do usuário e por eventos no resto. Java fica onde há concorrência e transação, Node no catálogo de shows, no mock e na portaria, e Python em dados, tempo real e IA. Cada tecnologia está explicada com diagramas em [`docs/tecnologias/`](tecnologias/).
 
 ```mermaid
 flowchart TB
@@ -347,12 +347,12 @@ lotou/
 │   ├── otel-collector.yaml
 │   └── grafana/dashboards/
 ├── seed/                      # shows, locais e compradores fictícios
-├── scripts/                   # verificação do ambiente (smoke)
+├── scripts/                   # smoke, experimentos de caos e o gerador do diagrama da arquitetura
 ├── e2e/                       # Playwright: a loja no navegador, contra o ambiente no ar
 ├── load-tests/                # k6
-├── chaos/                     # roteiros dos experimentos
 ├── docs/
 │   ├── adr/
+│   ├── tecnologias/           # cada tecnologia explicada, com diagramas
 │   └── projeto.md
 ├── compose.yaml               # ponto de entrada: inclui infra/docker-compose.yml
 └── Makefile
@@ -446,7 +446,7 @@ Todo evento usa o mesmo envelope: `eventId`, `type`, `version`, `occurredAt` e `
 
 | Tópico | Chave | Mensagens | Produz | Consome |
 | --- | --- | --- | --- | --- |
-| `shows.catalog` (compactado) | showId | ShowPublished, ShowUpdated (o show inteiro, com versão; uma mudança de preço de lote é um ShowUpdated) | event | inventory, analytics |
+| `shows.catalog` (compactado) | showId | ShowPublished, ShowUpdated (o show inteiro, com versão; uma mudança de preço de lote é um ShowUpdated) | event | inventory, order, checkin, analytics |
 | `order.events` | orderId | OrderCreated, OrderConfirmed, OrderCancelled, OrderRefunded, OrderRefundFailed, TicketsIssued, TicketsCancelled | order (via outbox) | analytics, notification, checkin |
 | `payment.commands` | orderId | AuthorizePayment, RefundPayment | order | payment-mock |
 | `payment.events` | orderId | PaymentAuthorized, PaymentDeclined, PaymentRefunded, RefundFailed | payment-mock | order |

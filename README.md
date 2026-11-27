@@ -227,36 +227,9 @@ Os alertas já pegaram um incidente de verdade durante o desenvolvimento: com o 
 
 ## Arquitetura
 
-O que existe hoje:
+![Arquitetura do Lotou: navegador, gateway, sete serviços, Kafka, RabbitMQ, os bancos e a observabilidade](docs/img/arquitetura.svg)
 
-```mermaid
-flowchart LR
-    browser["Navegador<br/>Angular + OTel Web SDK"] --> web["web (nginx)<br/>estáticos e proxy"]
-    web -- "/api" --> gw["api-gateway<br/>Spring Cloud Gateway<br/>JWT e rate limit"]
-    gw --> ev["event-service<br/>NestJS<br/>shows e busca"]
-    gw --> inv["inventory-service<br/>Spring Boot<br/>lotes, fila e reservas"]
-    gw --> ord["order-service<br/>Spring Boot<br/>pedidos e saga"]
-    gw --> an["analytics-service<br/>FastAPI<br/>read models do produtor"]
-    ord -. "lê a reserva" .-> inv
-    ev -- "shows.catalog" --> K[("Kafka")]
-    K -- "shows.catalog<br/>inventory.commands" --> inv
-    inv -- "inventory.events" --> K
-    ord <-- "order.events, comandos<br/>e respostas da saga" --> K
-    K <-- "payment.commands<br/>payment.events" --> pay["payment-mock<br/>NestJS"]
-    K -- "catálogo, pedidos<br/>e lotes" --> an
-    K -- "order.events" --> nt["notification-service<br/>FastAPI<br/>PDF e e-mail"]
-    nt <--> mq[("RabbitMQ<br/>retry e DLQ")]
-    nt -- "SMTP" --> mail["Mailpit"]
-    an -. "WebSocket do painel" .-> gw
-    ev --> mongo[("MongoDB")]
-    an --> mongo
-    ev --> cache[("redis-cache")]
-    inv --> core[("redis-core")]
-    gw --> core
-    inv --> pg[("Postgres<br/>um banco por serviço")]
-    ord --> pg
-    pay --> pg
-```
+**Para entender cada tecnologia** (o que ela faz aqui, por que foi escolhida e onde está no código, com diagramas), veja [`docs/tecnologias/`](docs/tecnologias/): [Kafka](docs/tecnologias/kafka.md), [RabbitMQ](docs/tecnologias/rabbitmq.md), [Redis](docs/tecnologias/redis.md), [MongoDB](docs/tecnologias/mongodb.md), [Postgres](docs/tecnologias/postgres.md), [Keycloak e segurança](docs/tecnologias/keycloak-e-seguranca.md) e [observabilidade](docs/tecnologias/observabilidade.md).
 
 Todos os serviços validam o JWT com as chaves públicas do Keycloak e exportam traces, métricas e logs por OTLP para o OTel Collector, que mascara CPF e e-mail antes de repassar ao Tempo, ao Prometheus e ao Loki.
 
@@ -302,9 +275,10 @@ lotou/
 ├── seed/                    # locais e shows fictícios
 ├── e2e/                    # testes ponta a ponta com Playwright, contra o ambiente no ar
 ├── load-tests/              # testes de carga com k6 e conferência das invariantes
-├── scripts/                 # verificação do ambiente
+├── scripts/                 # smoke, experimentos de caos e o gerador do diagrama da arquitetura
 ├── docs/
 │   ├── projeto.md           # produto, regras de negócio e arquitetura
+│   ├── tecnologias/         # cada tecnologia explicada, com diagramas
 │   └── adr/                 # decisões de arquitetura
 ├── .github/workflows/       # CI com filtro de caminho por serviço
 ├── compose.yaml             # ponto de entrada do Docker Compose

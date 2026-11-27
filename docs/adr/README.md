@@ -27,6 +27,7 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | # | Decisão | Status |
 | --- | --- | --- |
 | [0001](0001-kafka-para-eventos-de-dominio.md) | Kafka para eventos de domínio e comandos da saga | aceita |
+| [0002](0002-rabbitmq-para-ingressos-e-e-mails.md) | RabbitMQ para gerar os ingressos e enviar os e-mails | aceita |
 | [0003](0003-reserva-com-lua-no-redis.md) | Reserva com script Lua no Redis, comparada ao lock no Postgres | aceita |
 | [0004](0004-constraint-unica-de-show-e-assento.md) | Constraint única de show e assento nos ingressos | aceita |
 | [0005](0005-bitmap-para-o-status-dos-assentos.md) | Bitmap no Redis para o status dos assentos | aceita |
