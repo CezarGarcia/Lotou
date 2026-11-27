@@ -567,6 +567,29 @@ ng-icon {
   }
 }
 
+// Faixa do cabeçalho quando o aparelho está sem internet (app.html, ADR 37).
+.offline-bar {
+  background: var(--lt-cta);
+  color: var(--lt-on-cta);
+  font-size: 0.9375rem;
+  font-weight: 600;
+
+  .container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  a {
+    margin-left: auto;
+    color: inherit;
+    font-weight: 700;
+  }
+}
+
 // Texto só para leitores de tela (anúncios ao vivo, rótulos extras).
 .sr-only {
   position: absolute;

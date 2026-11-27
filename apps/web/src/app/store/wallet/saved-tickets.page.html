@@ -1,0 +1,56 @@
+<div class="container page">
+  <header class="head">
+    <p class="eyebrow">Ingressos salvos neste aparelho</p>
+    <h1 class="display">Seus ingressos</h1>
+    @if (!network.online()) {
+      <p class="status offline" role="status">
+        <ng-icon name="lucideCloudOff" aria-hidden="true" />
+        Sem internet. Os ingressos abaixo funcionam na portaria assim mesmo.
+      </p>
+    } @else if (wallet.savedAt(); as savedAt) {
+      <p class="status" role="status">
+        <ng-icon name="lucideRefreshCw" aria-hidden="true" />
+        Atualizados em {{ savedAt | date: "d 'de' MMM, HH:mm" }}
+      </p>
+    }
+  </header>
+
+  @for (entry of shows(); track entry.show.id) {
+    @let show = entry.show;
+    <section class="show" [attr.aria-labelledby]="'show-' + show.id">
+      <div class="show-head">
+        <h2 class="display" [id]="'show-' + show.id">{{ show.artist }}</h2>
+        <p class="muted">
+          {{ show.title }} · {{ show.startsAt | showDate: show.venue?.timezone : 'short' }}
+          @if (show.venue; as venue) {
+            · {{ venue.name }}, {{ venue.city }}/{{ venue.state }}
+          }
+        </p>
+      </div>
+      <ul class="tickets" aria-label="Ingressos">
+        @for (ticket of entry.tickets; track ticket.id) {
+          <li><app-ticket-stub [ticket]="ticket" [show]="show" /></li>
+        }
+      </ul>
+    </section>
+  } @empty {
+    <section class="empty panel">
+      <ng-icon name="lucideSmartphone" class="empty-icon" aria-hidden="true" />
+      <h2 class="display">Nenhum ingresso salvo aqui</h2>
+      <p>
+        Com internet, entre na sua conta e abra <strong>Meus ingressos</strong>: os ingressos dos
+        próximos shows ficam guardados neste aparelho e abrem mesmo sem sinal na porta do show.
+      </p>
+      @if (network.online()) {
+        <a class="btn btn-cta" routerLink="/meus-ingressos">Abrir Meus ingressos</a>
+      }
+    </section>
+  }
+
+  @if (shows().length > 0) {
+    <p class="tip">
+      <ng-icon name="lucideSun" aria-hidden="true" />
+      Na portaria, deixe o brilho da tela alto. Cada QR vale uma entrada: o primeiro a passar entra.
+    </p>
+  }
+</div>

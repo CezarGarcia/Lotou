@@ -76,7 +76,7 @@ No pagamento, o resumo vem da cotação do order-service: ingressos, desconto do
 
 ![Reserva com o cronômetro de 10 minutos, o cupom e a taxa de serviço](docs/img/loja-cupom-e-taxa.png)
 
-Depois do pagamento, a página do pedido mostra o QR code de cada ingresso, e o mesmo QR chega por e-mail num PDF (veja no Mailpit).
+Depois do pagamento, a página do pedido mostra o QR code de cada ingresso, e o mesmo QR chega por e-mail num PDF (veja no Mailpit). A loja é um PWA: os ingressos dos próximos shows ficam guardados no aparelho e abrem sem internet, em **Ingressos salvos**, que é justamente o que falta na porta de um show lotado ([ADR 37](docs/adr/0037-pwa-com-ingresso-offline.md)).
 
 ![Pedido confirmado com o QR code do ingresso](docs/img/pedido-qr.png)
 

@@ -723,6 +723,7 @@ Um único app Angular com duas áreas carregadas sob demanda: a loja e o painel 
 | Loja | Mapa de assentos | cadeiras desenhadas em SVG, mudando de cor quando alguém segura ou compra | SSE |
 | Loja | Checkout | reserva com cronômetro de 10 min e campo de cupom | — |
 | Loja | Meus ingressos | status do pedido, QR code e botão de cancelar dentro do prazo | SSE |
+| Loja | Ingressos salvos | os ingressos dos próximos shows guardados no aparelho, com o QR, sem internet e sem login (PWA, ADR 37) | — |
 | Produtor | Painel ao vivo | fila, vendas por setor, ingressos restantes, entradas na portaria e feed de atividade | WebSocket |
 | Produtor | Shows e lotes | criar show, local, mapa e lotes; marcar alta demanda; agendar abertura; aprovar rascunhos do agente | — |
 | Produtor | Cupons | criar, pausar e acompanhar cupons | — |
@@ -736,7 +737,7 @@ Um único app Angular com duas áreas carregadas sob demanda: a loja e o painel 
 
 **Visual (fase 8, ADR 36):** o show é um cartaz de lambe-lambe, com o nome do artista em letras altas (Big Shoulders Display), duas cores escolhidas pelo nome dele e um carimbo com a data. A loja e a portaria usam o tema noite (fundo escuro, ação em amarelo); o painel do produtor, o tema dia. Verde, amarelo e vermelho só indicam estado. Os tokens ficam em `apps/web/src/styles.scss`, e as peças comuns (cartaz, carimbo da data e marca) em `apps/web/src/app/shared/ui`.
 
-**Bibliotecas e testes:** Angular Material para componentes (restilizado pelos tokens do Lotou), ícones Lucide com o `@ng-icons`, fontes servidas pelo próprio site com o Fontsource, `angular-auth-oidc-client` para o login (ADR 27), `qrcode` para desenhar o QR dos ingressos (carregado só na página do pedido), o `BarcodeDetector` do navegador para ler o QR na portaria, com o `jsqr` como alternativa nos navegadores sem ele (carregado só nesse caso), barras em CSS no painel (ngx-echarts só se um gráfico pedir mais que isso), OTel Web SDK para tracing, testes unitários com o runner padrão da versão (Vitest) e Playwright para o fluxo de compra ponta a ponta.
+**Bibliotecas e testes:** Angular Material para componentes (restilizado pelos tokens do Lotou), ícones Lucide com o `@ng-icons`, fontes servidas pelo próprio site com o Fontsource, o service worker do Angular para o PWA (ADR 37), `angular-auth-oidc-client` para o login (ADR 27), `qrcode` para desenhar o QR dos ingressos (carregado só na página do pedido), o `BarcodeDetector` do navegador para ler o QR na portaria, com o `jsqr` como alternativa nos navegadores sem ele (carregado só nesse caso), barras em CSS no painel (ngx-echarts só se um gráfico pedir mais que isso), OTel Web SDK para tracing, testes unitários com o runner padrão da versão (Vitest) e Playwright para o fluxo de compra ponta a ponta.
 
 ## Decisões de arquitetura (ADRs)
 
@@ -780,6 +781,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 35 | SLOs do checkout (99,5% sem 5xx e 99% abaixo de 1 s, em 30 dias) com alerta de burn rate em janelas múltiplas; alertas no Grafana, com as invariantes consultadas nos bancos | regras no Prometheus com Alertmanager; métrica de invariante emitida pelo serviço | menos componentes, e a invariante é conferida na fonte da verdade, não pelo serviço que poderia ter errado |
 | 34 | Reembolso em massa com fila em `refunds` e um job que começa N por segundo | mandar todos os estornos de uma vez; fila no RabbitMQ | o gateway de pagamento não recebe milhares de estornos de uma vez; o estado do reembolso fica junto do pedido |
 | 36 | Visual de cartaz de show: cada show é um cartaz tipográfico com a cor do artista; tema noite na loja e na portaria e dia no painel; Angular Material restilizado por tokens, ícones Lucide e fontes servidas pelo site | trocar o Material por outra biblioteca de componentes; fotos de banco de imagem; um tema só | o problema era o tema, não os componentes; o cartaz identifica o show sem depender de imagem; cada público usa o sistema numa situação diferente |
+| 37 | A loja é um PWA: o service worker guarda o app, e uma carteira no `localStorage` guarda os ingressos dos próximos shows; uma página pública os mostra sem internet e sem login | cache da API no service worker; app nativo ou Wallet | dado pessoal fora de cache genérico; o ingresso abre na porta do show sem sinal, sem loja de apps nem conta paga |
 
 ## Testes, carga e caos
 
@@ -1033,6 +1035,7 @@ Interface concluída em 27/11/2026; falta o vídeo de apresentação.
 - [x] Portaria em modo foco: o leitor ocupa a tela inteira, e o resultado (verde, amarelo ou vermelho) é lido de longe
 - [x] Tela de login do Keycloak com o mesmo visual, só em CSS por cima do tema padrão
 - [x] Transição entre telas com a View Transitions API, e todo movimento desligado com `prefers-reduced-motion`
+- [x] A loja como PWA: instalável, com os ingressos dos próximos shows abrindo sem internet (ADR 37)
 - [ ] Vídeo de apresentação
 
 O que ficou para depois, de propósito:

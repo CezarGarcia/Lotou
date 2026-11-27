@@ -48,7 +48,7 @@ export default defineConfig({
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
       name: 'comprador',
-      testMatch: /(compra|cancelamento).*\.spec\.ts/,
+      testMatch: /(compra|cancelamento|ingresso).*\.spec\.ts/,
       dependencies: ['setup'],
       use: { ...aparelho('Desktop Chrome'), storageState: sessaoDe('comprador') },
     },

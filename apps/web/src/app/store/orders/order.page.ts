@@ -1,6 +1,16 @@
 import { httpResource } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  untracked,
+} from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
+import { AuthService } from '../../core/auth/auth.service';
+import { TicketWallet } from '../wallet/ticket-wallet';
 import { RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -61,6 +71,8 @@ const DAY_MS = 86_400_000;
 export class OrderPage {
   protected readonly store = inject(OrderStore);
   private readonly dialog = inject(MatDialog);
+  private readonly auth = inject(AuthService);
+  private readonly wallet = inject(TicketWallet);
 
   /** Parâmetro `:id` da rota. */
   readonly id = input.required<string>();
@@ -98,6 +110,17 @@ export class OrderPage {
 
   constructor() {
     effect(() => this.store.load(this.id()));
+    // O pedido confirmado vai para a carteira do aparelho na hora: o ingresso
+    // recém-comprado já abre sem internet (ADR 37).
+    effect(() => {
+      const order = this.store.order();
+      if (order && order.status !== 'PENDING' && this.show.hasValue()) {
+        const show = this.show.value();
+        const userId = this.auth.userId();
+        // A carteira lê e grava o próprio estado: fora do rastreio deste effect.
+        untracked(() => this.wallet.remember(userId, order, show));
+      }
+    });
   }
 
   /** "16/12/2026 às 20:31", no fuso do show. */

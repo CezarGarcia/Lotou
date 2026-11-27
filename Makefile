@@ -43,7 +43,7 @@ smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os
 	$(COMPOSE) run --rm --no-deps smoke
 
 # Roda no host, contra o ambiente no ar. Na primeira vez: `cd e2e && npx playwright install chromium`.
-e2e: ## Ponta a ponta no navegador (Playwright): compra, cupom, cancelamento, painel e portaria
+e2e: ## Ponta a ponta no navegador (Playwright): compra, cupom, cancelamento, ingresso sem internet, painel e portaria
 	cd e2e && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npx playwright test
 
 # Testes de carga (k6, dentro do Compose). ENGINE escolhe o motor de reserva do inventory.

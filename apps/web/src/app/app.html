@@ -83,7 +83,7 @@
               <ng-icon name="lucideTicket" aria-hidden="true" />
               Meus ingressos
             </a>
-            <button type="button" (click)="auth.logout()">
+            <button type="button" (click)="logout()">
               <ng-icon name="lucideLogOut" aria-hidden="true" />
               Sair
             </button>
@@ -97,6 +97,16 @@
       </nav>
     </div>
   </header>
+}
+
+@if (!network.online() && !area.focus() && !area.savedTickets()) {
+  <div class="offline-bar" role="status">
+    <div class="container">
+      <ng-icon name="lucideCloudOff" aria-hidden="true" />
+      <span>Sem internet. Seus ingressos salvos abrem assim mesmo.</span>
+      <a routerLink="/ingressos-salvos">Ver ingressos</a>
+    </div>
+  </div>
 }
 
 <main id="conteudo" [class.with-tabs]="area.tabs()">

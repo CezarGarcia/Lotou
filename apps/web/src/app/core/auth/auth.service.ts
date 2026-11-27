@@ -43,6 +43,12 @@ export class AuthService {
   readonly firstName = computed(() =>
     this.authenticated() ? firstNameOf(this.oidc.userData().userData) : '',
   );
+  /** O `sub` do token: quem está logado neste aparelho (vazio sem login). */
+  readonly userId = computed(() => {
+    const claims = this.authenticated() ? this.oidc.userData().userData : null;
+    const sub = (claims as { sub?: unknown } | null)?.sub;
+    return typeof sub === 'string' ? sub : '';
+  });
 
   /** Papéis do realm, lidos do access token a cada login ou renovação. */
   readonly roles = toSignal(

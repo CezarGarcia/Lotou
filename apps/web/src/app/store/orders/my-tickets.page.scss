@@ -256,3 +256,17 @@ a.row {
     transform: rotate(-8deg);
   }
 }
+
+.offline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-top: 4px;
+  color: var(--lt-text-2);
+  font-size: 0.9375rem;
+
+  ng-icon {
+    color: var(--lt-accent);
+  }
+}

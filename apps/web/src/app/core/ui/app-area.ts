@@ -43,10 +43,18 @@ export class AppArea {
   /** O leitor de ingressos ocupa a tela inteira. */
   readonly focus = computed(() => /^\/portaria\/shows\/[^/]+/.test(this.path()));
 
+  /** A página dos ingressos salvos já explica que o aparelho está sem internet. */
+  readonly savedTickets = computed(() => this.path().startsWith('/ingressos-salvos'));
+
   /** A barra de abas do celular aparece na vitrine e nos ingressos. */
   readonly tabs = computed(() => {
     const path = this.path();
-    return path === '/' || path === '' || path.startsWith('/meus-ingressos');
+    return (
+      path === '/' ||
+      path === '' ||
+      path.startsWith('/meus-ingressos') ||
+      path.startsWith('/ingressos-salvos')
+    );
   });
 
   constructor() {

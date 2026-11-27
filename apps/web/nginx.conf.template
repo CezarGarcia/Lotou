@@ -88,6 +88,22 @@ server {
     expires -1;
   }
 
+  # PWA (ADR 37): o service worker e a lista de arquivos dele dizem qual versão
+  # da loja o aparelho guarda. Sempre revalidados, para uma versão nova chegar.
+  location ~ ^/(ngsw-worker\.js|ngsw\.json|safety-worker\.js|worker-basic\.min\.js)$ {
+    add_header Cache-Control "no-cache" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+  }
+
+  # O manifesto do PWA tem um tipo próprio, que o mime.types do nginx não traz.
+  location = /manifest.webmanifest {
+    types { }
+    default_type application/manifest+json;
+    add_header Cache-Control "no-cache" always;
+    add_header X-Content-Type-Options "nosniff" always;
+  }
+
   # Rotas do Angular (/shows/:id) caem no index.html.
   location / {
     try_files $uri $uri/ /index.html;

@@ -6,6 +6,7 @@ import {
   LOCALE_ID,
   inject,
   provideAppInitializer,
+  isDevMode,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import {
@@ -15,6 +16,7 @@ import {
   withViewTransitions,
 } from '@angular/router';
 import { provideNgIconsConfig } from '@ng-icons/core';
+import { provideServiceWorker } from '@angular/service-worker';
 import { provideAuth } from 'angular-auth-oidc-client';
 import { routes } from './app.routes';
 import { OIDC_CONFIG } from './core/auth/auth.config';
@@ -42,5 +44,12 @@ export const appConfig: ApplicationConfig = {
     { provide: LOCALE_ID, useValue: 'pt-BR' },
     // Ícones Lucide: traço fino, do tamanho da letra ao redor.
     provideNgIconsConfig({ size: '1.25em', strokeWidth: 2 }),
+    // PWA (ADR 37): o service worker guarda o app no aparelho, e os ingressos
+    // salvos abrem sem internet. Só no build de produção. A loja quase nunca
+    // fica "estável" (SSE, polling), então o registro sai em até 5 s.
+    provideServiceWorker('ngsw-worker.js', {
+      enabled: !isDevMode(),
+      registrationStrategy: 'registerWhenStable:5000',
+    }),
   ],
 };

@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  Injector,
+  computed,
+  effect,
+  inject,
+  untracked,
+} from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideHouse,
@@ -10,6 +18,8 @@ import {
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth/auth.service';
 import { AppArea } from './core/ui/app-area';
+import { NetworkStatus } from './core/ui/network-status';
+import { clearSavedTickets } from './store/wallet/wallet-key';
 import { Logo } from './shared/ui/logo';
 
 /**
@@ -34,8 +44,36 @@ export class App {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
   protected readonly area = inject(AppArea);
+  protected readonly network = inject(NetworkStatus);
+  private readonly injector = inject(Injector);
 
   protected readonly initial = computed(() => this.auth.firstName().charAt(0).toUpperCase());
+
+  constructor() {
+    // Com login e internet, os ingressos dos próximos shows ficam guardados no
+    // aparelho para abrir sem sinal (ADR 37). Uma vez por login ou por volta da rede.
+    effect(() => {
+      const userId = this.auth.userId();
+      if (!userId || !this.network.online()) {
+        return;
+      }
+      // A carteira é carregada sob demanda: fica fora do pacote inicial.
+      untracked(
+        () =>
+          void import('./store/wallet/ticket-wallet').then(({ TicketWallet }) => {
+            const wallet = this.injector.get(TicketWallet);
+            wallet.forgetOthers(userId);
+            wallet.sync(userId).subscribe();
+          }),
+      );
+    });
+  }
+
+  protected logout(): void {
+    // Os ingressos saem do aparelho junto com a sessão.
+    clearSavedTickets(globalThis.localStorage);
+    this.auth.logout();
+  }
 
   protected search(event: Event, artist: string): void {
     event.preventDefault();

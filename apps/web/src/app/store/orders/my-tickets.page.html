@@ -2,6 +2,17 @@
   <header class="head">
     <p class="eyebrow">Sua carteira</p>
     <h1>Meus ingressos</h1>
+    @if (wallet.ticketCount() > 0) {
+      <a class="offline-link" routerLink="/ingressos-salvos">
+        <ng-icon name="lucideSmartphone" aria-hidden="true" />
+        {{
+          wallet.ticketCount() === 1
+            ? '1 ingresso salvo'
+            : wallet.ticketCount() + ' ingressos salvos'
+        }}
+        neste aparelho, para abrir sem internet
+      </a>
+    }
   </header>
 
   <section aria-live="polite" [attr.aria-busy]="store.loading()">
@@ -20,6 +31,9 @@
         <button class="btn btn-outline" type="button" (click)="store.retry()">
           Tentar de novo
         </button>
+        @if (wallet.ticketCount() > 0) {
+          <a class="btn btn-cta" routerLink="/ingressos-salvos">Ver os ingressos salvos</a>
+        }
       </div>
     } @else if (store.empty()) {
       <div class="state empty">

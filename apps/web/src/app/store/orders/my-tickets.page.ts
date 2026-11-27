@@ -5,12 +5,14 @@ import {
   lucideArrowRight,
   lucideCloudOff,
   lucideLoaderCircle,
+  lucideSmartphone,
   lucideTicket,
 } from '@ng-icons/lucide';
 import { MoneyPipe } from '../../core/format/money.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
 import { Cartaz } from '../../shared/ui/cartaz';
 import { OrderStatus, OrderSummary } from '../data/sale.models';
+import { TicketWallet } from '../wallet/ticket-wallet';
 import { MyOrdersStore } from './my-orders.store';
 import { ORDER_STATUS_LABELS } from './order.store';
 
@@ -31,13 +33,20 @@ const SHOW_NIGHT_MS = 6 * 3_600_000;
   imports: [RouterLink, NgIcon, MoneyPipe, ShowDatePipe, Cartaz],
   providers: [MyOrdersStore],
   viewProviders: [
-    provideIcons({ lucideArrowRight, lucideCloudOff, lucideLoaderCircle, lucideTicket }),
+    provideIcons({
+      lucideArrowRight,
+      lucideCloudOff,
+      lucideLoaderCircle,
+      lucideSmartphone,
+      lucideTicket,
+    }),
   ],
   templateUrl: './my-tickets.page.html',
   styleUrl: './my-tickets.page.scss',
 })
 export class MyTicketsPage {
   protected readonly store = inject(MyOrdersStore);
+  protected readonly wallet = inject(TicketWallet);
   protected readonly statusLabels = ORDER_STATUS_LABELS;
   protected readonly skeletons = Array.from({ length: 3 });
   private readonly openedAt = Date.now();

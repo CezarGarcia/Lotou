@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { AuthService } from '../../core/auth/auth.service';
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 import { Order } from '../data/sale.models';
@@ -55,6 +56,8 @@ describe('OrderPage', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        // A carteira guarda o pedido confirmado com o id de quem está logado.
+        { provide: AuthService, useValue: { userId: () => 'comprador-1' } },
         {
           provide: MatDialog,
           useValue: {

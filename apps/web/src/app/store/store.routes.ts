@@ -41,6 +41,12 @@ export const STORE_ROUTES: Routes = [
     loadComponent: () => import('./orders/order.page').then((m) => m.OrderPage),
   },
   {
+    // Pública de propósito: abre sem internet e sem login (ADR 37).
+    path: 'ingressos-salvos',
+    title: 'Ingressos salvos | Lotou.',
+    loadComponent: () => import('./wallet/saved-tickets.page').then((m) => m.SavedTicketsPage),
+  },
+  {
     path: 'meus-ingressos',
     title: 'Meus ingressos | Lotou.',
     canActivate: [authGuard],

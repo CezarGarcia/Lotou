@@ -31,7 +31,7 @@ Na raiz (`make help` lista todos):
 - `make seed-vendas`: compras, cupons, cancelamentos e entradas na portaria de demonstração, pela API, para o painel e os dashboards não começarem vazios
 - `make test`: roda os testes de todos os serviços
 - `make smoke`: confere o ambiente no ar: compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo (precisa do `make seed` do dia, que cria um show de hoje)
-- `make e2e`: testes ponta a ponta com Playwright na loja no ar (compra com cupom, cadeira no mapa, cancelamento, painel do produtor e portaria no celular); precisa do `make seed` do dia. Na primeira vez, `cd e2e && npx playwright install chromium`
+- `make e2e`: testes ponta a ponta com Playwright na loja no ar (compra com cupom, cadeira no mapa, cancelamento, ingresso sem internet, painel do produtor e portaria no celular); precisa do `make seed` do dia. Na primeira vez, `cd e2e && npx playwright install chromium`
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
