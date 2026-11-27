@@ -283,7 +283,8 @@ const experiments = {
       expect(cancel.status === 202, `cancelamento recusado: ${cancel.status}`);
       step('pedido cancelado; esperando as cinco falhas do estorno (espera crescente, uns 6 minutos)');
       failed = await until('pedido ir para REFUND_FAILED', async () => {
-        const current = await order(buyer, created.id);
+        // A espera passa dos 5 minutos de validade do token: um token novo a cada consulta.
+        const current = await order(await token('comprador'), created.id);
         return current.status === 'REFUND_FAILED' ? current : null;
       }, { timeoutMs: 12 * 60_000, intervalMs: 5_000 });
       step(`pedido em REFUND_FAILED depois de ${Math.round((Date.now() - since) / 1000)} s`);
@@ -295,8 +296,9 @@ const experiments = {
     // O token dura 5 minutos e a espera pelas falhas passa disso: pede outro.
     const retry = await api('POST', `/orders/${failed.id}/refund/retry`, { token: await token('produtor') });
     expect(retry.status === 202, `reprocessamento recusado: ${retry.status}`);
+    const fresh = await token('comprador');
     const done = await until('pedido ser reembolsado depois do reprocessamento', async () => {
-      const current = await order(buyer, failed.id);
+      const current = await order(fresh, failed.id);
       return current.status === 'REFUNDED' ? current : null;
     }, { timeoutMs: 120_000 });
     step(`produtor reprocessou: pedido REFUNDED, R$ ${(done.refundedCents / 100).toFixed(2)} devolvidos`);
