@@ -186,6 +186,41 @@ services:
       retries: 6
       start_period: 20s
 
+  # Portaria: lê o QR code dos ingressos com uma cópia local, alimentada por
+  # order.events e shows.catalog (ADR 14), e publica as entradas em
+  # checkin.events. Sem porta publicada: só o api-gateway fala com ele.
+  checkin-service:
+    build:
+      context: ../services/checkin-service
+    environment:
+      <<: [*otel-env, *auth-env]
+      OTEL_SERVICE_NAME: checkin-service
+      PORT: "3003"
+      KAFKA_BROKERS: kafka:9092
+      DATABASE_URL: postgres://checkin@postgres:5432/checkin
+      DATABASE_PASSWORD: ${CHECKIN_DB_PASSWORD:-checkin}
+      # `checkin:{ticketId}`: quem entrou primeiro, na corrida entre portões.
+      REDIS_URL: redis://redis-core:6379
+      # A mesma chave do order-service, que assina o QR code (ADR 15).
+      TICKET_QR_KEY: ${TICKET_QR_KEY:-lotou-dev-ticket-qr-key}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-core:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3003/health/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
   # Read models do painel do produtor (vendas, relatório e pedidos), montados a
   # partir do Kafka. Sem porta publicada: só o api-gateway fala com ele.
   # Replay dos read models: `make replay-analytics`.
@@ -324,6 +359,7 @@ services:
       INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory}
       ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
       PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:-payments}
+      CHECKIN_DB_PASSWORD: ${CHECKIN_DB_PASSWORD:-checkin}
     ports:
       - "5432:5432"
     volumes:
