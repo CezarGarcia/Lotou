@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Portaria sem internet</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 64px;
+        margin-top: 8px;
+      }
+      .step {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .step-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .step-head .label {
+        color: var(--yellow);
+      }
+      .step .node {
+        flex: 1;
+      }
+      .checks {
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 13.5px;
+        color: var(--text-2);
+      }
+      .checks li {
+        display: flex;
+        gap: 8px;
+      }
+      .checks li::before {
+        content: '';
+        flex: none;
+        width: 8px;
+        height: 8px;
+        margin-top: 6px;
+        border-radius: 50%;
+        background: var(--yellow);
+      }
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .scenario {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1.25fr;
+        gap: 18px;
+        margin-top: 34px;
+        align-items: stretch;
+      }
+      .device {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .big-result {
+        font-family: var(--display);
+        font-size: 30px;
+        font-weight: 900;
+        text-transform: uppercase;
+        line-height: 0.95;
+      }
+      .ok {
+        color: var(--green);
+      }
+      .warn {
+        color: var(--yellow);
+      }
+      .bad {
+        color: var(--red);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Portaria · sem internet no local</span>
+        <h1>A fila anda mesmo sem sinal</h1>
+        <p class="lede">
+          Online continua sendo o padrão. Quando o servidor não responde, o leitor confere o QR no
+          próprio celular, com a chave pública e a lista do show, e envia as leituras quando a rede
+          volta (ADR 38).
+        </p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-head"><span class="num">1</span><span class="label">Com internet</span></div>
+          <div class="node" id="s1">
+            <div class="name">Baixa o pacote do show</div>
+            <ul class="checks">
+              <li>todos os ingressos: setor e situação (válido, usado com portão e hora, cancelado)</li>
+              <li>a chave pública que confere o QR</li>
+              <li>a regra da abertura dos portões</li>
+            </ul>
+            <div class="pill-row">
+              <span class="chip">a cada 2 min</span><span class="chip">IndexedDB</span
+              ><span class="chip">sem dado pessoal</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-head"><span class="num">2</span><span class="label">Sem resposta em 4 s</span></div>
+          <div class="node outline is-warn" id="s2">
+            <div class="name">Valida no celular</div>
+            <ul class="checks">
+              <li>assinatura Ed25519 com a chave pública: forjado é recusado</li>
+              <li>a lista: desconhecido, cancelado ou já usado</li>
+              <li>já passou por este celular? "já utilizado"</li>
+              <li>setor que este portão não atende: recusado</li>
+            </ul>
+            <div class="pill-row">
+              <span class="chip solid is-warn">selo "sem internet"</span
+              ><span class="chip">leitura guardada</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-head"><span class="num">3</span><span class="label">A rede volta</span></div>
+          <div class="node" id="s3">
+            <div class="name">Envia as leituras</div>
+            <ul class="checks">
+              <li>a primeira entrada, pelo horário da leitura, vale: vira check-in normal e evento no Kafka</li>
+              <li>as outras viram conflito registrado, com portão, aparelho e hora</li>
+              <li>reenviar não duplica: cada leitura tem um id</li>
+            </ul>
+            <div class="pill-row">
+              <span class="chip solid is-danger">alerta no Grafana</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div class="node device">
+          <span class="label">Celular 1 · Portão A · sem rede</span>
+          <span class="big-result ok">Entrada liberada</span>
+          <span class="muted" style="font-size: 13px">o comprador mostra o QR às 20h40</span>
+        </div>
+        <div class="node device">
+          <span class="label">Celular 2 · Portão A · sem rede</span>
+          <span class="big-result ok">Entrada liberada</span>
+          <span class="muted" style="font-size: 13px"
+            >um amigo mostra o print do mesmo QR às 20h52: o celular 2 não sabe do 1</span
+          >
+        </div>
+        <div class="node outline is-danger device">
+          <span class="label">Na sincronização</span>
+          <span class="big-result bad">Entrada dupla detectada</span>
+          <span style="font-size: 13px; color: var(--text-2)"
+            >vale a das 20h40; a das 20h52 vira conflito e alerta. Com os portões divididos por
+            setor, isso só acontece entre celulares do mesmo portão, os dois sem rede.</span
+          >
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 22px">
+        <div class="note">
+          <strong>Por que chave pública:</strong> com o HMAC antigo, o celular precisaria do segredo
+          que cria os ingressos. Com Ed25519, o order-service assina com a privada e a portaria só
+          confere: um celular perdido não vira fábrica de ingressos.
+        </div>
+        <div class="note">
+          <strong>É o padrão do mercado:</strong> Ticketmaster, Eventbrite e Sympla validam offline
+          contra uma lista e sincronizam depois, assumindo o mesmo risco entre aparelhos sem rede.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · keycloak-e-seguranca</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#s1', '#s2', { color: 'yellow' });
+      Diagrama.link('#s2', '#s3', { color: 'yellow' });
+    </script>
+  </body>
+</html>

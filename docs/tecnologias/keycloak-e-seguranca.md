@@ -55,6 +55,12 @@ As rotas `/internal/**` não existem no gateway: só são alcançáveis dentro d
 | dado pessoal vazando | CPF gravado como HMAC (ADR 24); nenhum evento leva e-mail ou CPF; o Collector do OpenTelemetry mascara dados pessoais antes de gravar traces e logs |
 | erro mostrando detalhes internos | respostas de erro no formato Problem Details (RFC 9457), com um código para o suporte e sem stack trace |
 
+## Portaria sem internet
+
+O QR é assinado pelo order-service com uma chave privada Ed25519, e a portaria confere com a chave pública. Isso deixa o leitor validar no próprio celular quando a internet do local cai, sem levar ao aparelho nada que sirva para criar ingresso (ADR 38).
+
+![A portaria sem internet em três passos: com internet, o leitor baixa o pacote do show (os ingressos com setor e situação, a chave pública e a regra dos portões) a cada 2 minutos; sem resposta do servidor em 4 segundos, valida no celular a assinatura, a lista, o que já passou por ele e o setor do portão, e guarda a leitura; quando a rede volta, envia as leituras, a primeira entrada vale e as outras viram conflito com alerta. Embaixo, o caso do print: dois celulares do mesmo portão, os dois sem rede, liberam o mesmo QR, e a sincronização detecta a entrada dupla.](img/portaria-offline.png)
+
 ## A tela de login
 
 O realm `lotou` usa um tema próprio (`infra/keycloak/themes/lotou`), só em CSS por cima do tema padrão do Keycloak, com as cores e as fontes da loja (ADR 36). Como os templates continuam os do Keycloak, uma atualização dele não quebra o login.
