@@ -20,14 +20,13 @@
 .where {
   font-size: 11px;
   letter-spacing: 0.08em;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .artist {
   margin: 0;
   font-size: clamp(1.5rem, 21cqi, 4rem);
-  overflow-wrap: anywhere;
-  hyphens: auto;
+  overflow-wrap: break-word;
 }
 
 :host([data-size='card']) {
