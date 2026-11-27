@@ -10,22 +10,25 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { Router, RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideChevronLeft, lucideVolume2, lucideVolumeX } from '@ng-icons/lucide';
 import { CountPipe } from '../../core/format/count.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
 import { GateSettings, normalizeGate } from '../gate-settings';
 import { CameraScanner } from './camera-scanner';
 import { GateScannerStore } from './gate-scanner.store';
-import { scanSentence } from './scan-result';
+import { clockOf, scanSentence } from './scan-result';
+import { ScanResultScreen } from './scan-result-screen';
 
 /**
  * O leitor da portaria: a câmera do celular, o código digitado (ou de um
  * leitor USB) e o resultado em tela cheia, verde, amarelo ou vermelho.
- * Feito para uma mão só, de pé, na fila: alvos grandes e pouco texto.
+ * Feito para uma mão só, de pé, na fila: alvos grandes e pouco texto. Abre
+ * em modo foco (sem o cabeçalho do app), então tem o próprio topo, com a
+ * volta para a escolha do show e do portão.
  */
 @Component({
   selector: 'app-gate-scanner-page',
@@ -33,15 +36,16 @@ import { scanSentence } from './scan-result';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    MatButtonModule,
     MatFormFieldModule,
-    MatIconModule,
     MatInputModule,
+    NgIcon,
     CountPipe,
     ShowDatePipe,
     CameraScanner,
+    ScanResultScreen,
   ],
   providers: [GateScannerStore],
+  viewProviders: [provideIcons({ lucideChevronLeft, lucideVolume2, lucideVolumeX })],
   templateUrl: './gate-scanner.page.html',
   styleUrl: './gate-scanner.page.scss',
   host: { '(document:keydown.escape)': 'store.dismiss()' },
@@ -65,6 +69,7 @@ export class GateScannerPage {
   private readonly codeInput = viewChild<ElementRef<HTMLInputElement>>('codeInput');
 
   protected readonly sentence = scanSentence;
+  protected readonly clock = clockOf;
 
   constructor() {
     effect(() => {

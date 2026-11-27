@@ -168,7 +168,7 @@ export class GateScannerStore {
             error.status === 403
               ? {
                   tone: 'error',
-                  icon: 'lock',
+                  icon: 'lucideLock',
                   title: 'Sem acesso à portaria',
                   detail: 'Sua conta não pode registrar entradas neste show.',
                   place: '',

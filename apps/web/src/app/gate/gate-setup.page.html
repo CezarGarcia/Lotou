@@ -1,0 +1,96 @@
+<div class="page">
+  <header>
+    <p class="eyebrow">Portaria</p>
+    <h1 class="display">Onde você está?</h1>
+    <p class="lead">Escolha o show e o portão. Cada leitura fica registrada com esse portão.</p>
+  </header>
+
+  <form [formGroup]="form" (ngSubmit)="begin()">
+    <fieldset aria-describedby="shows-help">
+      <legend class="step"><span class="n">1</span> Show</legend>
+      <p id="shows-help" class="help">Shows de hoje e dos próximos dias.</p>
+      @switch (shows().status) {
+        @case ('loading') {
+          <div class="shows" aria-busy="true">
+            <span class="sr-only" role="status">Carregando os shows</span>
+            <div class="skeleton placeholder"></div>
+            <div class="skeleton placeholder"></div>
+          </div>
+        }
+        @case ('error') {
+          <div class="state panel" role="alert">
+            <p>Não foi possível carregar os shows. {{ errorMessage() }}</p>
+            <button class="btn btn-outline" type="button" (click)="reload()">
+              <ng-icon name="lucideRotateCw" aria-hidden="true" />
+              Tentar de novo
+            </button>
+          </div>
+        }
+        @default {
+          @if (list().length === 0) {
+            <p class="state panel">
+              Nenhum show hoje nem nos próximos dias. Quando houver, ele aparece aqui.
+            </p>
+          }
+          <div class="shows" role="radiogroup" aria-label="Show">
+            @for (show of list(); track show.showId) {
+              <label class="show" [class.checked]="form.controls.show.value === show.showId">
+                <app-cartaz size="mini" [artist]="show.artist" />
+                <span class="text">
+                  <strong>{{ show.artist }}</strong>
+                  <span class="title">{{ show.title }}</span>
+                  <span class="meta">
+                    @if (today().has(show.showId)) {
+                      <span class="today">Hoje</span>
+                      {{ show.startsAt | showDate: show.timezone : 'time' }}
+                    } @else {
+                      {{ show.startsAt | showDate: show.timezone : 'short' }}
+                    }
+                    · {{ show.venueName }}
+                  </span>
+                  @if (show.doorsOpenAt) {
+                    <span class="doors">
+                      <ng-icon name="lucideDoorOpen" aria-hidden="true" />
+                      Portões abrem às
+                      {{ show.doorsOpenAt | showDate: show.timezone : 'time' }}
+                    </span>
+                  }
+                </span>
+                <input type="radio" [value]="show.showId" formControlName="show" />
+              </label>
+            }
+          </div>
+        }
+      }
+    </fieldset>
+
+    <fieldset>
+      <legend class="step"><span class="n">2</span> Portão</legend>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Portão</mat-label>
+        <input matInput formControlName="gate" autocomplete="off" [attr.maxlength]="maxLength" />
+        <mat-hint>Como está escrito na placa: "Portão B", "Acesso PCD".</mat-hint>
+        @if (form.controls.gate.hasError('required')) {
+          <mat-error>Informe o portão.</mat-error>
+        }
+      </mat-form-field>
+      <div class="suggestions" role="group" aria-label="Nomes comuns">
+        @for (suggestion of suggestions; track suggestion) {
+          <button
+            class="chip"
+            type="button"
+            [attr.aria-pressed]="gateValue() === suggestion"
+            (click)="pickGate(suggestion)"
+          >
+            {{ suggestion }}
+          </button>
+        }
+      </div>
+    </fieldset>
+
+    <button class="btn btn-cta btn-lg cta" type="submit" [disabled]="form.invalid">
+      <ng-icon name="lucideScanLine" aria-hidden="true" />
+      Começar a leitura
+    </button>
+  </form>
+</div>

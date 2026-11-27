@@ -1,0 +1,136 @@
+// A janela da câmera: os cantos amarelos marcam onde o QR code entra, e a
+// linha que varre mostra que o leitor está lendo (parada sem movimento).
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+.frame {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  min-height: 280px;
+  border-radius: var(--lt-radius-lg);
+  background: radial-gradient(120% 80% at 50% 40%, #2a2530 0%, var(--lt-bg) 70%);
+  color: var(--lt-text);
+}
+
+video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.target {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  width: 64%;
+  max-width: 280px;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+}
+
+[data-state='running'] .target {
+  border-radius: 14px;
+  box-shadow: 0 0 0 100vmax rgb(11 10 13 / 0.35);
+}
+
+[data-state='starting'] .target {
+  opacity: 0.45;
+}
+
+.corner {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border: 0 solid var(--lt-cta);
+
+  &.tl {
+    top: 0;
+    left: 0;
+    border-width: 5px 0 0 5px;
+    border-top-left-radius: 14px;
+  }
+
+  &.tr {
+    top: 0;
+    right: 0;
+    border-width: 5px 5px 0 0;
+    border-top-right-radius: 14px;
+  }
+
+  &.bl {
+    bottom: 0;
+    left: 0;
+    border-width: 0 0 5px 5px;
+    border-bottom-left-radius: 14px;
+  }
+
+  &.br {
+    right: 0;
+    bottom: 0;
+    border-width: 0 5px 5px 0;
+    border-bottom-right-radius: 14px;
+  }
+}
+
+.sweep {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 8%;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--lt-cta);
+  box-shadow: 0 0 18px 4px rgb(255 210 63 / 0.5);
+  animation: varre 2.4s ease-in-out infinite;
+}
+
+@keyframes varre {
+  50% {
+    top: 90%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep {
+    top: 50%;
+    animation: none;
+  }
+}
+
+.hint {
+  position: absolute;
+  inset: auto 16px 18px;
+  margin: 0;
+  color: var(--lt-text-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-align: center;
+  text-shadow: 0 1px 3px #000;
+}
+
+.problem {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+
+  ng-icon {
+    color: var(--lt-muted);
+    font-size: 44px;
+  }
+
+  p {
+    max-width: 30ch;
+    margin: 0;
+    color: var(--lt-text-2);
+  }
+}

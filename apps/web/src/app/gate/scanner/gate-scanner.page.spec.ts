@@ -80,8 +80,9 @@ describe('GateScannerPage', () => {
     const text = plain(element().textContent!);
     expect(text).toContain('Banda do Mar');
     expect(text).toContain('Portão B');
-    expect(text).toContain('Entradas no show1.240');
-    expect(text).toContain('Por este portão310');
+    expect(text).toContain('No show1.240');
+    expect(text).toContain('Neste portão310');
+    expect(text).toContain('Recusadas3');
     // Sem câmera, a tela diz para digitar.
     expect(text).toMatch(/Nenhuma câmera disponível|conexão segura/);
   });
@@ -105,6 +106,11 @@ describe('GateScannerPage', () => {
     expect(plain(result.textContent!)).toContain('Ingresso já utilizado');
     expect(plain(result.textContent!)).toContain('Plateia · Cadeira A-5');
     expect(plain(result.textContent!)).toMatch(/Entrou (em 16\/12 )?às 20:31 pelo Portão A/);
+    // O final do ingresso, para conferir com o celular da pessoa, e o que fazer.
+    expect(plain(result.textContent!)).toContain('…t9');
+    expect(plain(result.textContent!)).toContain('chame a supervisão');
+    // A barra de tempo dura o mesmo que o resultado na tela.
+    expect(result.getAttribute('style')).toContain('--tempo: 5000ms');
     const live = element().querySelector('[aria-live="assertive"]')!;
     expect(live.textContent).toContain('Ingresso já utilizado');
 
@@ -142,6 +148,28 @@ describe('GateScannerPage', () => {
     next.click();
     await settle();
     expect(element().querySelector('.result')).toBeNull();
+  });
+
+  it('o histórico guarda as leituras com a cor e a hora, a mais recente primeiro', async () => {
+    await render('Portão B');
+    for (const result of ['ACCEPTED', 'INVALID_CODE']) {
+      type('X');
+      http.expectOne('/api/v1/checkins').flush({ result, ticket: null, firstEntry: null });
+      await settle();
+    }
+    const items = [...element().querySelectorAll('.history li')];
+    expect(items.map((item) => item.getAttribute('data-tone'))).toEqual(['error', 'ok']);
+    expect(items[0].querySelector('time')!.textContent).toMatch(/^\s*\d{2}:\d{2}:\d{2}\s*$/);
+  });
+
+  it('o topo volta à escolha do show e do portão, com o show já escolhido', async () => {
+    await render('Portão B');
+    const back = element().querySelector<HTMLAnchorElement>(
+      'a[aria-label="Trocar show ou portão"]',
+    )!;
+    expect(back.getAttribute('href')).toBe('/portaria?show=s1');
+    expect(element().querySelector('h1')!.textContent).toContain('Banda do Mar');
+    expect(element().querySelector('.gate')!.textContent).toContain('Portão B');
   });
 
   it('usa o portão guardado no aparelho quando a URL não traz', async () => {
