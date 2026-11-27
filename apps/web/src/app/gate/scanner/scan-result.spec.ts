@@ -5,6 +5,7 @@ import {
   clockOf,
   connectionFailure,
   describeCheckin,
+  describeSyncNotice,
   placeOf,
   scanSentence,
   ticketEnd,
@@ -53,6 +54,7 @@ describe('describeCheckin', () => {
       'CANCELLED',
       'WRONG_SHOW',
       'NOT_OPEN',
+      'WRONG_SECTOR',
       'OUTRO',
     ];
     const icons = [
@@ -113,6 +115,20 @@ describe('describeCheckin', () => {
     expect(view.detail).toContain(detail);
   });
 
+  it('setor de outro portão fica amarelo, com o setor do ingresso', () => {
+    const view = describeCheckin(
+      response({ result: 'WRONG_SECTOR', ticket: { ...ticket, seat: null } }),
+      options,
+    );
+    expect(view).toMatchObject({
+      tone: 'warn',
+      title: 'Setor de outro portão',
+      detail: 'Ingresso do setor Plateia, que este portão não atende.',
+      place: 'Plateia',
+    });
+    expect(view.advice).toContain('portão do setor');
+  });
+
   it('portões fechados dizem quando abrem', () => {
     const view = describeCheckin(response({ result: 'NOT_OPEN' }), {
       ...options,
@@ -149,6 +165,80 @@ describe('textos auxiliares', () => {
     );
     expect(scanSentence(view)).toBe(
       'Ingresso já utilizado. Plateia · Cadeira A-5. Entrou às 20:31 pelo Portão B.',
+    );
+  });
+});
+
+describe('avisos do envio das leituras sem internet', () => {
+  const scan = {
+    id: 'l1',
+    code: 'LOTOU2.x',
+    scannedAt: '2026-12-16T23:41:07Z',
+    showId: 's1',
+    gate: 'Portão A',
+    deviceId: 'd1',
+    ticketId: '0192a1b2-c3d4-7e5f-8a9b-ab81914b0001',
+  };
+  const pista = {
+    id: scan.ticketId,
+    sectorId: 'p',
+    sectorName: 'Pista',
+    seat: null,
+    status: 'VALID' as const,
+  };
+
+  it('entrada dupla: amarela, com a entrada que valeu no fuso do show', () => {
+    const view = describeSyncNotice(
+      {
+        scan,
+        ticket: pista,
+        result: {
+          id: 'l1',
+          outcome: 'DUPLICATE',
+          firstEntry: { gate: 'Portão B', checkedInAt: '2026-12-16T23:40:00Z' },
+        },
+      },
+      options,
+    );
+    expect(view).toMatchObject({
+      tone: 'warn',
+      title: 'Entrada dupla detectada',
+      detail: 'Já tinha entrado às 20:40 pelo Portão B.',
+      place: 'Pista',
+      ticket: '…914b0001',
+    });
+  });
+
+  it.each([
+    ['CANCELLED', 'Entrou com ingresso cancelado'],
+    ['WRONG_SHOW', 'Entrou com ingresso de outro show'],
+    ['UNKNOWN', 'Entrou com ingresso fora da lista'],
+  ])('conflito %s fica registrado, sem barrar ninguém', (kind, title) => {
+    const view = describeSyncNotice(
+      { scan, ticket: undefined, result: { id: 'l1', outcome: 'CONFLICT', kind } },
+      options,
+    );
+    expect(view).toMatchObject({ tone: 'warn', title, place: '' });
+    expect(view.detail).toContain('ficou registrado');
+  });
+
+  it('leitura recusada no envio', () => {
+    const view = describeSyncNotice(
+      {
+        scan,
+        ticket: undefined,
+        result: { id: 'l1', outcome: 'REJECTED', reason: 'INVALID_TIME' },
+      },
+      options,
+    );
+    expect(view).toMatchObject({ tone: 'error', title: 'Leitura sem internet recusada' });
+    expect(view.detail).toContain('relógio');
+  });
+
+  it('a frase para leitores de tela diz que a decisão foi do aparelho', () => {
+    const view = { ...describeCheckin(response({ ticket }), options), offline: true };
+    expect(scanSentence(view)).toBe(
+      'Entrada liberada. Plateia · Cadeira A-5. Validado neste aparelho, sem internet',
     );
   });
 });

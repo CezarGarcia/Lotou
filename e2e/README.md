@@ -17,14 +17,15 @@ Em `e2e/`: `npx playwright test --ui` abre o modo interativo, `npm run report` a
 
 ## Cenários
 
-| Teste                | Papel                | O que faz                                                                                                                                                                                   |
-| -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `compra-pista-cupom` | comprador            | o produtor cria um cupom pela API; a compradora reserva pista no "Baile da Maré Cheia", aplica o cupom no pagamento, confere desconto, taxa e total, paga e vê o pedido confirmado com o QR |
-| `compra-cadeira`     | comprador            | escolhe uma cadeira livre no mapa em SVG de "Vinte Anos de Estrada" e compra até o pedido confirmado                                                                                        |
-| `cancelamento`       | comprador            | compra e cancela pelo diálogo ("Cancelar e pedir reembolso"), até "Pedido reembolsado"                                                                                                      |
-| `ingresso-offline`   | comprador            | compra pista, espera o service worker guardar a loja, tira a rede do navegador e abre "Meus ingressos": cai nos ingressos salvos, com o QR (ADR 37)                                         |
-| `produtor`           | produtor             | cria um cupom na aba Cupons e confere o relatório na aba Financeiro                                                                                                                         |
-| `portaria`           | portaria, no celular | compra um ingresso do show de hoje pela API, escolhe show e portão e digita o código: verde, depois amarelo com o portão da primeira entrada; um código adulterado dá vermelho              |
+| Teste                | Papel                | O que faz                                                                                                                                                                                                                    |
+| -------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compra-pista-cupom` | comprador            | o produtor cria um cupom pela API; a compradora reserva pista no "Baile da Maré Cheia", aplica o cupom no pagamento, confere desconto, taxa e total, paga e vê o pedido confirmado com o QR                                  |
+| `compra-cadeira`     | comprador            | escolhe uma cadeira livre no mapa em SVG de "Vinte Anos de Estrada" e compra até o pedido confirmado                                                                                                                         |
+| `cancelamento`       | comprador            | compra e cancela pelo diálogo ("Cancelar e pedir reembolso"), até "Pedido reembolsado"                                                                                                                                       |
+| `ingresso-offline`   | comprador            | compra pista, espera o service worker guardar a loja, tira a rede do navegador e abre "Meus ingressos": cai nos ingressos salvos, com o QR (ADR 37)                                                                          |
+| `produtor`           | produtor             | cria um cupom na aba Cupons e confere o relatório na aba Financeiro                                                                                                                                                          |
+| `portaria`           | portaria, no celular | compra um ingresso do show de hoje pela API, escolhe show e portão e digita o código: verde, depois amarelo com o portão da primeira entrada; um código adulterado dá vermelho                                               |
+| `portaria-offline`   | portaria, no celular | compra pela API, espera o ingresso chegar ao pacote offline, abre o leitor, tira a rede: verde com o selo "sem internet", depois amarelo pelo próprio aparelho; a rede volta e a fila é enviada e contada no resumo (ADR 38) |
 
 ## Como funciona
 

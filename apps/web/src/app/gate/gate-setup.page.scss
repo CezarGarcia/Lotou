@@ -208,6 +208,19 @@ input[type='radio'] {
   }
 }
 
+.stored {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-cta);
+  color: var(--lt-on-cta);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .suggestions {
   display: flex;
   flex-wrap: wrap;

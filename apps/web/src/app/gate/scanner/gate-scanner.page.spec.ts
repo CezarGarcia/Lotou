@@ -1,9 +1,14 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { NetworkStatus } from '../../core/ui/network-status';
 import { GateSettings } from '../gate-settings';
+import { GATE_OFFLINE_DB, MemoryGateOfflineDb } from '../offline/gate-offline-db';
+import { CAMAROTE, T1, fakeVerifier, signedCode, testPackage } from '../offline/offline.testing';
+import { SIGNATURE_VERIFIER } from '../offline/ticket-code';
 import { GateFeedback } from './gate-feedback';
 import { GateScannerPage } from './gate-scanner.page';
 import { GET_USER_MEDIA, QR_DETECTOR_FACTORY } from './qr-detector';
@@ -26,22 +31,28 @@ describe('GateScannerPage', () => {
   let fixture: ComponentFixture<GateScannerPage>;
   let http: HttpTestingController;
   let navigate: ReturnType<typeof vi.spyOn>;
+  let online: WritableSignal<boolean>;
 
   const element = () => fixture.nativeElement as HTMLElement;
+  const PACKAGE_URL = '/api/v1/checkins/shows/s1/offline-package';
 
   async function settle() {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) {
       await Promise.resolve();
     }
     fixture.detectChanges();
   }
 
-  async function render(portao?: string, storedGate = '') {
+  async function render(portao?: string, storedGate = '', setores?: string) {
+    online = signal(true);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        { provide: NetworkStatus, useValue: { online } },
+        { provide: GATE_OFFLINE_DB, useValue: new MemoryGateOfflineDb() },
+        { provide: SIGNATURE_VERIFIER, useValue: fakeVerifier },
         { provide: AuthService, useValue: { login: vi.fn() } },
         { provide: GateFeedback, useValue: { signal: vi.fn(), unlock: vi.fn() } },
         // Sem câmera: o leitor usa o código digitado.
@@ -56,6 +67,9 @@ describe('GateScannerPage', () => {
     fixture.componentRef.setInput('showId', 's1');
     if (portao !== undefined) {
       fixture.componentRef.setInput('portao', portao);
+    }
+    if (setores !== undefined) {
+      fixture.componentRef.setInput('setores', setores);
     }
     fixture.detectChanges();
     await fixture.whenStable();
@@ -183,6 +197,92 @@ describe('GateScannerPage', () => {
     expect(navigate).toHaveBeenCalledWith(['/portaria'], {
       queryParams: { show: 's1' },
       replaceUrl: true,
+    });
+  });
+
+  describe('sem internet', () => {
+    /** Responde o pacote do show, que o leitor baixa ao abrir. */
+    async function withPackage() {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      http
+        .expectOne(PACKAGE_URL)
+        .flush(testPackage('chave', { doorsOpenAt: null, startsAt: new Date().toISOString() }));
+      await settle();
+    }
+
+    const status = () => plain(element().querySelector('app-offline-status')!.textContent!);
+
+    it('o topo diz que está online e de quando é a lista do aparelho', async () => {
+      await render('Portão B');
+      expect(status()).toContain('sem lista neste aparelho');
+      await withPackage();
+      expect(status()).toMatch(/Online\s*lista de \d{2}:\d{2}/);
+      expect(element().querySelector('.status')!.getAttribute('data-state')).toBe('online');
+    });
+
+    it('sem rede, libera no aparelho com o selo e conta a leitura para enviar', async () => {
+      await render('Portão B');
+      await withPackage();
+      online.set(false);
+      await settle();
+      expect(status()).toContain('Sem internet: validando neste aparelho');
+      expect(element().querySelector('.status')!.getAttribute('data-state')).toBe('offline');
+
+      type(signedCode(T1));
+      http.expectNone('/api/v1/checkins');
+      await settle();
+      const result = element().querySelector('.result')!;
+      expect(result.getAttribute('data-tone')).toBe('ok');
+      expect(plain(result.textContent!)).toContain('Entrada liberada');
+      expect(result.querySelector('.seal')!.textContent).toContain(
+        'Sem internet · validado neste aparelho',
+      );
+      expect(element().querySelector('[aria-live="assertive"]')!.textContent).toContain(
+        'Validado neste aparelho, sem internet',
+      );
+      expect(status()).toContain('1 leitura para enviar');
+
+      // A mesma pessoa de novo: amarelo, pelo que o aparelho sabe.
+      type(signedCode(T1));
+      await settle();
+      expect(element().querySelector('.result')!.getAttribute('data-tone')).toBe('warn');
+      expect(plain(element().querySelector('.result')!.textContent!)).toContain('pelo Portão B');
+    });
+
+    it('o portão que atende só o camarote manda a pista para outro portão', async () => {
+      await render('Portão B', '', CAMAROTE);
+      await withPackage();
+      expect(status()).toContain('só Camarote');
+      online.set(false);
+      type(signedCode(T1));
+      await settle();
+      const result = element().querySelector('.result')!;
+      expect(result.getAttribute('data-tone')).toBe('warn');
+      expect(plain(result.textContent!)).toContain('Setor de outro portão');
+      expect(plain(result.textContent!)).toContain('Ingresso do setor Pista');
+    });
+
+    it('com o servidor fora do ar, a leitura também é decidida no aparelho', async () => {
+      await render('Portão B');
+      await withPackage();
+      type(signedCode(T1));
+      http
+        .expectOne('/api/v1/checkins')
+        .flush(null, { status: 503, statusText: 'Service Unavailable' });
+      await settle();
+      expect(element().querySelector('.result')!.getAttribute('data-tone')).toBe('ok');
+      expect(element().querySelector('.result .seal')).not.toBeNull();
+    });
+
+    it('online, a tela não leva o selo', async () => {
+      await render('Portão B');
+      await withPackage();
+      type(signedCode(T1));
+      http
+        .expectOne('/api/v1/checkins')
+        .flush({ result: 'ACCEPTED', ticket: null, firstEntry: null });
+      await settle();
+      expect(element().querySelector('.result .seal')).toBeNull();
     });
   });
 });

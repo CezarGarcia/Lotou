@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
@@ -13,31 +14,38 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { lucideDoorOpen, lucideRotateCw, lucideScanLine } from '@ng-icons/lucide';
-import { catchError, map, of, startWith, switchMap } from 'rxjs';
+import { lucideCloudOff, lucideDoorOpen, lucideRotateCw, lucideScanLine } from '@ng-icons/lucide';
+import { Observable, catchError, from, map, of, startWith, switchMap } from 'rxjs';
 import { ShowDatePipe, formatInTimezone } from '../core/format/show-date.pipe';
 import { ApiError, toApiError } from '../core/http/problem';
 import { Cartaz } from '../shared/ui/cartaz';
 import { CheckinApi, CheckinShow } from './data/checkin.api';
 import { GATE_MAX_LENGTH, GateSettings, normalizeGate } from './gate-settings';
+import { GATE_OFFLINE_DB } from './offline/gate-offline-db';
+import { GateSector, sectorsOf } from './offline/offline-package';
 
 type ShowsState =
   | { status: 'loading' }
-  | { status: 'ready'; shows: CheckinShow[] }
+  /** `stored`: sem o servidor, os shows com a lista guardada no aparelho. */
+  | { status: 'ready'; shows: CheckinShow[]; stored?: boolean }
   | { status: 'error'; error: ApiError };
 
 /** Sugestões para o campo do portão; o nome é livre. */
 const GATE_SUGGESTIONS = ['Portão A', 'Portão B', 'Portão C', 'Acesso PCD', 'Camarote'];
 
 /**
- * Início da portaria: o show (de hoje e dos próximos dias) e o portão em que
- * a pessoa está. O portão fica guardado no aparelho para o próximo turno.
+ * Início da portaria: o show (de hoje e dos próximos dias), o portão em que
+ * a pessoa está e, se o portão atende só alguns setores, quais. O portão e os
+ * setores ficam guardados no aparelho para o próximo turno.
+ *
+ * Sem o servidor, a lista mostra os shows que o aparelho já tem guardados
+ * para validar sem internet (ADR 38).
  */
 @Component({
   selector: 'app-gate-setup-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, MatFormFieldModule, MatInputModule, NgIcon, Cartaz, ShowDatePipe],
-  viewProviders: [provideIcons({ lucideDoorOpen, lucideRotateCw, lucideScanLine })],
+  viewProviders: [provideIcons({ lucideCloudOff, lucideDoorOpen, lucideRotateCw, lucideScanLine })],
   templateUrl: './gate-setup.page.html',
   styleUrl: './gate-setup.page.scss',
 })
@@ -45,6 +53,7 @@ export class GateSetupPage {
   private readonly api = inject(CheckinApi);
   private readonly settings = inject(GateSettings);
   private readonly router = inject(Router);
+  private readonly db = inject(GATE_OFFLINE_DB);
 
   /** `?show=`: o show que já vem escolhido (de volta do leitor). */
   readonly show = input<string>();
@@ -65,9 +74,7 @@ export class GateSetupPage {
       switchMap(() =>
         this.api.shows().pipe(
           map((shows): ShowsState => ({ status: 'ready', shows })),
-          catchError((error: unknown) =>
-            of<ShowsState>({ status: 'error', error: toApiError(error) }),
-          ),
+          catchError((error: unknown) => this.storedShows(toApiError(error))),
           startWith<ShowsState>({ status: 'loading' }),
         ),
       ),
@@ -95,6 +102,40 @@ export class GateSetupPage {
   protected readonly gateValue = toSignal(this.form.controls.gate.valueChanges, {
     initialValue: this.form.controls.gate.value,
   });
+  protected readonly stored = computed(() => {
+    const state = this.shows();
+    return state.status === 'ready' && state.stored === true;
+  });
+
+  private readonly showValue = toSignal(this.form.controls.show.valueChanges, {
+    initialValue: this.form.controls.show.value,
+  });
+  /** Os setores do show escolhido: do catálogo ou, sem internet, do pacote guardado. */
+  protected readonly sectors = toSignal(
+    toObservable(this.showValue).pipe(
+      switchMap((showId) =>
+        showId
+          ? this.api.sectors(showId).pipe(
+              catchError(() =>
+                from(this.db.loadPackage(showId).catch(() => null)).pipe(
+                  map((stored) => sectorsOf(stored?.pkg ?? null)),
+                ),
+              ),
+              startWith<GateSector[]>([]),
+            )
+          : of<GateSector[]>([]),
+      ),
+    ),
+    { initialValue: [] as GateSector[] },
+  );
+  /**
+   * Os setores escolhidos para este portão; vazio, todos. Começa com os que
+   * este aparelho atendia no show, se ainda existem.
+   */
+  protected readonly chosen = linkedSignal(() => {
+    const known = new Set(this.sectors().map((sector) => sector.id));
+    return this.settings.sectorsFor(this.showValue()).filter((id) => known.has(id));
+  });
   protected readonly errorMessage = computed(() => {
     const state = this.shows();
     return state.status === 'error' ? state.error.message : '';
@@ -117,6 +158,25 @@ export class GateSetupPage {
     });
   }
 
+  /** Liga e desliga um setor; sem nenhum, o portão atende todos. */
+  protected toggleSector(id: string): void {
+    this.chosen.update((ids) =>
+      ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id],
+    );
+  }
+
+  protected allSectors(): void {
+    this.chosen.set([]);
+  }
+
+  private storedShows(error: ApiError): Observable<ShowsState> {
+    return from(this.db.storedShows().catch(() => [])).pipe(
+      map((shows): ShowsState =>
+        shows.length > 0 ? { status: 'ready', shows, stored: true } : { status: 'error', error },
+      ),
+    );
+  }
+
   /** Toque numa sugestão: preenche o portão. */
   protected pickGate(name: string): void {
     this.form.controls.gate.setValue(name);
@@ -135,6 +195,11 @@ export class GateSetupPage {
       return;
     }
     this.settings.setGate(name);
-    void this.router.navigate(['/portaria/shows', show], { queryParams: { portao: name } });
+    const sectors = this.chosen();
+    this.settings.setSectors(show, sectors);
+    void this.router.navigate(['/portaria/shows', show], {
+      queryParams:
+        sectors.length > 0 ? { portao: name, setores: sectors.join(',') } : { portao: name },
+    });
   }
 }
