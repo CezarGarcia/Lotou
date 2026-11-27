@@ -1,13 +1,62 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { MoneyPipe } from '../../core/format/money.pipe';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCircleCheck,
+  lucideCloudOff,
+  lucideInfo,
+  lucideMail,
+  lucideRotateCcw,
+} from '@ng-icons/lucide';
+import { MoneyPipe, formatCents } from '../../core/format/money.pipe';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
-import { RefundFailedOrder } from '../data/finance.api';
+import { RefundFailedOrder, Statement } from '../data/finance.api';
 import { ProducerShowContext } from '../show/show-context';
 import { FinanceStore } from './finance.store';
+
+/** Um pedaço da barra das vendas brutas: o que fica e o que sai. */
+export interface CompositionSegment {
+  key: keyof Statement;
+  name: string;
+  cents: number;
+  /** Parte das vendas brutas, de 0 a 100. */
+  percent: number;
+  /** A parte em texto, com vírgula: "71,3%". */
+  percentText: string;
+}
+
+const PERCENT = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
+/**
+ * Para onde vão as vendas brutas: o valor a receber e cada desconto. Sem
+ * vendas, não há barra. As partes vazias ficam de fora.
+ */
+export function composition(
+  statement: Statement,
+): { segments: CompositionSegment[]; label: string } | null {
+  const gross = statement.grossSalesCents;
+  if (gross <= 0) {
+    return null;
+  }
+  const parts: Omit<CompositionSegment, 'percent' | 'percentText'>[] = [
+    { key: 'receivableCents', name: 'A receber', cents: statement.receivableCents },
+    { key: 'discountsCents', name: 'Descontos', cents: statement.discountsCents },
+    { key: 'refundsCents', name: 'Reembolsos', cents: statement.refundsCents },
+    { key: 'platformFeeCents', name: 'Taxa', cents: statement.platformFeeCents },
+  ];
+  const segments = parts
+    .filter((part) => part.cents > 0)
+    .map((part) => {
+      const percent = Math.round((part.cents / gross) * 1000) / 10;
+      return { ...part, percent, percentText: `${PERCENT.format(percent)}%` };
+    });
+  const label =
+    'Das vendas brutas: ' +
+    segments.map((part) => `${part.name.toLowerCase()} ${formatCents(part.cents)}`).join(', ');
+  return { segments, label };
+}
 
 /**
  * O financeiro de um show: o relatório com cada linha explicada, o PDF por
@@ -16,7 +65,10 @@ import { FinanceStore } from './finance.store';
 @Component({
   selector: 'app-finance-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, MoneyPipe, ShowDatePipe],
+  imports: [MatButtonModule, MatProgressSpinnerModule, MoneyPipe, NgIcon, ShowDatePipe],
+  viewProviders: [
+    provideIcons({ lucideCircleCheck, lucideCloudOff, lucideInfo, lucideMail, lucideRotateCcw }),
+  ],
   providers: [FinanceStore],
   templateUrl: './finance.page.html',
   styleUrl: './finance.page.scss',
@@ -25,6 +77,11 @@ export class FinancePage {
   protected readonly store = inject(FinanceStore);
   protected readonly context = inject(ProducerShowContext);
   private readonly snackBar = inject(MatSnackBar);
+
+  protected readonly composition = computed(() => {
+    const state = this.store.statement();
+    return state.status === 'ready' ? composition(state.value) : null;
+  });
 
   constructor() {
     effect(() => {

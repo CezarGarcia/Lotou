@@ -5,19 +5,25 @@
       <span class="dot" aria-hidden="true"></span>
       <span class="label" role="status">{{ statusText() }}</span>
       @if (updatedText(); as updated) {
-        <span class="updated">{{ updated }}</span>
+        <span class="updated mono">{{ updated }}</span>
       }
       @if (store.status() === 'reconnecting') {
-        <button matButton type="button" (click)="store.retryNow()">Tentar agora</button>
+        <button matButton type="button" (click)="store.retryNow()">
+          <ng-icon name="lucideRefreshCw" aria-hidden="true" />
+          Tentar agora
+        </button>
       }
     </div>
   </header>
 
   @if (store.status() === 'denied') {
-    <section class="state" role="alert">
-      <mat-icon aria-hidden="true">{{
-        store.denial() === 'session-expired' ? 'logout' : 'lock'
-      }}</mat-icon>
+    <section class="state panel" role="alert">
+      <span class="state-icon">
+        <ng-icon
+          [name]="store.denial() === 'session-expired' ? 'lucideLogOut' : 'lucideLock'"
+          aria-hidden="true"
+        />
+      </span>
       @if (store.denial() === 'session-expired') {
         <h2>Sua sessão expirou</h2>
         <p>Entre de novo para continuar acompanhando as vendas.</p>
@@ -28,99 +34,120 @@
       }
     </section>
   } @else if (store.forbidden()) {
-    <section class="state" role="alert">
-      <mat-icon aria-hidden="true">visibility_off</mat-icon>
+    <section class="state panel" role="alert">
+      <span class="state-icon"><ng-icon name="lucideEyeOff" aria-hidden="true" /></span>
       <h2>Show indisponível no painel</h2>
       <p>Este show não existe ou pertence a outro produtor.</p>
-      <a matButton="tonal" routerLink="/painel">Ver meus shows</a>
+      <a matButton="outlined" routerLink="/painel">Ver meus shows</a>
     </section>
   } @else if (store.metrics(); as m) {
-    <section aria-labelledby="kpis-title">
+    <section class="numbers" aria-labelledby="kpis-title">
       <h2 id="kpis-title" class="sr-only">Resumo das vendas</h2>
       <dl class="kpis">
         <div class="kpi main">
           <dt>Ingressos vendidos</dt>
-          <dd>
+          <dd class="value">
             {{ m.ticketsSold | count }}
             <small>de {{ store.capacity() | count }}</small>
+          </dd>
+          <dd class="extra">
+            <span class="bar" aria-hidden="true"
+              ><span [style.width.%]="soldPercent()"></span
+            ></span>
+            <span class="note">{{ soldPercent() }}% da capacidade</span>
           </dd>
         </div>
         <div class="kpi main">
           <dt>Receita</dt>
-          <dd>{{ m.revenueCents | brl }}</dd>
+          <dd class="value">{{ m.revenueCents | brl }}</dd>
+          <dd class="extra note">líquida: sem cupons, reembolsos e taxa</dd>
         </div>
-        <div class="kpi">
+        <div class="kpi main">
           <dt>Ingressos restantes</dt>
-          <dd>{{ store.remaining() | count }}</dd>
+          <dd class="value">{{ store.remaining() | count }}</dd>
+          <dd class="extra note">somando todos os setores</dd>
         </div>
+        <div class="kpi main">
+          <dt>Pedidos no último minuto</dt>
+          <dd class="value">{{ m.ordersLastMinute | count }}</dd>
+          <dd class="extra note">o ritmo de agora</dd>
+        </div>
+      </dl>
+      <dl class="kpis minor">
         <div class="kpi">
           <dt>Pedidos confirmados</dt>
-          <dd>{{ m.ordersConfirmed | count }}</dd>
+          <dd class="value">{{ m.ordersConfirmed | count }}</dd>
         </div>
         <div class="kpi">
           <dt>Pedidos cancelados</dt>
-          <dd>{{ m.ordersCancelled | count }}</dd>
-        </div>
-        <div class="kpi">
-          <dt>Pedidos no último minuto</dt>
-          <dd>{{ m.ordersLastMinute | count }}</dd>
+          <dd class="value">{{ m.ordersCancelled | count }}</dd>
         </div>
         @if (m.ordersRefunded !== undefined) {
           <div class="kpi">
             <dt>Pedidos reembolsados</dt>
-            <dd>{{ m.ordersRefunded | count }}</dd>
+            <dd class="value">{{ m.ordersRefunded | count }}</dd>
           </div>
         }
       </dl>
     </section>
 
-    @if (m.checkedIn !== undefined) {
-      <section class="gates" aria-labelledby="gates-title">
-        <h2 id="gates-title">Portaria</h2>
-        <p class="gate-total">
-          <strong>{{ m.checkedIn | count }}</strong>
-          {{ m.checkedIn === 1 ? 'entrada' : 'entradas' }} de {{ m.ticketsSold | count }}
-          ingressos vendidos
-        </p>
-        <div
-          class="bar"
-          role="meter"
-          aria-label="Entradas na portaria"
-          aria-valuemin="0"
-          [attr.aria-valuemax]="m.ticketsSold"
-          [attr.aria-valuenow]="m.checkedIn"
-          [attr.aria-valuetext]="entryText()"
-        >
-          <span [style.width.%]="entryPercent()"></span>
-        </div>
-        @if (m.checkinsByGate?.length) {
-          <ul class="gate-list" aria-label="Entradas por portão">
-            @for (gate of m.checkinsByGate; track gate.gate) {
-              <li>
-                <span>{{ gate.gate }}</span>
-                <strong>{{ gate.count | count }}</strong>
-              </li>
+    <div class="columns">
+      <div class="main-column">
+        <section class="card sectors" aria-labelledby="sectors-title">
+          <h2 id="sectors-title">Por setor e lote</h2>
+          @if (m.sectors.length === 0) {
+            <p class="empty">O show ainda não tem setores.</p>
+          }
+          <ul>
+            @for (sector of m.sectors; track sector.sectorId) {
+              <li><app-sector-card [sector]="sector" /></li>
             }
           </ul>
-        }
-      </section>
-    }
+        </section>
 
-    <div class="columns">
-      <section class="sectors" aria-labelledby="sectors-title">
-        <h2 id="sectors-title">Vendas por setor</h2>
-        @if (m.sectors.length === 0) {
-          <p class="empty">O show ainda não tem setores.</p>
+        @if (m.checkedIn !== undefined) {
+          <section class="card gates" aria-labelledby="gates-title">
+            <h2 id="gates-title">
+              <ng-icon name="lucideScanLine" aria-hidden="true" />
+              Portaria
+            </h2>
+            <p class="gate-total">
+              <strong class="display num">{{ m.checkedIn | count }}</strong>
+              {{ m.checkedIn === 1 ? 'entrada' : 'entradas' }} de {{ m.ticketsSold | count }}
+              ingressos vendidos
+            </p>
+            <div
+              class="bar"
+              role="meter"
+              aria-label="Entradas na portaria"
+              aria-valuemin="0"
+              [attr.aria-valuemax]="m.ticketsSold"
+              [attr.aria-valuenow]="m.checkedIn"
+              [attr.aria-valuetext]="entryText()"
+            >
+              <span [style.width.%]="entryPercent()"></span>
+            </div>
+            @if (m.checkinsByGate?.length) {
+              <ul class="gate-list" aria-label="Entradas por portão">
+                @for (gate of m.checkinsByGate; track gate.gate) {
+                  <li>
+                    <span>{{ gate.gate }}</span>
+                    <strong class="num">{{ gate.count | count }}</strong>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
         }
-        <ul>
-          @for (sector of m.sectors; track sector.sectorId) {
-            <li><app-sector-card [sector]="sector" /></li>
+      </div>
+
+      <section class="card feed" aria-labelledby="feed-title">
+        <h2 id="feed-title">
+          @if (store.status() === 'live') {
+            <span class="pulse" aria-hidden="true"></span>
           }
-        </ul>
-      </section>
-
-      <section class="feed" aria-labelledby="feed-title">
-        <h2 id="feed-title">Atividade</h2>
+          Acontecendo agora
+        </h2>
         <app-activity-feed
           [entries]="store.activity()"
           [now]="store.now()"
@@ -131,9 +158,13 @@
   } @else {
     <section class="loading" aria-busy="true" aria-label="Carregando o painel">
       <div class="kpis" aria-hidden="true">
-        @for (item of [1, 2, 3, 4, 5, 6]; track item) {
-          <div class="skeleton"></div>
+        @for (item of [1, 2, 3, 4]; track item) {
+          <div class="skeleton placeholder"></div>
         }
+      </div>
+      <div class="columns" aria-hidden="true">
+        <div class="skeleton placeholder tall"></div>
+        <div class="skeleton placeholder tall"></div>
       </div>
     </section>
   }

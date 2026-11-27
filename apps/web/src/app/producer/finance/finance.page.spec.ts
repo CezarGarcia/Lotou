@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { toStatement } from '../data/finance.api';
 import { ProducerShowContext } from '../show/show-context';
-import { FinancePage } from './finance.page';
+import { FinancePage, composition } from './finance.page';
 import { statementLines } from './finance.store';
 
 const SHOW = {
@@ -49,6 +49,32 @@ describe('statementLines', () => {
       partial: true,
     });
     expect(toStatement({ partial: false }).partial).toBe(false);
+  });
+});
+
+describe('composition', () => {
+  it('divide as vendas brutas entre o que fica e cada desconto, sem as partes vazias', () => {
+    const parts = composition(
+      toStatement({
+        grossSalesCents: 10_000,
+        discountsCents: 500,
+        refundsCents: 0,
+        platformFeeCents: 1_000,
+        receivableCents: 8_500,
+      }),
+    )!;
+    expect(parts.segments.map((part) => [part.key, part.percentText])).toEqual([
+      ['receivableCents', '85%'],
+      ['discountsCents', '5%'],
+      ['platformFeeCents', '10%'],
+    ]);
+    expect(plain(parts.label)).toBe(
+      'Das vendas brutas: a receber R$ 85,00, descontos R$ 5,00, taxa R$ 10,00',
+    );
+  });
+
+  it('sem vendas, não há barra', () => {
+    expect(composition(toStatement({}))).toBeNull();
   });
 });
 

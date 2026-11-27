@@ -1,26 +1,25 @@
 .page {
   display: grid;
   gap: 16px;
-  padding-top: 8px;
+  padding-top: 16px;
 }
 
 .card {
   display: grid;
-  gap: 12px;
-  padding: 20px;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-lowest);
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid var(--lt-line);
+  border-radius: 18px;
+  background: var(--lt-surface);
 }
 
 h2 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
-  font: var(--mat-sys-title-large);
-  font-weight: 700;
+  font-size: 1.25rem;
 }
 
 .top {
@@ -28,38 +27,141 @@ h2 {
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px 24px;
+}
+
+.heading {
+  display: grid;
+  gap: 4px;
+  max-width: 68ch;
 }
 
 .note,
 .empty {
-  margin: 4px 0 0;
-  color: var(--mat-sys-on-surface-variant);
+  margin: 0;
+  color: var(--lt-muted);
 }
 
 .badge {
   padding: 2px 10px;
   border-radius: 999px;
-  background: var(--mat-sys-tertiary-container);
-  color: var(--mat-sys-on-tertiary-container);
-  font: var(--mat-sys-label-medium);
-  font-weight: 700;
+  background: var(--lt-warn-soft);
+  color: var(--lt-warn);
+  font-family: var(--lt-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 
   &.final {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
+    background: var(--lt-ok-soft);
+    color: #145c42;
   }
+}
+
+// As cores de cada parte: a barra, a legenda e as linhas do relatório.
+[data-key='receivableCents'] {
+  --cor: var(--lt-ok);
+}
+[data-key='grossSalesCents'] {
+  --cor: var(--lt-text);
+}
+[data-key='discountsCents'] {
+  --cor: #ffd23f;
+}
+[data-key='refundsCents'] {
+  --cor: #ff4d8d;
+}
+[data-key='platformFeeCents'] {
+  --cor: #b6a4ff;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: end;
+  gap: 20px 40px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--lt-raised);
+
+  @media (max-width: 760px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.receivable {
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+
+  .display {
+    font-size: clamp(2.75rem, 6vw, 3.75rem);
+    overflow-wrap: anywhere;
+  }
+}
+
+.composition {
+  display: grid;
+  gap: 12px;
+}
+
+.stack {
+  display: flex;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--lt-bg-deep);
+
+  span {
+    background: var(--cor);
+  }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lt-muted);
+  font-size: 0.8125rem;
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .num {
+    color: var(--lt-text);
+    font-weight: 600;
+  }
+}
+
+.swatch,
+.line[data-key]::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--cor);
 }
 
 .statement {
   margin: 0;
 
   .line {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--mat-sys-outline-variant);
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 4px 14px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-top: 1px solid var(--lt-line);
+
+    &[data-key]::before {
+      content: '';
+    }
   }
 
   dt {
@@ -73,29 +175,33 @@ h2 {
 
   .sign {
     display: inline-block;
-    width: 1.2em;
-    color: var(--mat-sys-on-surface-variant);
+    width: 1.1em;
+    color: var(--lt-muted);
   }
 
   small {
-    max-width: 60ch;
-    font: var(--mat-sys-body-small);
-    color: var(--mat-sys-on-surface-variant);
+    max-width: 64ch;
+    color: var(--lt-muted);
+    font-size: 0.8125rem;
   }
 
   dd {
     margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 600;
     white-space: nowrap;
-    font-variant-numeric: tabular-nums;
   }
 
   .total {
-    border-top: 2px solid var(--mat-sys-on-surface);
-    font: var(--mat-sys-title-medium);
-    font-weight: 800;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-top: 2px solid var(--lt-text);
+
+    .label {
+      font-size: 1.125rem;
+    }
 
     dd {
-      font-size: 1.4rem;
+      font-size: 2.25rem;
     }
   }
 }
@@ -104,15 +210,29 @@ h2 {
 .empty {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+
+  ng-icon {
+    margin-top: 2px;
+    font-size: 18px;
+  }
 }
 
 .info {
   margin: 0;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--mat-sys-surface-container);
-  font: var(--mat-sys-body-small);
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--lt-info-soft);
+  color: var(--lt-text-2);
+  font-size: 0.875rem;
+
+  ng-icon {
+    color: var(--lt-info);
+  }
+}
+
+.empty ng-icon {
+  color: var(--lt-ok);
 }
 
 .refunds {
@@ -127,31 +247,34 @@ h2 {
     align-items: center;
     justify-content: space-between;
     gap: 8px 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--mat-sys-outline-variant);
+    padding: 14px 0;
+    border-top: 1px solid var(--lt-line);
   }
 
   .order {
     display: grid;
   }
 
+  code {
+    font-family: var(--lt-mono);
+  }
+
   small {
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-muted);
   }
 }
 
 .error {
   margin: 0;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--mat-sys-error-container);
-  color: var(--mat-sys-on-error-container);
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--lt-danger-soft);
+  color: #7a1414;
 }
 
-.skeleton {
-  height: 280px;
-  border-radius: 12px;
-  background: var(--mat-sys-surface-container-high);
+.placeholder {
+  height: 320px;
+  border: 1px solid var(--lt-line);
 
   &.small {
     height: 72px;
@@ -161,11 +284,23 @@ h2 {
 .state {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 24px;
+  color: var(--lt-muted);
   text-align: center;
+
+  ng-icon {
+    font-size: 28px;
+  }
 
   p {
     margin: 0;
   }
+}
+
+// Ícone dentro dos botões do Material, centrado com o texto.
+.mat-mdc-button-base ng-icon {
+  margin-right: 2px;
+  font-size: 18px;
+  vertical-align: -4px;
 }

@@ -1,7 +1,7 @@
 <div class="page">
   <section class="card" aria-labelledby="statement-title">
     <header class="top">
-      <div>
+      <div class="heading">
         <h2 id="statement-title">
           Relatório financeiro
           @if (store.statement(); as state) {
@@ -25,7 +25,7 @@
         }
       </div>
       <button
-        matButton="tonal"
+        matButton="outlined"
         type="button"
         [disabled]="store.requestingPdf() || store.statement().status !== 'ready'"
         (click)="requestPdf()"
@@ -33,7 +33,7 @@
         @if (store.requestingPdf()) {
           <mat-spinner diameter="18" aria-label="Pedindo o PDF" />
         } @else {
-          <mat-icon aria-hidden="true">mail</mat-icon>
+          <ng-icon name="lucideMail" aria-hidden="true" />
         }
         Receber PDF por e-mail
       </button>
@@ -41,16 +41,21 @@
 
     @switch (store.statement().status) {
       @case ('loading') {
-        <div class="skeleton" aria-busy="true" aria-label="Carregando o relatório"></div>
+        <div
+          class="skeleton placeholder"
+          aria-busy="true"
+          aria-label="Carregando o relatório"
+        ></div>
       }
       @case ('error') {
         @let state = store.statement();
         <div class="state" role="alert">
+          <ng-icon name="lucideCloudOff" aria-hidden="true" />
           <p>
             Não foi possível carregar o relatório.
             {{ state.status === 'error' ? state.error.message : '' }}
           </p>
-          <button matButton="tonal" type="button" (click)="store.reloadStatement()">
+          <button matButton="outlined" type="button" (click)="store.reloadStatement()">
             Tentar de novo
           </button>
         </div>
@@ -59,6 +64,31 @@
         @let state = store.statement();
         @if (state.status === 'ready') {
           @let s = state.value;
+          <div class="summary">
+            <div class="receivable">
+              <span class="eyebrow muted">A receber</span>
+              <span class="display num">{{ s.receivableCents | brl }}</span>
+              <span class="muted">de {{ s.grossSalesCents | brl }} em vendas brutas</span>
+            </div>
+            @if (composition(); as parts) {
+              <div class="composition">
+                <div class="stack" role="img" [attr.aria-label]="parts.label">
+                  @for (part of parts.segments; track part.key) {
+                    <span [attr.data-key]="part.key" [style.width.%]="part.percent"></span>
+                  }
+                </div>
+                <ul class="legend" aria-hidden="true">
+                  @for (part of parts.segments; track part.key) {
+                    <li [attr.data-key]="part.key">
+                      <span class="swatch"></span>{{ part.name }}
+                      <span class="num">{{ part.percentText }}</span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+          </div>
+
           <dl class="statement">
             @for (line of store.lines(); track line.key) {
               <div class="line" [attr.data-key]="line.key">
@@ -69,7 +99,7 @@
                   >
                   <small>{{ line.explanation }}</small>
                 </dt>
-                <dd>
+                <dd class="num">
                   @if (line.sign && line.cents > 0) {
                     <span class="sr-only">menos</span><span aria-hidden="true">− </span>
                   }
@@ -86,11 +116,11 @@
                   {{ s.refundsCents | brl }} − {{ s.platformFeeCents | brl }}
                 </small>
               </dt>
-              <dd>{{ s.receivableCents | brl }}</dd>
+              <dd class="display num">{{ s.receivableCents | brl }}</dd>
             </div>
           </dl>
           <p class="info">
-            <mat-icon aria-hidden="true">info</mat-icon>
+            <ng-icon name="lucideInfo" aria-hidden="true" />
             <span>
               Taxa paga pelos compradores: <strong>{{ s.buyerFeesCents | brl }}</strong>. Quando o
               show repassa a taxa, ela é cobrada à parte do comprador e fica com a plataforma: não
@@ -103,22 +133,28 @@
   </section>
 
   <section class="card" aria-labelledby="refunds-title">
-    <h2 id="refunds-title">Reembolsos travados</h2>
-    <p class="note">
-      Pedidos em que o estorno falhou 5 vezes seguidas. Confira com o meio de pagamento e mande de
-      novo; o comprador recebe o e-mail quando o dinheiro voltar.
-    </p>
+    <div class="heading">
+      <h2 id="refunds-title">Reembolsos travados</h2>
+      <p class="note">
+        Pedidos em que o estorno falhou 5 vezes seguidas. Confira com o meio de pagamento e mande de
+        novo; o comprador recebe o e-mail quando o dinheiro voltar.
+      </p>
+    </div>
     @if (store.retryError(); as message) {
       <p class="error" role="alert">{{ message }}</p>
     }
     @switch (store.refundFailed().status) {
       @case ('loading') {
-        <div class="skeleton small" aria-busy="true" aria-label="Carregando os reembolsos"></div>
+        <div
+          class="skeleton placeholder small"
+          aria-busy="true"
+          aria-label="Carregando os reembolsos"
+        ></div>
       }
       @case ('error') {
         <div class="state" role="alert">
           <p>Não foi possível carregar os reembolsos travados.</p>
-          <button matButton="tonal" type="button" (click)="store.reloadRefunds()">
+          <button matButton="outlined" type="button" (click)="store.reloadRefunds()">
             Tentar de novo
           </button>
         </div>
@@ -128,7 +164,7 @@
         @if (state.status === 'ready') {
           @if (state.value.length === 0) {
             <p class="empty">
-              <mat-icon aria-hidden="true">check_circle</mat-icon>
+              <ng-icon name="lucideCircleCheck" aria-hidden="true" />
               Nenhum reembolso travado.
             </p>
           } @else {
@@ -161,6 +197,8 @@
                   >
                     @if (store.retrying().has(order.id)) {
                       <mat-spinner diameter="18" aria-label="Enviando" />
+                    } @else {
+                      <ng-icon name="lucideRotateCcw" aria-hidden="true" />
                     }
                     Tentar reembolso de novo
                     <span class="sr-only">do pedido {{ shortId(order.id) }}</span>

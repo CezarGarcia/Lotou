@@ -11,15 +11,17 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
-import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideArrowLeft, lucideCalendarX, lucideInfo } from '@ng-icons/lucide';
 import { filter, switchMap } from 'rxjs';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
 import { toApiError } from '../../core/http/problem';
+import { Cartaz } from '../../shared/ui/cartaz';
 import { ProducerApi } from '../data/producer.api';
-import { SHOW_STATUS_LABELS, label } from '../shared/labels';
+import { ShowStatus } from '../shared/show-status';
 import { CancelShowData, CancelShowDialog } from './cancel-show.dialog';
 import { ProducerShowContext } from './show-context';
 
@@ -27,35 +29,43 @@ import { ProducerShowContext } from './show-context';
 const CANCELLABLE = new Set(['PUBLISHED', 'ON_SALE']);
 
 /**
- * Moldura das telas de um show no painel: o cabeçalho com o show, as abas
- * (Ao vivo, Financeiro, Cupons) e o cancelamento do show. As abas leem o show
- * do `ProducerShowContext`, fornecido aqui.
+ * Moldura das telas de um show no painel: o cabeçalho com o cartaz e o show,
+ * as abas (Ao vivo, Financeiro, Cupons) e o cancelamento do show. As abas leem
+ * o show do `ProducerShowContext`, fornecido aqui.
  */
 @Component({
   selector: 'app-show-shell-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    Cartaz,
     RouterLink,
     RouterLinkActive,
     RouterOutlet,
     MatButtonModule,
-    MatIconModule,
     MatTabsModule,
+    NgIcon,
     ShowDatePipe,
+    ShowStatus,
   ],
+  viewProviders: [provideIcons({ lucideArrowLeft, lucideCalendarX, lucideInfo })],
   providers: [ProducerShowContext],
   template: `
     <div class="container page">
-      <a matButton routerLink="/painel" class="back">
-        <mat-icon aria-hidden="true">arrow_back</mat-icon>
+      <a routerLink="/painel" class="back">
+        <ng-icon name="lucideArrowLeft" aria-hidden="true" />
         Meus shows
       </a>
 
       <header class="head">
+        @if (context.value(); as s) {
+          <app-cartaz class="poster" size="mini" [artist]="s.artist" />
+        } @else {
+          <div class="poster skeleton" aria-hidden="true"></div>
+        }
         <div class="title">
-          <p class="eyebrow">Painel do produtor</p>
           @if (context.value(); as s) {
-            <h1>{{ s.artist }}</h1>
+            <app-show-status [status]="s.status" />
+            <h1 class="display">{{ s.artist }}</h1>
             <p class="meta">
               {{ s.title }} · {{ s.startsAt | showDate: context.timezone() : 'date' }} às
               {{ s.startsAt | showDate: context.timezone() : 'time' }}
@@ -64,37 +74,39 @@ const CANCELLABLE = new Set(['PUBLISHED', 'ON_SALE']);
               }
             </p>
           } @else {
-            <h1>{{ context.show.isLoading() ? 'Carregando...' : 'Show' }}</h1>
+            <h1 class="display">{{ context.show.isLoading() ? 'Carregando...' : 'Show' }}</h1>
           }
         </div>
-        <div class="actions">
-          @if (context.value(); as s) {
-            <span class="status" [attr.data-status]="s.status">{{ status(s.status) }}</span>
-          }
-          @if (canCancel()) {
-            <button
-              matButton="outlined"
-              type="button"
-              class="danger"
-              [disabled]="cancelling()"
-              (click)="cancelShow()"
-            >
-              <mat-icon aria-hidden="true">event_busy</mat-icon>
-              Cancelar show
-            </button>
-          }
-        </div>
+        @if (canCancel()) {
+          <button
+            matButton="outlined"
+            type="button"
+            class="danger"
+            [disabled]="cancelling()"
+            (click)="cancelShow()"
+          >
+            <ng-icon name="lucideCalendarX" aria-hidden="true" />
+            Cancelar show
+          </button>
+        }
       </header>
 
       @if (context.value()?.status === 'CANCELLED') {
         <p class="banner" role="status">
-          <mat-icon aria-hidden="true">info</mat-icon>
+          <ng-icon name="lucideInfo" aria-hidden="true" />
           Show cancelado. Os pedidos confirmados são reembolsados automaticamente; acompanhe no
           Financeiro.
         </p>
       }
 
-      <nav mat-tab-nav-bar [tabPanel]="panel" aria-label="Telas do show">
+      <nav
+        mat-tab-nav-bar
+        mat-stretch-tabs="false"
+        mat-align-tabs="start"
+        [tabPanel]="panel"
+        [disableRipple]="true"
+        aria-label="Telas do show"
+      >
         @for (tab of tabs; track tab.path) {
           <a
             mat-tab-link
@@ -104,7 +116,6 @@ const CANCELLABLE = new Set(['PUBLISHED', 'ON_SALE']);
             [routerLinkActiveOptions]="{ exact: true }"
             [active]="active.isActive"
           >
-            <mat-icon aria-hidden="true">{{ tab.icon }}</mat-icon>
             {{ tab.label }}
           </a>
         }
@@ -117,79 +128,96 @@ const CANCELLABLE = new Set(['PUBLISHED', 'ON_SALE']);
   styles: `
     .page {
       display: grid;
-      gap: 16px;
-      padding-block: 16px 64px;
+      gap: 20px;
+      padding-block: 20px 64px;
     }
     .back {
       justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      color: var(--lt-muted);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .back:hover {
+      color: var(--lt-text);
     }
     .head {
       display: flex;
       flex-wrap: wrap;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px 24px;
+      align-items: center;
+      gap: 16px 20px;
+    }
+    .poster {
+      flex: none;
+      width: 96px;
+      height: 120px;
+      transform: rotate(-2deg);
     }
     .title {
+      display: flex;
+      flex: 1 1 320px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
       min-width: 0;
     }
-    .eyebrow {
-      margin: 0;
-      font: var(--mat-sys-label-large);
-      font-weight: 600;
-      color: var(--mat-sys-primary);
-    }
     h1 {
-      margin: 4px 0;
-      font-size: clamp(1.6rem, 4vw, 2.2rem);
-      line-height: 1.15;
-      font-weight: 800;
-      letter-spacing: -0.03em;
+      margin: 0;
+      font-size: clamp(2.5rem, 6vw, 3.5rem);
+      overflow-wrap: anywhere;
     }
     .meta {
       margin: 0;
-      color: var(--mat-sys-on-surface-variant);
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px 12px;
-    }
-    .status {
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: var(--mat-sys-surface-container-highest);
-      font: var(--mat-sys-label-medium);
-      font-weight: 600;
-    }
-    .status[data-status='ON_SALE'] {
-      background: var(--mat-sys-primary-container);
-      color: var(--mat-sys-on-primary-container);
-    }
-    .status[data-status='CANCELLED'] {
-      background: var(--mat-sys-error-container);
-      color: var(--mat-sys-on-error-container);
+      color: var(--lt-muted);
     }
     .danger {
-      --mat-button-outlined-label-text-color: var(--mat-sys-error);
+      --mat-button-outlined-label-text-color: var(--lt-danger);
+      --mat-button-outlined-outline-color: #f2c4c4;
+      --mat-button-outlined-container-height: 44px;
+      background: var(--lt-surface);
+    }
+    .danger ng-icon {
+      margin-right: 2px;
+      font-size: 18px;
+      vertical-align: -4px;
     }
     .banner {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       margin: 0;
-      padding: 12px 16px;
-      border-radius: 12px;
-      background: var(--mat-sys-error-container);
-      color: var(--mat-sys-on-error-container);
+      padding: 14px 16px;
+      border: 1px solid #f2c4c4;
+      border-radius: var(--lt-radius);
+      background: var(--lt-danger-soft);
+      color: #7a1414;
+      font-weight: 500;
     }
-    nav mat-icon {
-      margin-right: 6px;
+    .banner ng-icon {
+      font-size: 20px;
+    }
+    nav {
+      --mat-tab-divider-color: var(--lt-line-strong);
+      --mat-tab-container-height: 48px;
+      --mat-tab-label-text-size: 1rem;
+      background: transparent;
     }
     mat-tab-nav-panel {
       display: block;
       padding-top: 8px;
+    }
+    @media (max-width: 600px) {
+      .poster {
+        width: 72px;
+        height: 90px;
+      }
+      .title {
+        flex-basis: calc(100% - 92px);
+      }
     }
   `,
 })
@@ -204,12 +232,11 @@ export class ShowShellPage {
   readonly id = input.required<string>();
 
   protected readonly tabs = [
-    { path: './', label: 'Ao vivo', icon: 'monitoring' },
-    { path: 'financeiro', label: 'Financeiro', icon: 'account_balance' },
-    { path: 'cupons', label: 'Cupons', icon: 'sell' },
+    { path: './', label: 'Ao vivo' },
+    { path: 'financeiro', label: 'Financeiro' },
+    { path: 'cupons', label: 'Cupons' },
   ];
 
-  protected readonly status = (value: string) => label(SHOW_STATUS_LABELS, value);
   protected readonly cancelling = signal(false);
   protected readonly canCancel = computed(() => {
     const show = this.context.value();

@@ -1,5 +1,13 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideBan,
+  lucideCircleX,
+  lucideLockOpen,
+  lucideRotateCcw,
+  lucideScanLine,
+  lucideShoppingBag,
+} from '@ng-icons/lucide';
 import { formatInTimezone } from '../../core/format/show-date.pipe';
 import { ACTIVITY_ICONS, describeActivity, relativeTime } from './activity-text';
 import { ActivityEntry } from './live.protocol';
@@ -12,7 +20,17 @@ import { ActivityEntry } from './live.protocol';
 @Component({
   selector: 'app-activity-feed',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatIconModule],
+  imports: [NgIcon],
+  viewProviders: [
+    provideIcons({
+      lucideBan,
+      lucideCircleX,
+      lucideLockOpen,
+      lucideRotateCcw,
+      lucideScanLine,
+      lucideShoppingBag,
+    }),
+  ],
   template: `
     @if (entries().length === 0) {
       <p class="empty">
@@ -30,12 +48,12 @@ import { ActivityEntry } from './live.protocol';
           @for (entry of entries(); track entry.id) {
             @let text = describe(entry);
             <li [attr.data-type]="entry.type">
-              <mat-icon aria-hidden="true">{{ icons[entry.type] }}</mat-icon>
+              <span class="icon"><ng-icon [name]="icons[entry.type]" aria-hidden="true" /></span>
               <span class="what">
                 <strong>{{ text.title }}</strong>
                 <span>{{ text.detail }}</span>
               </span>
-              <time [attr.datetime]="entry.at" [attr.title]="absolute(entry.at)">{{
+              <time class="mono" [attr.datetime]="entry.at" [attr.title]="absolute(entry.at)">{{
                 relative(entry.at)
               }}</time>
             </li>
@@ -47,16 +65,15 @@ import { ActivityEntry } from './live.protocol';
   styles: `
     .empty {
       margin: 0;
-      color: var(--mat-sys-on-surface-variant);
+      padding: 24px 0;
+      color: var(--lt-muted);
     }
     .scroll {
       max-height: 560px;
+      margin: -4px -8px;
+      padding: 0 8px;
       overflow-y: auto;
-      border-radius: 16px;
-    }
-    .scroll:focus-visible {
-      outline: 3px solid var(--mat-sys-primary);
-      outline-offset: 2px;
+      border-radius: 12px;
     }
     ol {
       margin: 0;
@@ -68,37 +85,58 @@ import { ActivityEntry } from './live.protocol';
       grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: start;
       gap: 12px;
-      padding: 12px 4px;
-      border-top: 1px solid var(--mat-sys-outline-variant);
+      padding: 10px 0;
+      border-top: 1px solid var(--lt-raised);
+      --tom: var(--lt-ok);
+      --fundo: var(--lt-ok-soft);
     }
     li:first-child {
       border-top: 0;
     }
-    mat-icon {
-      color: var(--mat-sys-primary);
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      background: var(--fundo);
+      color: var(--tom);
+      font-size: 16px;
     }
-    [data-type='OrderCancelled'] mat-icon {
-      color: var(--mat-sys-error);
+    [data-type='OrderCancelled'] {
+      --tom: var(--lt-danger);
+      --fundo: var(--lt-danger-soft);
     }
-    [data-type='LotOpened'] mat-icon {
-      color: var(--mat-sys-tertiary);
+    [data-type='LotOpened'] {
+      --tom: #b0245a;
+      --fundo: #ffe1ec;
     }
-    [data-type='LotSoldOut'] mat-icon {
-      color: var(--mat-sys-on-surface-variant);
+    [data-type='LotSoldOut'] {
+      --tom: var(--lt-text-3);
+      --fundo: var(--lt-bg-deep);
     }
-    [data-type='OrderRefunded'] mat-icon {
-      color: var(--mat-sys-tertiary);
+    [data-type='TicketCheckedIn'] {
+      --tom: var(--lt-info);
+      --fundo: var(--lt-info-soft);
+    }
+    [data-type='OrderRefunded'] {
+      --tom: var(--lt-warn);
+      --fundo: var(--lt-warn-soft);
     }
     .what {
       display: grid;
-      color: var(--mat-sys-on-surface-variant);
+      color: var(--lt-muted);
+      font-size: 0.8125rem;
     }
     strong {
-      color: var(--mat-sys-on-surface);
+      color: var(--lt-text);
+      font-size: 0.875rem;
+      font-weight: 600;
     }
     time {
-      font: var(--mat-sys-body-small);
-      color: var(--mat-sys-on-surface-variant);
+      padding-top: 2px;
+      color: var(--lt-muted);
+      font-size: 0.75rem;
       white-space: nowrap;
     }
   `,
