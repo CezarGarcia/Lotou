@@ -32,6 +32,8 @@ class GatewayRoutingAndSecurityTests {
     private static final UpstreamStub inventoryService = UpstreamStub.start();
     private static final UpstreamStub orderService = UpstreamStub.start();
     private static final UpstreamStub analyticsService = UpstreamStub.start();
+    private static final UpstreamStub checkinService = UpstreamStub.start();
+    private static final UpstreamStub notificationService = UpstreamStub.start();
 
     @Autowired
     private ApplicationContext context;
@@ -44,6 +46,8 @@ class GatewayRoutingAndSecurityTests {
         registry.add("INVENTORY_SERVICE_URL", inventoryService::url);
         registry.add("ORDER_SERVICE_URL", orderService::url);
         registry.add("ANALYTICS_SERVICE_URL", analyticsService::url);
+        registry.add("CHECKIN_SERVICE_URL", checkinService::url);
+        registry.add("NOTIFICATION_SERVICE_URL", notificationService::url);
     }
 
     @AfterAll
@@ -52,6 +56,8 @@ class GatewayRoutingAndSecurityTests {
         inventoryService.close();
         orderService.close();
         analyticsService.close();
+        checkinService.close();
+        notificationService.close();
     }
 
     @BeforeEach
@@ -60,6 +66,8 @@ class GatewayRoutingAndSecurityTests {
         inventoryService.reset();
         orderService.reset();
         analyticsService.reset();
+        checkinService.reset();
+        notificationService.reset();
         this.client = WebTestClient.bindToApplicationContext(this.context)
                 .apply(springSecurity())
                 .configureClient()
@@ -217,6 +225,85 @@ class GatewayRoutingAndSecurityTests {
 
         assertThat(analyticsService.lastRequest().path()).isEqualTo("/v1/analytics/shows/s1/statement");
         assertThat(inventoryService.requests()).isEmpty();
+    }
+
+    @Test
+    void compradorCotaECancelaOPedidoMasNaoMexeEmCuponsNemEmEstornos() {
+        orderService.respondWith(200, Map.of(), "{}");
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/orders/quote").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isOk();
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/orders/o1/cancel").exchange().expectStatus().isOk();
+        assertThat(orderService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/orders/quote", "/v1/orders/o1/cancel");
+
+        orderService.reset();
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/coupons").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isForbidden();
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/orders/o1/refund/retry").exchange().expectStatus().isForbidden();
+        this.client.mutateWith(userWithRole("buyer"))
+                .get().uri("/api/v1/orders/refund-failed?showId=s1").exchange().expectStatus().isForbidden();
+        // E o produtor não compra nem cancela pedido de comprador.
+        this.client.mutateWith(userWithRole("producer"))
+                .post().uri("/api/v1/orders/o1/cancel").exchange().expectStatus().isForbidden();
+        assertThat(orderService.requests()).isEmpty();
+    }
+
+    @Test
+    void cuponsEEstornosQueFalharamSaoDoProdutorEVaoParaOOrder() {
+        orderService.respondWith(201, Map.of("Location", "/v1/coupons/c1"), "{\"id\":\"c1\"}");
+        this.client.mutateWith(userWithRole("producer"))
+                .post().uri("/api/v1/coupons").header("Idempotency-Key", "chave-c")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange()
+                .expectStatus().isCreated()
+                .expectHeader().valueEquals("Location", "/api/v1/coupons/c1");
+        orderService.respondWith(200, Map.of(), "[]");
+        this.client.mutateWith(userWithRole("producer"))
+                .get().uri("/api/v1/orders/refund-failed?showId=s1").exchange().expectStatus().isOk();
+        this.client.mutateWith(userWithRole("producer"))
+                .post().uri("/api/v1/orders/o1/refund/retry").exchange().expectStatus().isOk();
+
+        assertThat(orderService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/coupons", "/v1/orders/refund-failed", "/v1/orders/o1/refund/retry");
+        assertThat(orderService.requests().getFirst().header("Idempotency-Key")).isEqualTo("chave-c");
+    }
+
+    @Test
+    void portariaEDaEquipeDoPortaoEDoProdutorEVaiParaOCheckin() {
+        this.client.post().uri("/api/v1/checkins").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isUnauthorized();
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/checkins").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isForbidden();
+        assertThat(checkinService.requests()).isEmpty();
+
+        checkinService.respondWith(200, Map.of(), "{\"result\":\"ACCEPTED\"}");
+        this.client.mutateWith(userWithRole("gate-staff"))
+                .post().uri("/api/v1/checkins").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isOk();
+        this.client.mutateWith(userWithRole("producer"))
+                .get().uri("/api/v1/checkins/shows/s1/summary").exchange().expectStatus().isOk();
+        assertThat(checkinService.requests()).extracting(UpstreamStub.ReceivedRequest::path)
+                .containsExactly("/v1/checkins", "/v1/checkins/shows/s1/summary");
+    }
+
+    @Test
+    void relatorioFinanceiroEDoProdutorEVaiParaONotification() {
+        this.client.mutateWith(userWithRole("buyer"))
+                .post().uri("/api/v1/reports/statements").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isForbidden();
+        this.client.mutateWith(userWithRole("gate-staff"))
+                .post().uri("/api/v1/reports/statements").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isForbidden();
+        notificationService.respondWith(202, Map.of(), "{}");
+        this.client.mutateWith(userWithRole("producer"))
+                .post().uri("/api/v1/reports/statements").contentType(MediaType.APPLICATION_JSON).bodyValue("{}")
+                .exchange().expectStatus().isAccepted();
+        assertThat(notificationService.lastRequest().path()).isEqualTo("/v1/reports/statements");
     }
 
     @Test

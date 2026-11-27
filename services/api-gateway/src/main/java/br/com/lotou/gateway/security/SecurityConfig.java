@@ -60,9 +60,16 @@ public class SecurityConfig {
                         .pathMatchers(CATALOG).hasRole(Roles.PRODUCER)
                         // O que está à venda agora (lote, preço e cadeiras livres) também é público.
                         .pathMatchers(HttpMethod.GET, "/api/v1/availability/**").permitAll()
-                        // Reservar e comprar é do comprador.
+                        // Tratar estornos que falharam e criar cupons é do produtor (o serviço confere se
+                        // o show é dele). Vem antes da regra geral de pedidos.
+                        .pathMatchers(HttpMethod.GET, "/api/v1/orders/refund-failed").hasRole(Roles.PRODUCER)
+                        .pathMatchers(HttpMethod.POST, "/api/v1/orders/*/refund/retry").hasRole(Roles.PRODUCER)
+                        .pathMatchers("/api/v1/coupons/**", "/api/v1/reports/**").hasRole(Roles.PRODUCER)
+                        // Reservar, comprar e cancelar é do comprador.
                         .pathMatchers("/api/v1/reservations/**", "/api/v1/orders/**", "/api/v1/queue/**")
                         .hasRole(Roles.BUYER)
+                        // Portaria: quem lê os QR codes e o produtor, que acompanha as entradas.
+                        .pathMatchers("/api/v1/checkins/**").hasAnyRole(Roles.GATE_STAFF, Roles.PRODUCER)
                         // WebSocket do painel: o navegador não manda token na abertura, então quem
                         // autentica é o analytics, na primeira mensagem (ADR 17).
                         .pathMatchers(HttpMethod.GET, "/api/v1/analytics/live").permitAll()

@@ -15,7 +15,10 @@ Faz três coisas: **roteia** para os serviços, **valida o JWT** emitido pelo Ke
 | `/api/v1/lots/**` | inventory-service | papel `producer` |
 | `/api/v1/analytics/**` | analytics-service | papel `producer` |
 | `GET /api/v1/analytics/live` (WebSocket do painel) | analytics-service | público no gateway: o token vai na primeira mensagem e quem valida é o analytics ([ADR 17](../../docs/adr/0017-sse-na-loja-websocket-no-painel.md)) |
-| `/api/v1/orders/**` | order-service | papel `buyer` |
+| `GET /api/v1/orders/refund-failed`, `POST /api/v1/orders/*/refund/retry`, `/api/v1/coupons/**` | order-service | papel `producer` (o serviço confere se o show é dele) |
+| demais rotas de `/api/v1/orders/**` (cotação, compra, cancelamento) | order-service | papel `buyer` |
+| `/api/v1/checkins/**` | checkin-service | papel `gate-staff` ou `producer` |
+| `/api/v1/reports/**` | notification-service | papel `producer` |
 | `/actuator/health/**` | o próprio gateway | público |
 | qualquer outra | — | exige autenticação (fechado por padrão) |
 
@@ -73,6 +76,8 @@ A imagem Docker roda com o Java agent do OpenTelemetry: traces, métricas e logs
 | `EVENT_SERVICE_URL` | `http://localhost:3001` | endereço do event-service |
 | `INVENTORY_SERVICE_URL` | `http://localhost:8082` | endereço do inventory-service |
 | `ORDER_SERVICE_URL` | `http://localhost:8083` | endereço do order-service |
+| `CHECKIN_SERVICE_URL` | `http://localhost:3003` | endereço do checkin-service |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:8085` | endereço do notification-service |
 | `REDIS_URL` | `redis://localhost:6380` | `redis-core`, onde ficam os baldes do rate limit |
 | `RATE_LIMIT_RESERVE_PER_SECOND`, `RATE_LIMIT_RESERVE_BURST` | `5`, `10` | limite de reservas por usuário |
 | `RATE_LIMIT_QUEUE_PER_SECOND`, `RATE_LIMIT_QUEUE_BURST` | `2`, `5` | limite de entradas na fila por usuário |

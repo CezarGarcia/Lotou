@@ -80,14 +80,28 @@ spring:
               filters:
                 - StripPrefix=1
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
-            # Pedidos e ingressos.
+            # Pedidos, ingressos, cancelamento e cupons.
             - id: order-service
               uri: ${ORDER_SERVICE_URL:http://localhost:8083}
               predicates:
-                - Path=/api/v1/orders/**
+                - Path=/api/v1/orders/**,/api/v1/coupons/**
               filters:
                 - StripPrefix=1
                 - RewriteResponseHeader=Location, ^/v1/, /api/v1/
+            # Portaria: leitura do QR code, shows do dia e resumo das entradas.
+            - id: checkin-service
+              uri: ${CHECKIN_SERVICE_URL:http://localhost:3003}
+              predicates:
+                - Path=/api/v1/checkins/**
+              filters:
+                - StripPrefix=1
+            # Relatório financeiro em PDF, enviado por e-mail.
+            - id: notification-service
+              uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/v1/reports/**
+              filters:
+                - StripPrefix=1
             # Vendas, relatório e pedidos de cada show, para o produtor (read models).
             - id: analytics-service
               uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}

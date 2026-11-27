@@ -55,6 +55,8 @@ services:
       INVENTORY_SERVICE_URL: http://inventory-service:8082
       ORDER_SERVICE_URL: http://order-service:8083
       ANALYTICS_SERVICE_URL: http://analytics-service:8084
+      CHECKIN_SERVICE_URL: http://checkin-service:3003
+      NOTIFICATION_SERVICE_URL: http://notification-service:8085
     ports:
       - "8080:8080"
     depends_on:
@@ -65,6 +67,10 @@ services:
       order-service:
         condition: service_healthy
       analytics-service:
+        condition: service_healthy
+      checkin-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
       redis-core:
         condition: service_healthy
