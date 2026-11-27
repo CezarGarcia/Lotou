@@ -1,0 +1,132 @@
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate aria-labelledby="coupon-form-title">
+  <h3 id="coupon-form-title">Novo cupom</h3>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Código</mat-label>
+    <input
+      matInput
+      formControlName="code"
+      autocomplete="off"
+      autocapitalize="characters"
+      spellcheck="false"
+      maxlength="30"
+      (input)="uppercase()"
+    />
+    <mat-hint>O comprador digita no pagamento. Ex.: LANCAMENTO10</mat-hint>
+    @if (form.controls.code.hasError('required')) {
+      <mat-error>Informe o código.</mat-error>
+    } @else if (form.controls.code.hasError('couponCode')) {
+      <mat-error>De 3 a 30 caracteres: letras sem acento, números, hífen ou sublinhado.</mat-error>
+    } @else if (form.controls.code.hasError('taken')) {
+      <mat-error>{{ form.controls.code.getError('taken') }}</mat-error>
+    }
+  </mat-form-field>
+
+  <fieldset class="kind">
+    <legend>Tipo de desconto</legend>
+    <mat-radio-group formControlName="kind" aria-label="Tipo de desconto">
+      <mat-radio-button value="PERCENT">Percentual sobre os ingressos</mat-radio-button>
+      <mat-radio-button value="AMOUNT">Valor fixo por pedido</mat-radio-button>
+    </mat-radio-group>
+  </fieldset>
+
+  <div class="row">
+    @if (kind() === 'PERCENT') {
+      <mat-form-field appearance="outline">
+        <mat-label>Desconto</mat-label>
+        <input
+          matInput
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="100"
+          step="1"
+          formControlName="percent"
+        />
+        <span matTextSuffix>%</span>
+        @if (form.controls.percent.invalid) {
+          <mat-error>Um número inteiro de 1 a 100.</mat-error>
+        }
+      </mat-form-field>
+    } @else {
+      <mat-form-field appearance="outline">
+        <mat-label>Desconto</mat-label>
+        <span matTextPrefix>R$&nbsp;</span>
+        <input
+          matInput
+          inputmode="decimal"
+          autocomplete="off"
+          formControlName="amount"
+          placeholder="30,00"
+        />
+        @if (form.controls.amount.hasError('required')) {
+          <mat-error>Informe o valor.</mat-error>
+        } @else if (form.controls.amount.hasError('brl')) {
+          <mat-error>Use reais e centavos, como 30,00.</mat-error>
+        } @else if (form.controls.amount.hasError('brlMin')) {
+          <mat-error>O desconto precisa ser maior que zero.</mat-error>
+        }
+      </mat-form-field>
+    }
+
+    <mat-form-field appearance="outline">
+      <mat-label>Limite de usos</mat-label>
+      <input
+        matInput
+        type="number"
+        inputmode="numeric"
+        min="1"
+        step="1"
+        formControlName="maxUses"
+      />
+      <mat-hint>Pedidos que podem usar o cupom</mat-hint>
+      @if (form.controls.maxUses.invalid) {
+        <mat-error>Um número inteiro, a partir de 1.</mat-error>
+      }
+    </mat-form-field>
+  </div>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Válido até</mat-label>
+    <input matInput type="datetime-local" formControlName="validUntil" />
+    <mat-hint>{{ zoneLabel() }}</mat-hint>
+    @if (form.controls.validUntil.hasError('required')) {
+      <mat-error>Informe até quando o cupom vale.</mat-error>
+    } @else if (form.controls.validUntil.hasError('past')) {
+      <mat-error>Escolha um horário que ainda não passou.</mat-error>
+    } @else if (form.controls.validUntil.hasError('dateTime')) {
+      <mat-error>Data ou hora inválida.</mat-error>
+    }
+  </mat-form-field>
+
+  @if (sectors().length > 0) {
+    <fieldset class="sectors">
+      <legend>Setores</legend>
+      <p class="help">Sem nenhum marcado, o cupom vale para todos os setores.</p>
+      @for (sector of sectors(); track sector.id) {
+        <mat-checkbox
+          [checked]="selectedSectors().has(sector.id)"
+          (change)="toggleSector(sector.id, $event.checked)"
+        >
+          {{ sector.name }}
+        </mat-checkbox>
+      }
+    </fieldset>
+  }
+
+  <p class="help">
+    O desconto vale só sobre os ingressos, nunca sobre a taxa de serviço, e os centavos são
+    arredondados a favor do comprador. Um cupom por pedido.
+  </p>
+
+  <div class="actions">
+    <button matButton type="button" (click)="cancel.emit()">Cancelar</button>
+    <button matButton="filled" type="submit" [disabled]="pending()">
+      @if (pending()) {
+        <mat-spinner diameter="18" aria-label="Criando o cupom" />
+      } @else {
+        Criar cupom
+      }
+    </button>
+  </div>
+</form>

@@ -1,14 +1,11 @@
-import { httpResource } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { CountPipe } from '../../core/format/count.pipe';
+import { CountPipe, formatCount } from '../../core/format/count.pipe';
 import { MoneyPipe } from '../../core/format/money.pipe';
-import { ShowDatePipe } from '../../core/format/show-date.pipe';
-import { Show } from '../../store/data/show.models';
-import { SHOWS_URL } from '../../store/data/shows.api';
+import { ProducerShowContext } from '../show/show-context';
 import { ActivityFeed } from './activity-feed';
 import { LiveStatus } from './live-dashboard.client';
 import { LiveShowStore } from './live-show.store';
@@ -23,9 +20,9 @@ const STATUS_TEXT: Record<LiveStatus, string> = {
 };
 
 /**
- * Painel ao vivo de um show: números gerais, vendas por setor e o feed de
- * atividade, atualizados pelo WebSocket do analytics. Os dados do show
- * (artista, local, fuso) vêm do catálogo.
+ * Painel ao vivo de um show: números gerais, vendas por setor, entradas na
+ * portaria e o feed de atividade, atualizados pelo WebSocket do analytics. O
+ * show (artista, local, fuso) vem do catálogo, pela moldura das abas.
  */
 @Component({
   selector: 'app-live-show-page',
@@ -36,7 +33,6 @@ const STATUS_TEXT: Record<LiveStatus, string> = {
     MatButtonModule,
     MatIconModule,
     MoneyPipe,
-    ShowDatePipe,
     SectorCard,
     ActivityFeed,
   ],
@@ -47,16 +43,26 @@ const STATUS_TEXT: Record<LiveStatus, string> = {
 export class LiveShowPage {
   protected readonly store = inject(LiveShowStore);
   private readonly auth = inject(AuthService);
+  private readonly context = inject(ProducerShowContext);
 
-  /** Parâmetro `:id` da rota. */
-  readonly id = input.required<string>();
-
-  protected readonly show = httpResource<Show>(() => `${SHOWS_URL}/${this.id()}`);
-  protected readonly timezone = computed(() =>
-    this.show.hasValue() ? this.show.value().venue?.timezone : undefined,
-  );
+  protected readonly timezone = this.context.timezone;
 
   protected readonly statusText = computed(() => STATUS_TEXT[this.store.status()]);
+
+  /** Parte dos ingressos vendidos que já entrou, de 0 a 100. */
+  protected readonly entryPercent = computed(() => {
+    const metrics = this.store.metrics();
+    if (!metrics?.checkedIn || metrics.ticketsSold === 0) {
+      return 0;
+    }
+    return Math.min(100, Math.round((metrics.checkedIn / metrics.ticketsSold) * 100));
+  });
+  protected readonly entryText = computed(() => {
+    const metrics = this.store.metrics();
+    return metrics
+      ? `${formatCount(metrics.checkedIn ?? 0)} de ${formatCount(metrics.ticketsSold)} já entraram (${this.entryPercent()}%)`
+      : '';
+  });
   protected readonly updatedText = computed(() => {
     const seconds = this.store.secondsSinceUpdate();
     if (seconds === null) {
@@ -71,7 +77,12 @@ export class LiveShowPage {
   });
 
   constructor() {
-    effect(() => this.store.watch(this.id()));
+    effect(() => {
+      const id = this.context.id();
+      if (id) {
+        this.store.watch(id);
+      }
+    });
   }
 
   protected login(): void {

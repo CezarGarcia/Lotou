@@ -16,7 +16,8 @@ import { ActivityEntry } from './live.protocol';
   template: `
     @if (entries().length === 0) {
       <p class="empty">
-        Nenhuma atividade ainda. Pedidos e viradas de lote aparecem aqui assim que acontecem.
+        Nenhuma atividade ainda. Pedidos, viradas de lote e entradas aparecem aqui assim que
+        acontecem.
       </p>
     } @else {
       <div
@@ -84,6 +85,9 @@ import { ActivityEntry } from './live.protocol';
     }
     [data-type='LotSoldOut'] mat-icon {
       color: var(--mat-sys-on-surface-variant);
+    }
+    [data-type='OrderRefunded'] mat-icon {
+      color: var(--mat-sys-tertiary);
     }
     .what {
       display: grid;
