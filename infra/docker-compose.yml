@@ -652,7 +652,9 @@ services:
 
   # Tempo, Prometheus, Loki e Grafana num container só (desenvolvimento).
   lgtm:
-    mem_limit: 1536m
+    # Tempo, Prometheus, Loki e Grafana juntos: depois de um teste de carga, o Tempo
+    # relê o WAL na subida e passa de 1,5 GB.
+    mem_limit: 3g
     restart: unless-stopped
     image: grafana/otel-lgtm:0.41.1
     environment:

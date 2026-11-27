@@ -33,13 +33,13 @@ clean: ## Derruba o ambiente e apaga os dados (volumes)
 	$(COMPOSE) down --volumes --remove-orphans
 
 seed: ## Carrega locais e shows fictícios (pode rodar mais de uma vez)
-	$(COMPOSE) run --rm seed
+	$(COMPOSE) run --rm --no-deps seed
 
 seed-vendas: ## Compras, cupons, cancelamentos e entradas de demonstração, pela API (depois do seed)
-	$(COMPOSE) run --rm seed node vendas.mjs
+	$(COMPOSE) run --rm --no-deps seed node vendas.mjs
 
 smoke: ## Confere o ambiente no ar: faz uma compra de ponta a ponta e confere os traces no Tempo
-	$(COMPOSE) run --rm smoke
+	$(COMPOSE) run --rm --no-deps smoke
 
 # Roda no host, contra o ambiente no ar. Na primeira vez: `cd e2e && npx playwright install chromium`.
 e2e: ## Ponta a ponta no navegador (Playwright): compra, cupom, cancelamento, painel e portaria
@@ -52,19 +52,19 @@ DURATION ?=
 
 load-opening: ## Carga: abertura de vendas (ENGINE=redis|postgres, VUS=2000)
 	RESERVATION_ENGINE=$(ENGINE) $(COMPOSE) up -d --wait inventory-service
-	-$(COMPOSE) run --rm -e VUS=$(VUS) -e DURATION=$(DURATION) k6 run --out experimental-prometheus-rw reservation-opening.js
+	-$(COMPOSE) run --rm --no-deps -e VUS=$(VUS) -e DURATION=$(DURATION) k6 run --out experimental-prometheus-rw reservation-opening.js
 	@$(MAKE) --no-print-directory load-check
 
 load-contention: ## Carga: mil compradores pelas mesmas 50 cadeiras (ENGINE=redis|postgres)
 	RESERVATION_ENGINE=$(ENGINE) $(COMPOSE) up -d --wait inventory-service
-	-$(COMPOSE) run --rm -e VUS=$(VUS) k6 run --out experimental-prometheus-rw seat-contention.js
+	-$(COMPOSE) run --rm --no-deps -e VUS=$(VUS) k6 run --out experimental-prometheus-rw seat-contention.js
 	@$(MAKE) --no-print-directory load-check
 
 load-show-page: ## Carga: página do show com o cache ligado e desligado
 	SHOW_CACHE_ENABLED=true RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
-	-$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	-$(COMPOSE) run --rm --no-deps k6 run --out experimental-prometheus-rw show-page.js
 	SHOW_CACHE_ENABLED=false RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
-	-$(COMPOSE) run --rm k6 run --out experimental-prometheus-rw show-page.js
+	-$(COMPOSE) run --rm --no-deps k6 run --out experimental-prometheus-rw show-page.js
 	$(COMPOSE) up -d --wait event-service
 
 chaos: ## Experimento de caos (EXP=notificacao-fora|pagamento-recusando|estorno-falhando|pedidos-fora|portaria-sem-consumir|redis-core-reiniciado|postgres-lento|mensagem-malformada|todos)
