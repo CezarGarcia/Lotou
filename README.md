@@ -145,6 +145,28 @@ make load-render                   # vazão da fila tickets.render com 1, 2 e 4 
 
 Cada cenário cria os próprios dados pela API e confere as invariantes no banco no fim. O passo a passo e a análise de cada um estão em [load-tests/README.md](load-tests/README.md).
 
+## Caos
+
+```bash
+make chaos EXP=todos   # ou um por vez: notificacao-fora, pagamento-recusando, estorno-falhando, pedidos-fora,
+                       # portaria-sem-consumir, redis-core-reiniciado, postgres-lento, mensagem-malformada
+```
+
+Cada experimento provoca uma falha no ambiente no ar, confere sozinho o resultado e devolve o ambiente ao que era:
+
+| Falha | O que aconteceu |
+| --- | --- |
+| serviço de e-mail fora por 5 minutos | as compras seguiram; ao voltar, os e-mails saíram, nenhum repetido |
+| 30% dos pagamentos recusados | as sagas compensaram e só os pagos baixaram o estoque |
+| todos os estornos falhando | cinco tentativas com espera crescente, pedido em REFUND\_FAILED, alerta por e-mail; o produtor reprocessou |
+| order-service fora no dia do show | a portaria seguiu validando com a cópia local dos ingressos |
+| consumidor de `order.events` derrubado | o lag subiu e zerou ao voltar, sem duplicar nada |
+| `redis-core` reiniciado no meio da abertura de vendas | o estado voltou pelo AOF e nenhuma venda passou da capacidade |
+| Postgres com 500 ms de latência | pedidos de 7,6 s sem nenhum erro; o trace apontou o banco e o alerta de latência disparou |
+| mensagem que não é JSON em `order.events` | foi para a DLT, os consumidores seguiram e o alerta chegou |
+
+Os detalhes e os dois achados que viraram correção (um erro de conexão que derrubava serviços Node quando o Postgres reiniciava, e o SLO de latência que faltava) estão em [docs/projeto.md](docs/projeto.md#caos).
+
 ## A compra pela API
 
 `make smoke` faz uma compra como um comprador faria, passando pelo gateway:

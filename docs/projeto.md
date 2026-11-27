@@ -807,16 +807,23 @@ Os cenários ficam em `load-tests/`, com o passo a passo e os detalhes de cada m
 
 ### Caos
 
-| Experimento | Como provocar | Resultado esperado |
-| --- | --- | --- |
-| notification-service fora do ar por 5 min | `docker stop` | fila acumula, nenhum ingresso se perde, tudo sai ao voltar |
-| payment-mock recusando 30% | variável de ambiente | sagas compensam e os ingressos voltam à venda |
-| payment-mock falhando estornos | variável de ambiente | a saga tenta de novo; após 5 falhas o pedido vai para REFUND\_FAILED e o alerta dispara |
-| order-service fora do ar no dia do show | `docker stop` | a portaria segue validando com a cópia local |
-| Consumidor de `order.events` derrubado | `docker stop` | lag sobe; ao voltar processa sem duplicar efeitos |
-| `redis-core` reiniciado no meio da abertura de vendas | `docker restart` | AOF recupera o estado; a reconciliação confere estoque e assentos com o Postgres |
-| Postgres com 500 ms de latência | Toxiproxy | alerta de burn rate dispara e o trace aponta o gargalo |
-| Mensagem malformada | publicar evento inválido | vai para a DLT e o consumidor segue |
+Cada experimento roda com `make chaos EXP=<nome>` (ou `EXP=todos`): o script (`scripts/chaos.mjs`) provoca a falha no ambiente do Compose, confere sozinho o resultado esperado e devolve o ambiente ao que era. Os resultados são de uma máquina de 4 CPUs com o ambiente inteiro no ar.
+
+| Experimento | Como provocar | Resultado esperado | Resultado medido |
+| --- | --- | --- | --- |
+| notification-service fora do ar por 5 min | `docker stop` (`notificacao-fora`) | fila acumula, nenhum ingresso se perde, tudo sai ao voltar | 5 compras confirmadas com ele fora; lag de 15 em `order.events`; ao voltar, os 5 e-mails chegaram, nenhum repetido |
+| payment-mock recusando 30% | variável de ambiente (`pagamento-recusando`) | sagas compensam e os ingressos voltam à venda | 30 pedidos: 23 confirmados e 7 compensados; o estoque baixou só 23; zero violações das invariantes no Postgres |
+| payment-mock falhando estornos | variável de ambiente (`estorno-falhando`) | a saga tenta de novo; após 5 falhas o pedido vai para REFUND\_FAILED e o alerta dispara | REFUND\_FAILED depois de 344 s (cinco falhas, com espera crescente); e-mail do alerta "Reembolso falhou" no Mailpit; o produtor reprocessou e o pedido foi reembolsado |
+| order-service fora do ar no dia do show | `docker stop` (`pedidos-fora`) | a portaria segue validando com a cópia local | "Meus ingressos" respondeu 503, e a portaria liberou a primeira leitura e barrou a segunda; de volta, o order-service leu o `TicketCheckedIn` e o ingresso aparece como usado |
+| Consumidor de `order.events` derrubado | `docker stop` no checkin-service (`portaria-sem-consumir`) | lag sobe; ao voltar processa sem duplicar efeitos | 3 compras com ele fora, lag de 9; ao voltar, lag zerado e os 3 ingressos na portaria, sem cópia nem entrada duplicada |
+| `redis-core` reiniciado no meio da abertura de vendas | `docker restart` (`redis-core-reiniciado`) | AOF recupera o estado; a reconciliação confere estoque e assentos com o Postgres | 300 compradores por 40 s, reinício aos 35 s: 2.500 ingressos reservados (o estoque esgotou), 301 reservas com erro durante o reinício e zero violações das invariantes no Postgres |
+| Postgres com 500 ms de latência | Toxiproxy entre o order-service e o banco (`postgres-lento`) | alerta de burn rate dispara e o trace aponta o gargalo | 274 pedidos em 4 min, p50 de 7,6 s e nenhum erro 5xx; o trace mostra o tempo nas consultas ao Postgres; o alerta de burn rate de latência disparou. O SLO de latência nasceu deste experimento: só com o de disponibilidade, nada dispararia (ADR 35) |
+| Mensagem malformada | publicar evento inválido (`mensagem-malformada`) | vai para a DLT e o consumidor segue | foi para `order.events.dlt` uma vez por consumidor (analytics, checkin e notification); a compra seguinte confirmou e entrou na portaria; o alerta de DLT chegou por e-mail |
+
+O que os experimentos e os testes de carga mostraram além do esperado:
+
+- **Postgres reiniciado derrubava serviços Node.** Uma conexão emprestada do pool que caía no meio da transação emitia um erro sem tratamento, e o payment-mock e o checkin-service encerravam o processo. Corrigido, com teste, e os containers agora voltam sozinhos (`restart: unless-stopped`).
+- **Repetições acumulam numa queda longa.** Com o payment-mock parado por 15 minutos e 3 mil sagas esperando, cada saga repetiu o `AuthorizePayment` a cada prazo vencido (até 2 minutos), e a fila chegou a 13 mil comandos repetidos. Tudo terminou certo (o payment-mock responde igual a comando repetido e as reservas expiradas foram estornadas), mas a recuperação levou uns 20 minutos. Um teto maior de espera, ou um disjuntor que pare de repetir com o serviço fora, encurtaria isso.
 
 ## Roadmap
 
