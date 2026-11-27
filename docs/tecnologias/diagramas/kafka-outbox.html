@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Outbox transacional</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+    <style>
+      .stage {
+        display: grid;
+        grid-template-columns: 420px 1fr 280px;
+        gap: 120px;
+        align-items: center;
+        margin-top: 70px;
+      }
+      .tx .node + .node {
+        margin-top: 12px;
+      }
+      .sql {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--text);
+      }
+      .bad {
+        margin-top: 26px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .x {
+        color: var(--red);
+        font-weight: 700;
+      }
+      .ok {
+        color: var(--green);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Kafka · outbox transacional</span>
+        <h1>Gravar e avisar, sem perder nenhum dos dois</h1>
+        <p class="lede">
+          O pedido e a mensagem para o Kafka são gravados na mesma transação do Postgres. Depois,
+          um relay lê a tabela <code>outbox</code> em ordem e publica. Se algo cair no meio, nada
+          fica pela metade.
+        </p>
+      </div>
+
+      <div class="stage">
+        <div class="group tx" id="tx">
+          <span class="group-title">Uma transação no Postgres</span>
+          <div class="node">
+            <span class="tag">tabela orders</span>
+            <div class="sql">UPDATE orders SET status = 'CONFIRMED'</div>
+          </div>
+          <div class="node outline is-kafka">
+            <span class="tag">tabela outbox</span>
+            <div class="sql">INSERT INTO outbox (OrderConfirmed)</div>
+          </div>
+          <div class="desc muted" style="margin-top: 12px; font-size: 13px">
+            COMMIT grava os dois; ROLLBACK, nenhum.
+          </div>
+        </div>
+
+        <div class="node" id="relay">
+          <span class="tag">order-service</span>
+          <div class="name">Relay do outbox</div>
+          <div class="desc">
+            Lê as mensagens ainda não publicadas, em ordem, com um <em>advisory lock</em> para só uma
+            instância publicar por vez. Publica e marca como publicada.
+          </div>
+        </div>
+
+        <div class="node solid is-kafka big" id="kafka">
+          <span class="tag">tópico</span>
+          <div class="name">order.events</div>
+          <div class="desc">checkin, analytics e notification leem</div>
+        </div>
+      </div>
+
+      <div class="bad">
+        <div class="note">
+          <span class="x">Sem outbox:</span> o serviço grava o pedido e depois publica no Kafka. Se
+          cair entre um e outro, o pedido fica confirmado e o resto do sistema nunca fica sabendo: a
+          portaria não aceita o ingresso, e o e-mail não sai.
+        </div>
+        <div class="note">
+          <span class="ok">Com outbox:</span> se o relay cair depois de publicar e antes de marcar,
+          ele publica de novo. Quem lê guarda o <code>eventId</code> de cada mensagem processada e
+          ignora a repetida.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · kafka</span>
+      </div>
+    </div>
+    <script>
+      Diagrama.link('#tx', '#relay', { label: 'lê em ordem' });
+      Diagrama.link('#relay', '#kafka', { label: 'publica', color: 'yellow' });
+      Diagrama.link('#relay', '#tx', {
+        from: 'top',
+        to: 'top',
+        fromAt: 0.5,
+        toAt: 0.75,
+        label: 'marca como publicada',
+        dashed: true,
+        curve: 0.22,
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,504 @@
+/*
+ * Base visual dos diagramas da pasta docs/tecnologias, no mesmo estilo de
+ * cartaz da loja (ADR 36). Cada diagrama é uma página HTML com um `.canvas`;
+ * `scripts/diagramas/render.mjs` tira a foto do `.canvas` e grava o PNG em
+ * docs/tecnologias/img.
+ *
+ * As fontes vêm do tema do login do Keycloak, que já está no repositório.
+ */
+@font-face {
+  font-family: 'Inter Variable';
+  font-weight: 100 900;
+  src: url(../../../infra/keycloak/themes/lotou/login/resources/fonts/inter-latin-wght-normal.woff2)
+    format('woff2');
+}
+@font-face {
+  font-family: 'Big Shoulders Display Variable';
+  font-weight: 100 900;
+  src: url(../../../infra/keycloak/themes/lotou/login/resources/fonts/big-shoulders-display-latin-wght-normal.woff2)
+    format('woff2');
+}
+@font-face {
+  font-family: 'DM Mono';
+  font-weight: 500;
+  src: url(../../../infra/keycloak/themes/lotou/login/resources/fonts/dm-mono-latin-500-normal.woff2)
+    format('woff2');
+}
+
+:root {
+  --bg: #121015;
+  --bg-deep: #0b0a0d;
+  --surface: #1c1921;
+  --raised: #26222c;
+  --line: #2a2630;
+  --line-strong: #3a3442;
+  --text: #f4efe6;
+  --text-2: #e2dcea;
+  --muted: #aba4b5;
+  --faint: #8e879a;
+  --yellow: #ffd23f;
+  --pink: #ff4d8d;
+  --green: #3ddc84;
+  --red: #ff5a5a;
+  --sky: #59c3ff;
+  --lilac: #b6a4ff;
+  --orange: #ff7a1a;
+  /* tecnologias */
+  --kafka: #ffd23f;
+  --rabbit: #ff4d8d;
+  --redis: #ff6b6b;
+  --redis-cache: #ffb86b;
+  --pg: #b6a4ff;
+  --mongo: #4fd1a5;
+  --keycloak: #59c3ff;
+  --otel: #ff7a1a;
+  --display: 'Big Shoulders Display Variable', Impact, 'Arial Narrow', sans-serif;
+  --font: 'Inter Variable', Inter, system-ui, sans-serif;
+  --mono: 'DM Mono', ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A área fotografada. Largura fixa; a altura acompanha o conteúdo. */
+.canvas {
+  position: relative;
+  width: 1200px;
+  padding: 44px 52px 36px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+/* Cabeçalho: etiqueta, título de cartaz e uma linha explicando o que se vê. */
+.head {
+  margin-bottom: 32px;
+  max-width: 900px;
+}
+.eyebrow {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--yellow);
+}
+h1 {
+  margin: 6px 0 10px;
+  font-family: var(--display);
+  font-size: 58px;
+  font-weight: 900;
+  line-height: 0.92;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+.lede {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text-2);
+  max-width: 72ch;
+}
+
+/* Rodapé com a marca e o documento de onde a imagem vem. */
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 34px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.logo {
+  display: inline-block;
+  padding: 3px 9px 1px;
+  background: var(--yellow);
+  color: var(--bg);
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  transform: rotate(-2deg);
+}
+
+/* Tipografia de apoio */
+.display {
+  font-family: var(--display);
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.92;
+}
+.mono {
+  font-family: var(--mono);
+}
+.muted {
+  color: var(--muted);
+}
+.label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+code,
+.code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--text);
+  background: var(--raised);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+/* Caixa: um serviço, um passo, um componente. */
+.node {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.node .name {
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.node .tag {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--yellow);
+}
+.node .desc {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.node.big .name {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.95;
+}
+
+/* Variantes de cor: o fundo é a tinta da tecnologia, o texto é escuro. */
+.node.solid {
+  border-color: transparent;
+  color: var(--bg);
+}
+.node.solid .desc,
+.node.solid .tag {
+  color: rgb(18 16 21 / 0.78);
+}
+.is-kafka.solid { background: var(--kafka); }
+.is-rabbit.solid { background: var(--rabbit); }
+.is-redis.solid { background: var(--redis); }
+.is-redis-cache.solid { background: var(--redis-cache); }
+.is-pg.solid { background: var(--pg); }
+.is-mongo.solid { background: var(--mongo); }
+.is-keycloak.solid { background: var(--keycloak); }
+.is-otel.solid { background: var(--otel); }
+.is-ok.solid { background: var(--green); }
+.is-danger.solid { background: var(--red); }
+
+/* Variante contornada: borda e título na cor, fundo escuro. */
+.node.outline { border-width: 2px; }
+.is-kafka.outline { border-color: var(--kafka); }
+.is-rabbit.outline { border-color: var(--rabbit); }
+.is-redis.outline { border-color: var(--redis); }
+.is-redis-cache.outline { border-color: var(--redis-cache); }
+.is-pg.outline { border-color: var(--pg); }
+.is-mongo.outline { border-color: var(--mongo); }
+.is-keycloak.outline { border-color: var(--keycloak); }
+.is-otel.outline { border-color: var(--otel); }
+.is-ok.outline { border-color: var(--green); }
+.is-danger.outline { border-color: var(--red); }
+.is-warn.outline { border-color: var(--yellow); }
+.outline.is-kafka .name { color: var(--kafka); }
+.outline.is-rabbit .name { color: var(--rabbit); }
+.outline.is-redis .name { color: var(--redis); }
+.outline.is-redis-cache .name { color: var(--redis-cache); }
+.outline.is-pg .name { color: var(--pg); }
+.outline.is-mongo .name { color: var(--mongo); }
+.outline.is-keycloak .name { color: var(--keycloak); }
+.outline.is-otel .name { color: var(--otel); }
+.outline.is-ok .name { color: var(--green); }
+.outline.is-danger .name { color: var(--red); }
+.outline.is-warn .name { color: var(--yellow); }
+
+/* Pílula: um tópico, uma chave, um estado. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.chip.solid { border-color: transparent; color: var(--bg); }
+.chip.is-kafka.solid { background: var(--kafka); }
+.chip.is-rabbit.solid { background: var(--rabbit); }
+.chip.is-redis.solid { background: var(--redis); }
+.chip.is-redis-cache.solid { background: var(--redis-cache); }
+.chip.is-pg.solid { background: var(--pg); }
+.chip.is-mongo.solid { background: var(--mongo); }
+.chip.is-ok.solid { background: var(--green); }
+.chip.is-danger.solid { background: var(--red); }
+.chip.is-warn.solid { background: var(--yellow); }
+
+/* Número de passo. */
+.num {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--yellow);
+  color: var(--bg);
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+/* Nota: explicação curta ao lado do desenho. */
+.note {
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.note strong {
+  color: var(--text);
+}
+
+/* Grupo: uma moldura com título (um banco, uma transação, uma camada). */
+.group {
+  position: relative;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 20px;
+  padding: 30px 18px 18px;
+}
+.group > .group-title {
+  position: absolute;
+  top: -11px;
+  left: 18px;
+  padding: 0 8px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Utilitários de layout */
+.row { display: flex; gap: 16px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.grid { display: grid; gap: 16px; }
+.wrap { flex-wrap: wrap; }
+.center { align-items: center; justify-content: center; }
+.between { justify-content: space-between; }
+.stretch { align-items: stretch; }
+.grow { flex: 1; }
+
+/* ---------- Setas (desenhadas por _base.js numa camada SVG) ---------- */
+.links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.link-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* ---------- Diagrama de sequência (montado por _base.js) ---------- */
+.seq {
+  position: relative;
+  display: grid;
+  row-gap: 0;
+}
+.seq .lane-head {
+  z-index: 1;
+  margin: 0 6px 14px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.seq .lane-head small {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.seq .lane-head.solid {
+  border-color: transparent;
+  color: var(--bg);
+}
+.seq .lane-head.solid small {
+  color: rgb(18 16 21 / 0.75);
+}
+.seq .msg {
+  position: relative;
+  z-index: 1;
+  min-height: 40px;
+  padding: 0 4px 9px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.seq .msg .txt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  width: max-content;
+  max-width: 330px;
+  margin-bottom: 5px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  color: var(--text-2);
+}
+.seq .msg .txt .num {
+  width: 21px;
+  height: 21px;
+  font-size: 14px;
+}
+.seq .msg .line {
+  position: relative;
+  height: 0;
+  border-top: 2px solid var(--muted);
+}
+.seq .msg.reply .line {
+  border-top-style: dashed;
+}
+.seq .msg .line::after {
+  content: '';
+  position: absolute;
+  top: -7px;
+  border: 6px solid transparent;
+}
+.seq .msg.to-right .line::after {
+  right: -2px;
+  border-left: 10px solid var(--muted);
+  border-right: 0;
+}
+.seq .msg.to-left .line::after {
+  left: -2px;
+  border-right: 10px solid var(--muted);
+  border-left: 0;
+}
+.seq .msg.hot .line { border-top-color: var(--yellow); }
+.seq .msg.hot.to-right .line::after { border-left-color: var(--yellow); }
+.seq .msg.hot.to-left .line::after { border-right-color: var(--yellow); }
+.seq .msg.bad .line { border-top-color: var(--red); }
+.seq .msg.bad.to-right .line::after { border-left-color: var(--red); }
+.seq .msg.bad.to-left .line::after { border-right-color: var(--red); }
+/* Mensagem para si mesmo: um cartão dentro da raia. */
+.seq .self {
+  z-index: 1;
+  justify-self: center;
+  width: max-content;
+  max-width: 300px;
+  margin: 4px 0 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--text-2);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.seq .self .num {
+  width: 21px;
+  height: 21px;
+  font-size: 14px;
+}
+/* Faixa que separa as fases da sequência. */
+.seq .phase {
+  z-index: 1;
+  grid-column: 1 / -1;
+  margin: 10px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--yellow);
+}
+.seq .phase::before,
+.seq .phase::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line-strong);
+}
+.seq .lifeline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed var(--line-strong);
+  z-index: 0;
+}

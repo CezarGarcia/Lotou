@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Uma compra, do clique ao e-mail</title>
+    <link rel="stylesheet" href="_base.css" />
+    <script src="_base.js"></script>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="head">
+        <span class="eyebrow">Arquitetura · uma compra de ponta a ponta</span>
+        <h1>Do clique ao e-mail com o ingresso</h1>
+        <p class="lede">
+          A parte em que o comprador espera termina na reserva, que leva milissegundos. O pagamento
+          e a emissão do ingresso seguem por mensagens, sem prender a tela.
+        </p>
+      </div>
+
+      <div class="seq" data-seq>
+        <div class="lane">Comprador<small>Angular</small></div>
+        <div class="lane">Gateway<small>Java</small></div>
+        <div class="lane">inventory<small>Java</small></div>
+        <div class="lane" data-cor="redis">Redis<small>core</small></div>
+        <div class="lane">order<small>Java</small></div>
+        <div class="lane" data-cor="kafka">Kafka<small>tópicos</small></div>
+        <div class="lane">payment<small>mock</small></div>
+        <div class="lane">notification<small>Python</small></div>
+        <div class="lane" data-cor="rabbit">RabbitMQ<small>filas</small></div>
+
+        <div class="phase">Reserva · o comprador espera</div>
+        <div class="m" data-de="0" data-para="1">Reservar 2 cadeiras, com o token do login</div>
+        <div class="m" data-de="1" data-para="1">confere o token e o rate limit</div>
+        <div class="m" data-de="1" data-para="2">encaminha</div>
+        <div class="m hot" data-de="2" data-para="3">script Lua: segura as 2 cadeiras, tudo ou nada</div>
+        <div class="m reply" data-de="2" data-para="0">reservado por 10 minutos</div>
+
+        <div class="phase">Pedido · responde na hora</div>
+        <div class="m" data-de="0" data-para="4">Pagar, com Idempotency-Key</div>
+        <div class="m" data-de="4" data-para="4">pedido PENDING + outbox, numa transação</div>
+        <div class="m reply" data-de="4" data-para="0">pedido criado; a tela acompanha</div>
+
+        <div class="phase">Saga · pelo Kafka, sem o comprador esperando</div>
+        <div class="m" data-de="4" data-para="5">AuthorizePayment</div>
+        <div class="m" data-de="5" data-para="6">entrega o comando</div>
+        <div class="m reply" data-de="6" data-para="5">PaymentAuthorized</div>
+        <div class="m" data-de="5" data-para="4">o order lê a resposta</div>
+        <div class="m" data-de="4" data-para="5">ConfirmReservation</div>
+        <div class="m" data-de="5" data-para="2">entrega o comando</div>
+        <div class="m reply" data-de="2" data-para="5">ReservationConfirmed</div>
+        <div class="m" data-de="5" data-para="4">o order lê o fato</div>
+        <div class="m hot" data-de="4" data-para="4">CONFIRMED: ingressos emitidos com QR assinado</div>
+        <div class="m" data-de="4" data-para="5">TicketsIssued</div>
+
+        <div class="phase">Ingresso · tarefas no RabbitMQ</div>
+        <div class="m" data-de="5" data-para="7">o notification lê o fato</div>
+        <div class="m" data-de="7" data-para="8">tarefa: gerar o PDF</div>
+        <div class="m reply" data-de="8" data-para="7">um worker gera o PDF com os QR codes</div>
+        <div class="m" data-de="7" data-para="8">tarefa: enviar o e-mail (prioridade alta)</div>
+        <div class="m hot" data-de="7" data-para="0">e-mail com o ingresso</div>
+      </div>
+
+      <div class="grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 22px">
+        <div class="note">
+          <strong>Ao mesmo tempo</strong>, o mesmo <code>TicketsIssued</code> chega à portaria, que
+          guarda uma cópia dos ingressos, e ao painel do produtor, que mostra a venda em menos de um
+          segundo.
+        </div>
+        <div class="note">
+          <strong>Se o pagamento for recusado</strong>, o order manda <code>ReleaseReservation</code>
+          e as cadeiras voltam à venda. Se a reserva já venceu, manda estornar.
+        </div>
+        <div class="note">
+          <strong>Clique duplo não cobra duas vezes:</strong> a <code>Idempotency-Key</code> devolve
+          o mesmo pedido, e cada consumidor ignora mensagem repetida.
+        </div>
+      </div>
+
+      <div class="foot">
+        <span class="logo">Lotou</span>
+        <span>docs/tecnologias · arquitetura</span>
+      </div>
+    </div>
+  </body>
+</html>
