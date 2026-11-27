@@ -214,7 +214,8 @@ async def test_command_line_moves_the_dlq_back(
     await publisher.close()
 
     depth = await _cli(infra, "depth")
-    assert (depth.returncode, json.loads(depth.stdout)) == (0, {topology.EMAIL_DLQ: 2, topology.RENDER_DLQ: 0})
+    expected = {topology.EMAIL_DLQ: 2, topology.RENDER_DLQ: 0, topology.REPORTS_DLQ: 0}
+    assert (depth.returncode, json.loads(depth.stdout)) == (0, expected)
 
     moved = await _cli(infra, "requeue", "--queue", "email")
     assert moved.returncode == 2  # a ilegível ficou na DLQ

@@ -7,6 +7,8 @@
 | `notifications` | topic | `email.#` | `notifications.email` (prioridade até 10, DLX `notifications.dlx`) |
 | `notifications.retry` | direct | `10s`, `1m`, `5m` | `notifications.retry.<chave>` (TTL; volta a `notifications`) |
 | `notifications.dlx` | fanout | | `notifications.email.dlq` |
+| `reports` | direct | `statement.pdf` | `reports.generate` (DLX `reports.dlx`) |
+| `reports.dlx` | fanout | | `reports.generate.dlq` |
 
 A declaração é idempotente: declarar o que já existe com os mesmos argumentos
 não muda nada, então toda instância declara tudo na subida, e a conexão robusta
@@ -39,10 +41,16 @@ EMAIL_BINDING = "email.#"
 EMAIL_QUEUE = "notifications.email"
 EMAIL_DLQ = "notifications.email.dlq"
 
+REPORTS = "reports"
+REPORTS_DLX = "reports.dlx"
+STATEMENT_KEY = "statement.pdf"
+REPORTS_QUEUE = "reports.generate"
+REPORTS_DLQ = "reports.generate.dlq"
+
 # Uma fila por espera; a chave é o nome, o tempo vem da configuração.
 RETRY_KEYS: tuple[str, str, str] = ("10s", "1m", "5m")
 
-DLQS: tuple[str, ...] = (EMAIL_DLQ, RENDER_DLQ)
+DLQS: tuple[str, ...] = (EMAIL_DLQ, RENDER_DLQ, REPORTS_DLQ)
 
 
 def retry_queue(key: str) -> str:
@@ -63,6 +71,7 @@ class DeadLetterRoute:
 REQUEUE_ROUTES: dict[str, DeadLetterRoute] = {
     EMAIL_DLQ: DeadLetterRoute(EMAIL_DLQ, NOTIFICATIONS),
     RENDER_DLQ: DeadLetterRoute(RENDER_DLQ, TICKETS),
+    REPORTS_DLQ: DeadLetterRoute(REPORTS_DLQ, REPORTS),
 }
 
 
@@ -83,6 +92,16 @@ async def declare(channel: AbstractChannel, retry_delays_seconds: tuple[float, .
     await render.bind(tickets, RENDER_KEY)
     render_dlq = await channel.declare_queue(RENDER_DLQ, durable=True)
     await render_dlq.bind(tickets_dlx, "")
+
+    # ---- relatório financeiro (sob demanda, pelo produtor)
+    reports = await channel.declare_exchange(REPORTS, ExchangeType.DIRECT, durable=True)
+    reports_dlx = await channel.declare_exchange(REPORTS_DLX, ExchangeType.FANOUT, durable=True)
+    statement = await channel.declare_queue(
+        REPORTS_QUEUE, durable=True, arguments={"x-dead-letter-exchange": REPORTS_DLX}
+    )
+    await statement.bind(reports, STATEMENT_KEY)
+    reports_dlq = await channel.declare_queue(REPORTS_DLQ, durable=True)
+    await reports_dlq.bind(reports_dlx, "")
 
     # ---- e-mails
     notifications = await channel.declare_exchange(NOTIFICATIONS, ExchangeType.TOPIC, durable=True)
@@ -115,7 +134,7 @@ async def declare(channel: AbstractChannel, retry_delays_seconds: tuple[float, .
     email_dlq = await channel.declare_queue(EMAIL_DLQ, durable=True)
     await email_dlq.bind(dlx, "")
 
-    return {queue.name: queue for queue in (render, render_dlq, email, email_dlq)}
+    return {queue.name: queue for queue in (render, render_dlq, statement, reports_dlq, email, email_dlq)}
 
 
 async def depth(channel: AbstractRobustChannel, queue: str) -> int:

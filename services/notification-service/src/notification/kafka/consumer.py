@@ -4,6 +4,7 @@
 | --- | --- |
 | `TicketsIssued` | `RenderTickets` em `tickets` (`render`): gerar o PDF |
 | `OrderCancelled` | `SendEmail` em `notifications` (`email.order.cancelled`) |
+| `OrderRefunded` | `SendEmail` em `notifications` (`email.refund.completed`) |
 | outros | ignorados |
 
 Ao menos uma vez, sem perder nada: o offset de uma partição só é confirmado
@@ -36,7 +37,15 @@ from opentelemetry.trace import SpanKind
 
 from notification import tasks
 from notification.config import Settings
-from notification.contracts import TOPIC_ORDERS, ContractError, Event, OrderCancelled, TicketsIssued, parse, peek_type
+from notification.contracts import (
+    TOPIC_ORDERS,
+    ContractError,
+    Event,
+    OrderCancelled,
+    TicketsIssued,
+    parse,
+    peek_type,
+)
 from notification.dedupe import Dedupe, event_key
 from notification.ids import uuid7
 from notification.kafka.dead_letter import DeadLetterPublisher
@@ -192,16 +201,28 @@ class OrderEventsConsumer:
                 message_id=message_id,
                 message_type="RenderTickets",
             )
-        elif isinstance(payload, OrderCancelled):
-            email = tasks.CancellationEmail(
-                source_event_id=event.event_id,
-                buyer_id=payload.buyer_id,
-                order_id=payload.order_id,
-                show_id=payload.show_id,
-                total_cents=payload.total_cents,
-                reason=payload.reason,
-                cancelled_at=payload.cancelled_at,
-            )
+        else:
+            email: tasks.CancellationEmail | tasks.RefundEmail
+            if isinstance(payload, OrderCancelled):
+                email = tasks.CancellationEmail(
+                    source_event_id=event.event_id,
+                    buyer_id=payload.buyer_id,
+                    order_id=payload.order_id,
+                    show_id=payload.show_id,
+                    total_cents=payload.total_cents,
+                    reason=payload.reason,
+                    cancelled_at=payload.cancelled_at,
+                )
+            else:
+                email = tasks.RefundEmail(
+                    source_event_id=event.event_id,
+                    buyer_id=payload.buyer_id,
+                    order_id=payload.order_id,
+                    show_id=payload.show_id,
+                    refunded_cents=payload.refunded_cents,
+                    reason=payload.reason,
+                    refunded_at=payload.refunded_at,
+                )
             message_id = uuid7()
             await self._publisher.publish(
                 topology.NOTIFICATIONS,

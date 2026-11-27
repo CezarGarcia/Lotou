@@ -3,10 +3,12 @@
 1. Lê a tarefa `SendEmail` e a tentativa (`x-attempt`).
 2. Reserva o e-mail daquele `eventId` (`notification:email:{eventId}`, em
    `dedupe.py`); se ele já saiu ou outra cópia está enviando, só confirma.
-3. Busca o e-mail e o nome do comprador no Keycloak, pelo `buyerId`. Comprador
-   sem e-mail (contas de serviço do smoke e da carga) é confirmado e contado,
-   sem retry: tentar de novo não faria aparecer um endereço.
-4. Monta o e-mail (texto e HTML, com o PDF no do ingresso) e envia por SMTP.
+3. Busca o e-mail e o nome do destinatário no Keycloak, pelo `buyerId` (ou o
+   `producerId`, no relatório financeiro). Usuário sem e-mail (contas de
+   serviço do smoke e da carga) é confirmado e contado, sem retry: tentar de
+   novo não faria aparecer um endereço.
+4. Monta o e-mail (texto e HTML, com o PDF no do ingresso e no do relatório) e
+   envia por SMTP.
 5. Marca o `eventId` como enviado e confirma (ack).
 
 Se o passo 3 ou 4 falha (Keycloak, event-service ou SMTP fora, ou um erro
@@ -81,8 +83,8 @@ class EmailHandler:
         email = task.email
         template = email.template
         span.set_attribute("lotou.email.template", template)
-        span.set_attribute("lotou.order.id", email.order_id)
-        context = {"orderId": email.order_id, "template": template, "attempt": attempt}
+        span.set_attribute("lotou.order.id", tasks.reference(email))
+        context = {"orderId": tasks.reference(email), "template": template, "attempt": attempt}
 
         key = email_key(email.source_event_id)
         owner = message.message_id or uuid7()
@@ -94,12 +96,14 @@ class EmailHandler:
             return
 
         try:
-            buyer = await self._buyers.get(email.buyer_id)
+            buyer = await self._buyers.get(tasks.recipient_id(email))
             if buyer.email is None:
                 await self._dedupe.complete(key)
                 await message.ack()
                 _count(template, "no_recipient")
-                logger.info("Comprador sem e-mail; nada a enviar", extra={**context, "buyerId": email.buyer_id})
+                logger.info(
+                    "Destinatário sem e-mail; nada a enviar", extra={**context, "buyerId": tasks.recipient_id(email)}
+                )
                 return
             await self._sender.send(await self._compose(email, buyer), template=template)
         except asyncio.CancelledError:
@@ -116,24 +120,28 @@ class EmailHandler:
         _count(template, "sent")
         logger.info("E-mail enviado", extra=context)
 
-    async def _compose(self, email: tasks.TicketsEmail | tasks.CancellationEmail, buyer: Buyer) -> EmailMessage:
+    async def _compose(self, email: tasks.Email, buyer: Buyer) -> EmailMessage:
         if isinstance(email, tasks.TicketsEmail):
             return compose.tickets_email(email, buyer, sender=self._mail_from)
+        if isinstance(email, tasks.StatementEmail):
+            return compose.statement_email(email, buyer, sender=self._mail_from)
         try:
             show: tasks.ShowInfo | None = await self._shows.get(email.show_id)
         except ShowNotFound:
             show = None
+        if isinstance(email, tasks.RefundEmail):
+            return compose.refund_email(email, buyer, show, sender=self._mail_from)
         return compose.cancellation_email(email, buyer, show, sender=self._mail_from)
 
     async def _failed(
         self,
         message: AbstractIncomingMessage,
-        email: tasks.TicketsEmail | tasks.CancellationEmail,
+        email: tasks.Email,
         attempt: int,
         error: Exception,
     ) -> None:
         reason = redact(f"{type(error).__name__}: {error}")
-        context = {"orderId": email.order_id, "template": email.template, "attempt": attempt, "error": reason}
+        context = {"orderId": tasks.reference(email), "template": email.template, "attempt": attempt, "error": reason}
         trace.get_current_span().set_attribute("error.type", type(error).__name__)
         step = next_step(attempt)
         if isinstance(step, GiveUp):

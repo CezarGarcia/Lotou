@@ -7,9 +7,9 @@ import pytest
 
 from notification.clients.buyers import Buyer
 from notification.ids import uuid7
-from notification.mail.compose import cancellation_email, tickets_email
+from notification.mail.compose import cancellation_email, refund_email, statement_email, tickets_email
 from notification.privacy import redact
-from notification.tasks import Attachment, CancellationEmail, ShowInfo, TicketsEmail
+from notification.tasks import Attachment, CancellationEmail, RefundEmail, ShowInfo, StatementEmail, TicketsEmail
 
 SHOW = ShowInfo(
     title="Noite <de> Teste",
@@ -115,3 +115,77 @@ def test_redact_removes_addresses() -> None:
     error = "SMTPRecipientsRefused: {'bia@lotou.test': (550, b'5.1.1 <bia@lotou.test>: User unknown')}"
     assert "lotou.test" not in redact(error)
     assert redact("sem endereço nenhum") == "sem endereço nenhum"
+
+
+@pytest.mark.parametrize(
+    ("reason", "phrase"),
+    [
+        ("ORDER_CANCELLED", "você cancelou o pedido dentro do prazo"),
+        ("SHOW_CANCELLED", "o show foi cancelado pelo produtor"),
+        ("MOTIVO_NOVO", "o pedido foi cancelado"),
+    ],
+)
+def test_refund_email_has_the_amount_and_the_show_in_its_time_zone(reason: str, phrase: str) -> None:
+    show = SHOW.model_copy(update={"timezone": "America/Manaus"})
+    task = RefundEmail(
+        source_event_id=uuid7(),
+        buyer_id=BUYER.id,
+        order_id=uuid7(),
+        show_id=uuid7(),
+        refunded_cents=123456,
+        reason=reason,
+        refunded_at=datetime(2026, 11, 27, 18, 5, tzinfo=UTC),
+    )
+    message = refund_email(task, BUYER, show, sender="Lotou <ingressos@lotou.test>")
+    text, html = _bodies(message)
+    assert message["Subject"] == "Reembolso concluído: Noite <de> Teste"
+    assert message["To"] == "bia@lotou.test"
+    assert message["Message-ID"] == f"<{task.source_event_id}@lotou.test>"
+    for body in (text, html):
+        assert "R$ 1.234,56" in body
+        assert phrase in body
+        assert task.order_id in body
+    # 00:00 UTC de 13/12 é 20h de sábado em Manaus.
+    assert "sábado, 12 de dezembro de 2026, às 20h00 (horário de America/Manaus)" in text
+    assert "&lt;de&gt;" in html
+    assert not message.is_multipart() or all(part.get_filename() is None for part in message.walk())
+
+
+def test_refund_email_without_the_show() -> None:
+    task = RefundEmail(
+        source_event_id=uuid7(),
+        buyer_id=BUYER.id,
+        order_id=uuid7(),
+        show_id=uuid7(),
+        refunded_cents=16000,
+        reason="ORDER_CANCELLED",
+        refunded_at=datetime(2026, 11, 27, 18, 5, tzinfo=UTC),
+    )
+    message = refund_email(task, BUYER, None, sender="Lotou <ingressos@lotou.test>")
+    text, _ = _bodies(message)
+    assert message["Subject"] == "Reembolso concluído: seu show"
+    assert "R$ 160,00" in text
+
+
+@pytest.mark.parametrize(("partial", "kind"), [(True, "parcial"), (False, "final")])
+def test_statement_email_has_the_pdf_and_the_receivable(partial: bool, kind: str) -> None:
+    producer = Buyer(id="produtor-1", email="caio@lotou.test", first_name="Caio")
+    task = StatementEmail(
+        source_event_id=uuid7(),
+        producer_id=producer.id,
+        show_id=uuid7(),
+        title="Samba de Quinta",
+        partial=partial,
+        receivable_cents=36450,
+        attachment=Attachment.pdf("relatorio.pdf", b"%PDF-1.4 teste"),
+    )
+    message = statement_email(task, producer, sender="Lotou <ingressos@lotou.test>")
+    text, _ = _bodies(message)
+    assert message["Subject"] == "Relatório financeiro: Samba de Quinta"
+    assert message["To"] == "caio@lotou.test"
+    assert "Olá, Caio!" in text
+    assert f"relatório financeiro ({kind})" in text
+    assert "R$ 364,50" in text
+    [attachment] = list(message.iter_attachments())
+    assert attachment.get_filename() == "relatorio.pdf"
+    assert attachment.get_content() == b"%PDF-1.4 teste"

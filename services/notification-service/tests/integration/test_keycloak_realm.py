@@ -1,7 +1,8 @@
 """O realm do repositório (`infra/keycloak/lotou-realm.json`) num Keycloak de verdade.
 
 A conta de serviço `notification-service` precisa ler o e-mail do comprador na
-API de administração, e só isso. A configuração tem detalhes que um fake não
+API de administração, e só isso, e chamar a API interna do analytics (papel
+`service`, audiência `lotou-api`). A configuração tem detalhes que um fake não
 pegaria: o papel `view-users` do cliente `realm-management` precisa estar no
 token (mapeamento de escopo, porque o cliente não tem `fullScopeAllowed`) e,
 no Keycloak 26.8 do Compose, o token precisa do escopo `kc-admin-api`, com a audiência
@@ -13,6 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
+import jwt
 import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
@@ -84,6 +86,13 @@ async def test_service_account_reads_the_buyer_email_and_nothing_else(keycloak: 
                 auth=("notification-service", "notification-service-dev-secret"),
             )
         ).json()["access_token"]
+        # O mesmo token chama a API interna do analytics: audiência lotou-api e papel service,
+        # e só esse papel do realm.
+        claims = jwt.decode(token, options={"verify_signature": False})
+        audience = claims["aud"] if isinstance(claims["aud"], list) else [claims["aud"]]
+        assert "lotou-api" in audience
+        assert claims["realm_access"]["roles"] == ["service"]
+
         headers = {"Authorization": f"Bearer {token}"}
         # Só leitura de usuários: alterar um usuário, ler clientes ou outro realm é negado.
         changed = await http.put(

@@ -3,7 +3,8 @@
 São mensagens internas do serviço: quem publica e quem consome é o próprio
 notification-service (o consumidor do Kafka, o worker de PDF e o de e-mail), por
 isso não ficam em `contracts/`, que guarda o que passa entre serviços pelo Kafka.
-Seguem a mesma convenção: comandos no imperativo (`RenderTickets`, `SendEmail`),
+Seguem a mesma convenção: comandos no imperativo (`RenderTickets`, `SendEmail`,
+`GenerateStatement`),
 envelope versionado (`messageId` em UUID v7, `type`, `version`, `createdAt`,
 `payload`) e JSON em UTF-8. CPF e e-mail não entram em tarefa nenhuma: o worker
 de e-mail resolve o endereço pelo `buyerId` na hora de enviar.
@@ -36,11 +37,18 @@ UtcDatetime = Annotated[AwareDatetime, AfterValidator(lambda value: value.astime
 
 TEMPLATE_TICKETS: Final = "email.ticket.issued"
 TEMPLATE_CANCELLED: Final = "email.order.cancelled"
+TEMPLATE_REFUNDED: Final = "email.refund.completed"
+TEMPLATE_STATEMENT: Final = "email.report.statement"
 
 # Fila `notifications.email` com `x-max-priority` 10: o ingresso passa na frente
 # do resto quando a fila acumula (ingresso antes de marketing, no documento).
 MAX_PRIORITY = 10
-PRIORITIES: dict[str, int] = {TEMPLATE_TICKETS: 9, TEMPLATE_CANCELLED: 5}
+PRIORITIES: dict[str, int] = {
+    TEMPLATE_TICKETS: 9,
+    TEMPLATE_CANCELLED: 5,
+    TEMPLATE_REFUNDED: 5,
+    TEMPLATE_STATEMENT: 5,
+}
 
 
 class TaskModel(BaseModel):
@@ -123,21 +131,101 @@ class CancellationEmail(TaskModel):
     cancelled_at: UtcDatetime
 
 
-EmailPayload = Annotated[TicketsEmail | CancellationEmail, Field(discriminator="template")]
+class RefundEmail(TaskModel):
+    template: Literal["email.refund.completed"] = TEMPLATE_REFUNDED
+    source_event_id: Uuid
+    buyer_id: NonEmpty
+    order_id: Uuid
+    show_id: Uuid
+    refunded_cents: Cents
+    reason: NonEmpty
+    refunded_at: UtcDatetime
+
+
+class StatementEmail(TaskModel):
+    """O relatório financeiro em PDF para o produtor. `source_event_id` é o id do pedido de relatório."""
+
+    template: Literal["email.report.statement"] = TEMPLATE_STATEMENT
+    source_event_id: Uuid
+    # O produtor também é um usuário do Keycloak: o endereço vem do mesmo lugar que o do comprador.
+    producer_id: NonEmpty
+    show_id: Uuid
+    title: NonEmpty
+    partial: bool
+    receivable_cents: int
+    attachment: Attachment
+
+
+type Email = TicketsEmail | CancellationEmail | RefundEmail | StatementEmail
+
+
+def recipient_id(email: Email) -> str:
+    """O `sub` de quem recebe: o comprador, ou o produtor no relatório."""
+    return email.producer_id if isinstance(email, StatementEmail) else email.buyer_id
+
+
+def reference(email: Email) -> str:
+    """O que identifica o e-mail em log e span: o pedido, ou o pedido de relatório."""
+    return email.source_event_id if isinstance(email, StatementEmail) else email.order_id
+
+
+EmailPayload = Annotated[Email, Field(discriminator="template")]
 
 
 class SendEmail(TaskModel):
     email: EmailPayload
 
 
+# --------------------------------------------------------- GenerateStatement
+
+
+class StatementData(TaskModel):
+    """O relatório do analytics (`GET /internal/v1/shows/{id}/statement`) no momento do pedido."""
+
+    show_id: Uuid
+    producer_id: NonEmpty
+    title: NonEmpty
+    artist: NonEmpty
+    starts_at: UtcDatetime
+    timezone: NonEmpty
+    venue_name: NonEmpty
+    status: NonEmpty
+    partial: bool
+    currency: NonEmpty
+    gross_sales_cents: int
+    discounts_cents: int
+    refunds_cents: int
+    platform_fee_cents: int
+    buyer_fees_cents: int
+    receivable_cents: int
+    confirmed_orders: int
+    refunded_orders: int
+    tickets_sold: int
+    tickets_refunded: int
+
+
+class GenerateStatement(TaskModel):
+    """Gerar o PDF do relatório financeiro e enviá-lo ao produtor que pediu."""
+
+    request_id: Uuid
+    producer_id: NonEmpty
+    requested_at: UtcDatetime
+    statement: StatementData
+
+
 # ----------------------------------------------------------------- envelope
 
-TaskPayload = RenderTickets | SendEmail
+TaskPayload = RenderTickets | SendEmail | GenerateStatement
 TASK_TYPES: dict[tuple[str, int], type[TaskModel]] = {
     ("RenderTickets", 1): RenderTickets,
     ("SendEmail", 1): SendEmail,
+    ("GenerateStatement", 1): GenerateStatement,
 }
-_TYPE_NAMES: dict[type[TaskModel], str] = {RenderTickets: "RenderTickets", SendEmail: "SendEmail"}
+_TYPE_NAMES: dict[type[TaskModel], str] = {
+    RenderTickets: "RenderTickets",
+    SendEmail: "SendEmail",
+    GenerateStatement: "GenerateStatement",
+}
 
 
 class TaskEnvelope(TaskModel):
@@ -178,10 +266,10 @@ def decode[T: TaskModel](body: bytes, expected: type[T]) -> tuple[TaskEnvelope, 
         raise InvalidTask(f"payload de {envelope.type} inválido: {summary(error)}") from error
 
 
-def routing_key(email: TicketsEmail | CancellationEmail) -> str:
+def routing_key(email: Email) -> str:
     """A routing key no exchange `notifications` é o próprio template."""
     return email.template
 
 
-def priority(email: TicketsEmail | CancellationEmail) -> int:
+def priority(email: Email) -> int:
     return PRIORITIES.get(email.template, 1)

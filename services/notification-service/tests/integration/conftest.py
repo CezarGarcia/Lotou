@@ -1,7 +1,7 @@
 """Dependências reais para os testes de integração: Kafka, RabbitMQ, Redis e Mailpit, um de cada por sessão.
 
-O Keycloak e o event-service são os fakes HTTP de `tests/fakes.py`: são APIs, não
-banco nem broker. O OpenTelemetry fica ligado, com exportadores em memória,
+O Keycloak, o event-service e o analytics são os fakes HTTP de `tests/fakes.py`:
+são APIs, não banco nem broker. O OpenTelemetry fica ligado, com exportadores em memória,
 para os testes conferirem o trace atravessando Kafka, RabbitMQ e SMTP e as
 métricas do documento.
 """
@@ -31,7 +31,7 @@ from notification.rabbit import topology
 from notification.service import Components, NotificationService
 from notification.telemetry import instrument_libraries
 from tests.events import TOPIC, Message
-from tests.fakes import CLIENT_SECRET, EVENT_SERVICE_URL, KEYCLOAK_URL, FakeBackends
+from tests.fakes import ANALYTICS_URL, CLIENT_SECRET, EVENT_SERVICE_URL, KEYCLOAK_URL, FakeBackends
 from tests.integration.containers import KafkaKraft, Mailpit, RabbitMq, RedisServer
 from tests.tokens import ISSUER, JWKS_URI
 
@@ -103,7 +103,11 @@ class Telemetry:
             for scope in resource.scope_metrics:
                 for metric in scope.metrics:
                     if metric.name == name:
-                        found += [(dict(p.attributes or {}), p.value) for p in metric.data.data_points]  # type: ignore[union-attr]
+                        # Contador e gauge têm `value`; histograma, `count` (quantas medidas).
+                        found += [
+                            (dict(p.attributes or {}), getattr(p, "value", None) or getattr(p, "count", 0))
+                            for p in metric.data.data_points
+                        ]
         return found
 
     def value(self, name: str, **attributes: str) -> float:
@@ -144,6 +148,7 @@ def make_settings(infra: Infra, topics: None) -> Any:
             "smtp_port": infra.mailpit.smtp_port,
             "smtp_timeout_seconds": 2.0,
             "event_service_url": EVENT_SERVICE_URL,
+            "analytics_service_url": ANALYTICS_URL,
             "keycloak_url": KEYCLOAK_URL,
             "keycloak_client_secret": CLIENT_SECRET,
             "auth_issuer": ISSUER,
@@ -172,7 +177,7 @@ def run_service(make_settings: Any, backends: FakeBackends, telemetry: Telemetry
     async def run(*, components: frozenset[str] | None = None, **overrides: Any) -> AsyncIterator[NotificationService]:
         settings = make_settings(**overrides)
         enabled = Components(
-            enabled=components or frozenset({"kafka", "render", "email"}),
+            enabled=components or frozenset({"kafka", "render", "email", "reports"}),
             kafka_retry_base_seconds=0.05,
             render_retry_base_seconds=0.1,
         )
@@ -228,6 +233,8 @@ ALL_QUEUES = (
     topology.RENDER_DLQ,
     topology.EMAIL_QUEUE,
     topology.EMAIL_DLQ,
+    topology.REPORTS_QUEUE,
+    topology.REPORTS_DLQ,
     *(topology.retry_queue(key) for key in topology.RETRY_KEYS),
 )
 

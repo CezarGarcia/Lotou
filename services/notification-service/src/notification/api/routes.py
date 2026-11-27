@@ -1,21 +1,39 @@
-"""Rotas HTTP. As de `/internal` não têm rota no gateway e exigem o token de uma conta de serviço."""
+"""Rotas HTTP.
+
+Atrás do gateway, as de `/v1` ganham o prefixo `/api` (`/api/v1/reports/...`). As
+de `/internal` não têm rota no gateway e exigem o token de uma conta de serviço.
+"""
 
 import asyncio
+import logging
+import uuid
+from datetime import datetime
 from http import HTTPStatus
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import APIRouter, Body, Depends, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
 
+from notification import tasks
 from notification.api import problems
 from notification.api.auth import User, require_role
+from notification.clients.statements import StatementNotFound, StatementsUnavailable
 from notification.dlq import requeue
+from notification.ids import utcnow, uuid7
+from notification.rabbit import topology
 from notification.service import NotificationService
 
-Service = Annotated[User, Depends(require_role("service"))]
+logger = logging.getLogger(__name__)
 
+Service = Annotated[User, Depends(require_role("service"))]
+Producer = Annotated[User, Depends(require_role("producer"))]
+UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+# Namespace do id do pedido de relatório quando vem com `Idempotency-Key`.
+REPORT_NAMESPACE = uuid.UUID("0196a4c0-7a1e-7d6c-9c1e-5e1a7a0e4b21")
+
+reports = APIRouter(prefix="/v1/reports", tags=["reports"])
 internal = APIRouter(prefix="/internal/v1", tags=["internal"])
 health = APIRouter(prefix="/health", tags=["health"])
 
@@ -24,8 +42,19 @@ class ApiModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+class StatementRequest(ApiModel):
+    show_id: Annotated[str, StringConstraints(pattern=UUID_PATTERN)]
+
+
+class StatementRequested(ApiModel):
+    request_id: str
+    show_id: str
+    status: Literal["QUEUED"] = "QUEUED"
+    requested_at: datetime
+
+
 class RequeueRequest(ApiModel):
-    queue: Literal["notifications.email.dlq", "tickets.render.dlq"] = "notifications.email.dlq"
+    queue: Literal["notifications.email.dlq", "tickets.render.dlq", "reports.generate.dlq"] = "notifications.email.dlq"
     limit: int | None = Field(default=None, ge=1, le=100_000)
 
 
@@ -49,6 +78,61 @@ def _service(request: Request) -> NotificationService:
     if service.connection is None or service.publisher is None or service.monitor is None:
         raise problems.unavailable("O serviço ainda está subindo.")
     return service
+
+
+@reports.post(
+    "/statements",
+    status_code=HTTPStatus.ACCEPTED,
+    response_model=StatementRequested,
+    response_model_by_alias=True,
+)
+async def request_statement(
+    request: Request,
+    user: Producer,
+    body: StatementRequest,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+) -> StatementRequested:
+    """Pede o PDF do relatório financeiro do show, que chega por e-mail ao produtor.
+
+    O relatório é lido agora no analytics (com o token da conta de serviço), e
+    só o dono do show pode pedi-lo: show de outro produtor é 404, sem revelar
+    que existe. O PDF é gerado pela fila `reports.generate` e enviado ao e-mail
+    do produtor no Keycloak; a resposta é 202 assim que a tarefa está na fila.
+
+    Não cria recurso, então a `Idempotency-Key` é opcional: com ela, o id do
+    pedido de relatório sai da chave, e repetir o pedido manda um e-mail só.
+    """
+    service = _service(request)
+    assert service.publisher is not None
+    try:
+        statement = await service.statements.get(body.show_id)
+    except StatementNotFound:
+        raise problems.not_found("Show") from None
+    except StatementsUnavailable as error:
+        logger.warning("Relatório indisponível no analytics", extra={"showId": body.show_id, "error": str(error)})
+        raise problems.unavailable("O relatório não está disponível agora. Tente de novo em instantes.") from None
+    if statement.producer_id != user.id:
+        raise problems.not_found("Show")
+
+    key = idempotency_key
+    request_id = str(uuid.uuid5(REPORT_NAMESPACE, f"{user.id}:{key}")) if key else uuid7()
+    requested_at = utcnow()
+    task = tasks.GenerateStatement(
+        request_id=request_id, producer_id=user.id, requested_at=requested_at, statement=statement
+    )
+    message_id = uuid7()
+    try:
+        await service.publisher.publish(
+            topology.REPORTS,
+            topology.STATEMENT_KEY,
+            tasks.encode(task, message_id=message_id),
+            message_id=message_id,
+            message_type="GenerateStatement",
+        )
+    except Exception as error:
+        raise problems.unavailable(f"Não foi possível falar com o RabbitMQ: {type(error).__name__}.") from error
+    logger.info("Relatório financeiro pedido", extra={"reportId": request_id, "showId": body.show_id})
+    return StatementRequested(request_id=request_id, show_id=body.show_id, requested_at=requested_at)
 
 
 @internal.post("/dlq/requeue", response_model=RequeueResponse, response_model_by_alias=True)

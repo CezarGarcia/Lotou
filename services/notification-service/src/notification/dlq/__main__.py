@@ -1,7 +1,7 @@
 """Linha de comando das DLQs.
 
     python -m notification.dlq depth
-    python -m notification.dlq requeue [--queue email|render|all] [--limit N]
+    python -m notification.dlq requeue [--queue email|render|reports|all] [--limit N]
 
 Só precisa de `RABBITMQ_URL`. Sai com 0 quando deu certo, 1 quando falhou e
 2 quando alguma mensagem ilegível ficou na DLQ.
@@ -20,7 +20,12 @@ from notification.dlq import depths, requeue
 from notification.rabbit import topology
 from notification.rabbit.publisher import Publisher
 
-QUEUES = {"email": (topology.EMAIL_DLQ,), "render": (topology.RENDER_DLQ,), "all": topology.DLQS}
+QUEUES = {
+    "email": (topology.EMAIL_DLQ,),
+    "render": (topology.RENDER_DLQ,),
+    "reports": (topology.REPORTS_DLQ,),
+    "all": topology.DLQS,
+}
 
 
 class CliSettings(BaseSettings):

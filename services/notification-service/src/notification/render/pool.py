@@ -1,4 +1,4 @@
-"""Pool de processos que geram os PDFs.
+"""Pool de processos que geram os PDFs (ingressos e relatório financeiro).
 
 Gerar o PDF é trabalho de CPU (QR code e desenho da página). Num processo
 Python, isso travaria o event loop que também consome o Kafka, envia e-mails e
@@ -19,6 +19,7 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
 from notification.render.pdf import PdfJob, render_pdf
+from notification.render.statement import StatementJob, render_statement
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,19 @@ class RenderPool:
         await asyncio.gather(*(loop.run_in_executor(self._executor, _warm_up) for _ in range(self._workers)))
 
     async def render(self, job: PdfJob) -> bytes:
+        return await self._run(job, job.order_id)
+
+    async def statement(self, job: StatementJob) -> bytes:
+        return await self._run(job, job.request_id)
+
+    async def _run(self, job: PdfJob | StatementJob, reference: str) -> bytes:
         loop = asyncio.get_running_loop()
         try:
-            return await loop.run_in_executor(self._executor, render_pdf, job)
+            if isinstance(job, PdfJob):
+                return await loop.run_in_executor(self._executor, render_pdf, job)
+            return await loop.run_in_executor(self._executor, render_statement, job)
         except BrokenProcessPool as error:
-            logger.error("Processo de renderização morreu; recriando o pool", extra={"orderId": job.order_id})
+            logger.error("Processo de renderização morreu; recriando o pool", extra={"orderId": reference})
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = self._new_executor()
             raise RenderFailed("o processo que gerava o PDF morreu") from error

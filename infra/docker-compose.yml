@@ -232,8 +232,10 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       EVENT_SERVICE_URL: http://event-service:3000
-      # Lê o e-mail do comprador na API de administração, com a conta de serviço
-      # notification-service (só view-users).
+      # Relatório financeiro para o PDF (rota interna, papel service).
+      ANALYTICS_SERVICE_URL: http://analytics-service:8084
+      # Lê o e-mail do comprador (e do produtor) na API de administração e o
+      # relatório no analytics, com a conta de serviço notification-service.
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_CLIENT_SECRET: ${NOTIFICATION_CLIENT_SECRET:-notification-service-dev-secret}
       # Processos que geram PDFs ao mesmo tempo (um consumidor de tickets.render cada).
