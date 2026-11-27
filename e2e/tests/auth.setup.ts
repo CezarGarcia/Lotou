@@ -17,9 +17,8 @@ for (const papel of Object.keys(USUARIOS) as Papel[]) {
     await page.locator('#password').fill(password);
     await page.locator('#kc-login').click();
 
-    // De volta à loja, com o nome no cabeçalho.
-    await expect(page.getByRole('button', { name: 'Sair' })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'Principal' })).toContainText(nome);
+    // De volta à loja, com o menu da conta (e o nome) no cabeçalho.
+    await expect(page.getByRole('button', { name: `Conta de ${nome}` })).toBeVisible();
     await page.context().storageState({ path: sessaoDe(papel) });
   });
 }
