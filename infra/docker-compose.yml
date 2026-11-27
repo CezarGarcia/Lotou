@@ -28,11 +28,17 @@ x-auth-env: &auth-env
   # Onde um serviço busca o token da sua conta de serviço (client credentials).
   AUTH_TOKEN_URI: http://keycloak:8080/realms/lotou/protocol/openid-connect/token
 
+# Cada container tem limite de memória (mem_limit), medido com folga sobre o uso
+# em repouso e sob carga. Sem limite, a JVM usa até 75% da RAM da máquina como
+# heap e um serviço sob carga chegou a 4,5 GB; com limite, as JVMs ficam com 60%
+# do limite (MaxRAMPercentage nos Dockerfiles) e o resto para o agente do
+# OpenTelemetry e o metaspace.
 services:
   # ------------------------------------------------------------- aplicação
   # Loja (Angular) servida por nginx, que também encaminha /api ao gateway e
   # /otlp ao Collector: tudo no mesmo domínio para o navegador.
   web:
+    mem_limit: 64m
     build:
       context: ../apps/web
     ports:
@@ -45,6 +51,7 @@ services:
 
   # Porta de entrada da API: roteia para os serviços e valida o JWT.
   api-gateway:
+    mem_limit: 768m
     build:
       context: ../services/api-gateway
     environment:
@@ -79,6 +86,7 @@ services:
 
   # Sem porta publicada: só o api-gateway fala com ele.
   event-service:
+    mem_limit: 512m
     build:
       context: ../services/event-service
     environment:
@@ -109,6 +117,7 @@ services:
   # Lotes, disponibilidade, reservas e fila virtual. Lê o catálogo de shows.catalog, recebe os
   # comandos da saga e publica os fatos de reservas e lotes em inventory.events.
   inventory-service:
+    mem_limit: 1g
     build:
       context: ../services/inventory-service
     environment:
@@ -138,6 +147,7 @@ services:
 
   # Pedidos e ingressos. Orquestra a saga de compra pelo Kafka; lê a reserva no inventory-service.
   order-service:
+    mem_limit: 1g
     build:
       context: ../services/order-service
     environment:
@@ -165,6 +175,7 @@ services:
   # Gateway de pagamento simulado: lê os comandos de payment.commands e
   # responde em payment.events. Sem porta publicada: só conversa pelo Kafka.
   payment-mock:
+    mem_limit: 512m
     build:
       context: ../services/payment-mock
     environment:
@@ -196,6 +207,7 @@ services:
   # order.events e shows.catalog (ADR 14), e publica as entradas em
   # checkin.events. Sem porta publicada: só o api-gateway fala com ele.
   checkin-service:
+    mem_limit: 768m
     build:
       context: ../services/checkin-service
     environment:
@@ -231,6 +243,7 @@ services:
   # partir do Kafka. Sem porta publicada: só o api-gateway fala com ele.
   # Replay dos read models: `make replay-analytics`.
   analytics-service:
+    mem_limit: 768m
     build:
       context: ../services/analytics-service
     environment:
@@ -261,6 +274,7 @@ services:
   # passa as tarefas pelo RabbitMQ (retry e DLQ); os e-mails vão para o Mailpit.
   # Sem porta publicada. DLQ de volta para a fila: `make requeue-notifications`.
   notification-service:
+    mem_limit: 768m
     build:
       context: ../services/notification-service
     environment:
@@ -358,6 +372,7 @@ services:
 
   # ---------------------------------------------------------------- dados
   postgres:
+    mem_limit: 1g
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lotou}
@@ -385,6 +400,7 @@ services:
   # o replica set na primeira subida. Fora do Compose, conecte com
   # directConnection=true (o membro se anuncia como mongodb:27017).
   mongodb:
+    mem_limit: 1g
     image: mongo:8.0
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
@@ -405,6 +421,7 @@ services:
   # Kafka em modo KRaft (sem ZooKeeper), um broker só. Os serviços falam com
   # kafka:9092; do host, use localhost:9094.
   kafka:
+    mem_limit: 1536m
     image: apache/kafka:4.2.0
     environment:
       KAFKA_NODE_ID: 1
@@ -451,6 +468,7 @@ services:
 
   # Painel do Kafka: tópicos, mensagens e lag dos consumer groups.
   kafka-ui:
+    mem_limit: 512m
     image: kafbat/kafka-ui:v1.3.0
     environment:
       KAFKA_CLUSTERS_0_NAME: lotou
@@ -463,6 +481,7 @@ services:
 
   # Cache: pode perder dados. Descarta por LRU e não persiste nada.
   redis-cache:
+    mem_limit: 256m
     image: redis:8.8-alpine
     command:
       - redis-server
@@ -485,6 +504,7 @@ services:
   # Estado quente (estoque, assentos, fila): não pode perder dados.
   # Nunca descarta chave e grava AOF a cada segundo.
   redis-core:
+    mem_limit: 512m
     image: redis:8.8-alpine
     command:
       - redis-server
@@ -504,6 +524,7 @@ services:
   # "RabbitMQ"). A topologia é declarada pelo notification-service ao subir.
   # Painel: http://localhost:15672 (lotou / lotou).
   rabbitmq:
+    mem_limit: 512m
     image: rabbitmq:4.2-management-alpine
     # O nome do nó (rabbit@rabbitmq) vem do hostname e nomeia o diretório dos
     # dados no volume: fixo, as filas sobrevivem a recriar o container.
@@ -526,6 +547,7 @@ services:
   # Servidor SMTP de desenvolvimento: guarda os e-mails, que se leem em
   # http://localhost:8025. Nada sai para a internet.
   mailpit:
+    mem_limit: 128m
     image: axllent/mailpit:v1.29
     ports:
       - "1025:1025"
@@ -538,6 +560,7 @@ services:
 
   # ------------------------------------------------------------ identidade
   keycloak:
+    mem_limit: 1g
     image: quay.io/keycloak/keycloak:26.8
     command: ["start-dev", "--import-realm"]
     environment:
@@ -577,6 +600,7 @@ services:
   # Todos os serviços exportam para o Collector, que mascara dados pessoais
   # e repassa para o Tempo, o Prometheus e o Loki.
   otel-collector:
+    mem_limit: 512m
     image: otel/opentelemetry-collector-contrib:0.166.0
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -596,6 +620,7 @@ services:
 
   # Tempo, Prometheus, Loki e Grafana num container só (desenvolvimento).
   lgtm:
+    mem_limit: 1536m
     image: grafana/otel-lgtm:0.41.1
     environment:
       OBSERVER_DB_PASSWORD: ${OBSERVER_DB_PASSWORD:-observer}

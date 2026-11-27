@@ -28,7 +28,7 @@ EXPOSE 8080
 
 # O agent instrumenta a aplicação sem código e exporta traces, métricas e logs
 # por OTLP. Os logs do console saem em JSON, com trace_id e span_id.
-ENV JAVA_TOOL_OPTIONS="-javaagent:/app/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75" \
+ENV JAVA_TOOL_OPTIONS="-javaagent:/app/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=60" \
     OTEL_SERVICE_NAME=api-gateway \
     LOGGING_STRUCTURED_FORMAT_CONSOLE=logstash
 
