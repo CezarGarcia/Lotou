@@ -18,6 +18,7 @@
  */
 import { execSync, spawn } from 'node:child_process';
 import { randomInt, randomUUID } from 'node:crypto';
+import { shows as seedShows } from '../seed/data.mjs';
 
 const GATEWAY = process.env.GATEWAY_URL ?? 'http://localhost:8080';
 const KEYCLOAK = process.env.KEYCLOAK_URL ?? 'http://localhost:8180';
@@ -106,10 +107,13 @@ function cpf() {
   return digits.join('');
 }
 
-/** Um setor de pista à venda num show comum que satisfaz `accept`. */
+// Só os shows do seed, que são do produtor de demonstração: os testes de carga criam shows de outro dono.
+const SEED_ARTISTS = new Set(seedShows.map((show) => show.artist));
+
+/** Um setor de pista à venda num show comum do seed que satisfaz `accept`. */
 async function pista(accept) {
   const { body } = await api('GET', '/shows?limit=50');
-  for (const show of body.items.filter((item) => !item.highDemand && accept(item))) {
+  for (const show of body.items.filter((item) => SEED_ARTISTS.has(item.artist) && !item.highDemand && accept(item))) {
     const availability = await (await fetch(`${API}/availability/${show.id}`)).json();
     const sector = availability.sectors?.find(
       (item) => item.kind === 'GENERAL_ADMISSION' && item.sale === 'ON_SALE' && item.available > 10,
