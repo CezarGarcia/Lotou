@@ -2,7 +2,7 @@
 
 Frontend do Lotou. Angular 22 com standalone components, signals, o novo control flow (`@if`, `@for`) e sem zone.js.
 
-Um único app com áreas carregadas sob demanda. Hoje existe a **loja**: busca, página do show e a compra inteira, do login ao ingresso. O painel do produtor e a portaria entram como rotas irmãs nas próximas fases.
+Um único app com áreas carregadas sob demanda: a **loja** (busca, página do show e a compra inteira, do login ao ingresso com QR code) e o **painel do produtor** (`/painel`, com as vendas de cada show ao vivo por WebSocket). A portaria entra como rota irmã numa próxima fase.
 
 ## Telas
 
@@ -13,8 +13,10 @@ Um único app com áreas carregadas sob demanda. Hoje existe a **loja**: busca, 
 | `/shows/:id/fila?setor=` | Fila virtual | só em show de alta demanda: entra na fila, mostra posição e espera estimada por SSE, explica o sorteio da sala de espera e leva ao checkout quando chega a vez | sim |
 | `/shows/:id/comprar/:sectorId` | Checkout | pista: quantidade de 1 a 4; lugar marcado: mapa de cadeiras em SVG ao vivo; CPF com máscara e dígitos verificadores; reserva | sim |
 | `/reservas/:id` | Reserva | resumo, cronômetro de 10 minutos e o pagamento (simulado); quando o tempo acaba, a reserva aparece expirada | sim |
-| `/pedidos/:id` | Pedido | ingressos do pedido confirmado, o motivo de um cancelamento ou a espera enquanto o pagamento é processado | sim |
+| `/pedidos/:id` | Pedido | ingressos do pedido confirmado, cada um com o QR code da entrada, o motivo de um cancelamento ou a espera enquanto o pagamento é processado | sim |
 | `/meus-ingressos` | Meus ingressos | pedidos do comprador, do mais novo ao mais antigo, com "carregar mais" | sim |
+| `/painel` | Meus shows (produtor) | shows do produtor com data no fuso do local, situação, ingressos vendidos e receita, paginados por cursor | produtor |
+| `/painel/shows/:id` | Painel ao vivo (produtor) | números gerais, vendas por setor e feed de atividade, atualizados pelo WebSocket do analytics | produtor |
 
 O preço que o comprador paga vem sempre da disponibilidade (o lote em venda agora, no inventory), nunca do documento do show: é esse preço que a reserva congela.
 
@@ -28,7 +30,12 @@ src/app/
 │   ├── telemetry/   # OpenTelemetry no navegador
 │   ├── http/        # Problem Details, leitor de SSE e chave de idempotência
 │   ├── forms/       # CPF: validação e máscara
-│   └── format/      # dinheiro (centavos -> R$) e datas no fuso do show
+│   └── format/      # dinheiro (centavos -> R$), contagens e datas no fuso do show
+├── producer/        # o painel do produtor
+│   ├── data/        # cliente da lista de shows do analytics
+│   ├── shows/       # "Meus shows"
+│   ├── live/        # painel ao vivo: protocolo, cliente WebSocket, estado, setores e feed
+│   └── producer.guard.ts, producer.routes.ts
 └── store/           # a loja
     ├── data/        # contratos e clientes da API (shows, disponibilidade, fila, reservas, pedidos)
     ├── search/      # busca: página, card e estado (signals + RxJS)
@@ -56,7 +63,7 @@ Login com o Keycloak por OpenID Connect, no fluxo Authorization Code com PKCE (A
 - Endereços em um lugar só: [`core/auth/auth.config.ts`](src/app/core/auth/auth.config.ts) (realm, cliente, redirect e escopos `openid profile email`).
 - Antes da primeira rota, o `AuthService` lê a sessão guardada ou, na volta do Keycloak, troca o código pelos tokens. Se o Keycloak estiver fora do ar, a loja abre sem login.
 - O access token dura 5 minutos e é renovado com o refresh token 30 s antes de vencer (sem iframe).
-- O cabeçalho mostra "Entrar" ou o primeiro nome, "Meus ingressos" e "Sair". Os papéis do realm (`buyer`, `producer`, `gate-staff`) vêm da claim `realm_access.roles` do access token; uma conta sem `buyer` vê o aviso na página do show.
+- O cabeçalho mostra "Entrar" ou o primeiro nome, "Meus ingressos" e "Sair", e "Painel" só para quem tem o papel `producer`. Os papéis do realm (`buyer`, `producer`, `gate-staff`) vêm da claim `realm_access.roles` do access token; uma conta sem `buyer` vê o aviso na página do show.
 - O interceptor funcional põe `Authorization: Bearer` só nas chamadas a `/api/` no mesmo domínio da loja: o token nunca vai para o Collector, para o Keycloak ou para outro site.
 - O guard das telas de compra leva quem não entrou ao Keycloak e, na volta, abre a página que ele queria, com os parâmetros (`/shows/1/fila?setor=2`). Só caminhos internos servem de volta.
 - Tokens, e-mail e CPF não vão para log nem para a telemetria. O span do carregamento da página tem o `code` e o `state` do login trocados por `REDACTED`, e os logs da biblioteca ficam desligados no build de produção.
@@ -78,6 +85,41 @@ Quem usa:
 
 No Docker, o nginx encaminha os fluxos `/api/.../events` sem buffer e sem compressão, com a conexão aberta por até 1 hora.
 
+## Painel do produtor
+
+`/painel` é uma área à parte, carregada sob demanda: nada dela entra no pacote da loja. O guard (`producer.guard.ts`) leva quem não entrou ao Keycloak e quem entrou sem o papel `producer` à tela "Acesso restrito". O guard só decide o que a loja mostra; quem protege os dados é o servidor, que confere o papel no token.
+
+- **Meus shows:** `GET /api/v1/analytics/shows`, paginado por cursor, com estado vazio e erro em Problem Details (com o `traceId` para o suporte).
+- **Painel ao vivo:** ingressos vendidos e restantes, receita, pedidos confirmados, cancelados e no último minuto; por setor, vendidos sobre a capacidade, restantes e o lote em venda com preço e situação; e o feed de atividade (pedido confirmado ou cancelado, lote aberto ou esgotado), do mais novo ao mais antigo, até 50 entradas, com tempo relativo ("há 12 s") e a hora completa no fuso do show. O indicador mostra "Conectando...", "Ao vivo" ou "Reconectando..." (com "Tentar agora") e há quanto tempo chegaram os últimos dados.
+- **Gráficos em CSS puro.** As barras dos setores são um `div` com largura em porcentagem e `role="meter"`. O documento do projeto cita o ngx-echarts; para barras de progresso, ele somaria centenas de kB sem ganho. Fica para telas com séries no tempo (financeiro).
+- A fila e as entradas na portaria ainda não estão no protocolo; o painel não mostra nada sobre elas em vez de inventar números.
+- **Acessibilidade:** os números são uma lista de definições (`dl`), cada barra tem o texto "1.180 de 2.000 vendidos (59%)" para leitores de tela, o feed rola e recebe foco pelo teclado, e as novidades são anunciadas numa região `aria-live="polite"` separada, no máximo uma vez a cada 10 s (com a contagem e a mais recente): numa abertura de vendas, ler cada pedido em voz alta tornaria o leitor de tela inutilizável.
+
+### O cliente WebSocket
+
+O protocolo está em [`contracts/realtime-dashboard.md`](../../contracts/realtime-dashboard.md); o cliente é o `LiveDashboardClient`, em [`producer/live/live-dashboard.client.ts`](src/app/producer/live/live-dashboard.client.ts). SSE na loja e WebSocket no painel é proposital (ADR 17): no painel o cliente também fala, assinando e cancelando shows na mesma conexão.
+
+- **Uma conexão por aba**, aberta quando a tela assina um show (`watch(showId)` devolve um Observable) e fechada 10 s depois que a última tela sai: ir da lista ao show e voltar não reabre a conexão.
+- **O token vai na primeira mensagem** (`auth`), nunca na URL (o navegador não deixa mandar cabeçalho num WebSocket). As assinaturas só saem depois do `ready`. Quando o `angular-auth-oidc-client` renova o token, o cliente manda `auth` de novo na mesma conexão; o `ready` que confirma a renovação não repete as assinaturas.
+- **Reconexão com espera exponencial e jitter:** 1 s, 2 s, 4 s... até 30 s, cada espera sorteada entre a metade e o total, para milhares de painéis não voltarem juntos depois de um deploy do analytics. A contagem só volta a 1 s depois de 10 s de conexão estável, então um servidor que aceita e derruba logo não vira uma tempestade de conexões. Ao voltar, o cliente assina os mesmos shows e recebe uma foto nova. Sem rede, espera o navegador voltar a ficar on-line.
+- **Conexão morta:** com show assinado, o servidor manda métricas a cada segundo; 15 s sem nenhuma mensagem e o cliente troca a conexão (o navegador não expõe o ping do protocolo).
+- **Fechamentos:** 4401 (token recusado) renova a sessão uma vez e reconecta; na segunda recusa seguida, a tela oferece "Entrar de novo". 4403 (sem o papel) encerra sem tentar de novo. 4408, 1013 e quedas comuns reconectam com espera.
+- **Frames inválidos são ignorados:** tudo o que chega é conferido (tipos, inteiros não negativos, datas); um frame que não é JSON, de tipo desconhecido ou com campo faltando não derruba a conexão, e uma entrada de tipo novo na foto é descartada sozinha.
+- A aba escondida não pausa nada: é um painel ao vivo.
+- O estado de cada show sai de uma função pura, `reduceDashboard` ([`dashboard.state.ts`](src/app/producer/live/dashboard.state.ts)): a foto substitui tudo, métricas mais velhas que as da tela são ignoradas, e a atividade entra na posição certa pelo ID do Redis Stream, sem repetir e com o limite de 50.
+- Testes com um WebSocket falso ([`live.testing.ts`](src/app/producer/live/live.testing.ts)), que faz o papel do servidor.
+
+No Docker, o nginx encaminha `/api/v1/analytics/live` com os cabeçalhos `Upgrade` e `Connection`, sem buffer e com leitura de até 1 hora; no `npm start`, o proxy tem `ws: true` para esse caminho.
+
+## QR code do ingresso
+
+O pedido traz `tickets[].code` (`LOTOU1.<ticketId>.<assinatura>`, assinado com HMAC pelo order-service, ADR 15), e a tela do pedido desenha um QR por ingresso. Ingressos emitidos antes do código assinado mostram "QR indisponível"; um ingresso cancelado não mostra QR.
+
+- **Biblioteca `qrcode`** (node-qrcode): a mais usada para gerar QR em JavaScript, sem dependências no navegador, e implementa a norma inteira (modos, níveis de correção, máscaras). Escrever um gerador próprio seria código de risco sem relação com o projeto.
+- **Carregada sob demanda:** é importada com `import()` dentro do componente, então vira um pacote próprio (cerca de 24 kB, 8 kB comprimido) baixado só quando um ingresso com código aparece. O pacote inicial não cresce.
+- **SVG desenhado pelo Angular:** a biblioteca só calcula a matriz (`create`), e o componente monta um `path` SVG a partir dela, sem `innerHTML` nem desvio do sanitizador. Preto sobre branco mesmo no tema escuro, com zona de silêncio, nível de correção M e um rótulo para leitores de tela. No celular, o QR fica grande, em cima.
+- A biblioteca é CommonJS, por isso `qrcode` e `dijkstrajs` estão em `allowedCommonJsDependencies` no `angular.json`.
+
 ## Mapa de cadeiras
 
 Desenhado em SVG a partir das fileiras do local (`rows` de cada setor): uma fileira por linha, com o nome dos dois lados, cadeiras numeradas, o palco no alto e a legenda (livre, sua escolha, ocupada; a ocupada também tem um traço, para não depender só da cor). Até 4 cadeiras por compra.
@@ -98,6 +140,6 @@ npm test         # testes unitários (Vitest)
 npm run build    # build de produção em dist/web/browser
 ```
 
-Para o `npm start` funcionar, suba o backend antes: `make up` na raiz do repositório. O login só funciona na porta 4200, a única cadastrada no cliente `lotou-web` do Keycloak.
+Para o `npm start` funcionar, suba o backend antes: `make up` na raiz do repositório. O login só funciona na porta 4200, a única cadastrada no cliente `lotou-web` do Keycloak. O painel exige uma conta com o papel `producer`: o usuário de teste `produtor` (senha `lotou123`), em nome de quem o `make seed` cria os shows.
 
-O orçamento do pacote inicial é de 600 kB: a biblioteca de OIDC (cerca de 120 kB) precisa estar no pacote inicial, porque a sessão é resolvida antes da primeira rota. O Material fica nos pacotes de cada tela; o cabeçalho usa só HTML e CSS.
+O orçamento do pacote inicial é de 600 kB: a biblioteca de OIDC (cerca de 120 kB) precisa estar no pacote inicial, porque a sessão é resolvida antes da primeira rota. O Material fica nos pacotes de cada tela; o cabeçalho usa só HTML e CSS. O painel do produtor e a biblioteca de QR code ficam fora do pacote inicial.

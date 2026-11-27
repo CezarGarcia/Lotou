@@ -1,0 +1,125 @@
+<div class="container page">
+  <a matButton routerLink="/painel" class="back">
+    <mat-icon aria-hidden="true">arrow_back</mat-icon>
+    Meus shows
+  </a>
+
+  <header class="head">
+    <div class="title">
+      <p class="eyebrow">Painel ao vivo</p>
+      @if (show.hasValue()) {
+        @let s = show.value();
+        <h1>{{ s.artist }}</h1>
+        <p class="meta">
+          {{ s.title }} · {{ s.startsAt | showDate: timezone() : 'date' }} às
+          {{ s.startsAt | showDate: timezone() : 'time' }}
+          @if (s.venue; as venue) {
+            · {{ venue.name }}, {{ venue.city }}/{{ venue.state }}
+          }
+        </p>
+      } @else {
+        <h1>{{ show.isLoading() ? 'Carregando...' : 'Show' }}</h1>
+      }
+    </div>
+
+    <div class="connection" [attr.data-status]="store.status()">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="label" role="status">{{ statusText() }}</span>
+      @if (updatedText(); as updated) {
+        <span class="updated">{{ updated }}</span>
+      }
+      @if (store.status() === 'reconnecting') {
+        <button matButton type="button" (click)="store.retryNow()">Tentar agora</button>
+      }
+    </div>
+  </header>
+
+  @if (store.status() === 'denied') {
+    <section class="state" role="alert">
+      <mat-icon aria-hidden="true">{{
+        store.denial() === 'session-expired' ? 'logout' : 'lock'
+      }}</mat-icon>
+      @if (store.denial() === 'session-expired') {
+        <h2>Sua sessão expirou</h2>
+        <p>Entre de novo para continuar acompanhando as vendas.</p>
+        <button matButton="filled" type="button" (click)="login()">Entrar de novo</button>
+      } @else {
+        <h2>Acesso restrito</h2>
+        <p>Sua conta não tem acesso ao painel ao vivo.</p>
+      }
+    </section>
+  } @else if (store.forbidden()) {
+    <section class="state" role="alert">
+      <mat-icon aria-hidden="true">visibility_off</mat-icon>
+      <h2>Show indisponível no painel</h2>
+      <p>Este show não existe ou pertence a outro produtor.</p>
+      <a matButton="tonal" routerLink="/painel">Ver meus shows</a>
+    </section>
+  } @else if (store.metrics(); as m) {
+    <section aria-labelledby="kpis-title">
+      <h2 id="kpis-title" class="sr-only">Resumo das vendas</h2>
+      <dl class="kpis">
+        <div class="kpi main">
+          <dt>Ingressos vendidos</dt>
+          <dd>
+            {{ m.ticketsSold | count }}
+            <small>de {{ store.capacity() | count }}</small>
+          </dd>
+        </div>
+        <div class="kpi main">
+          <dt>Receita</dt>
+          <dd>{{ m.revenueCents | brl }}</dd>
+        </div>
+        <div class="kpi">
+          <dt>Ingressos restantes</dt>
+          <dd>{{ store.remaining() | count }}</dd>
+        </div>
+        <div class="kpi">
+          <dt>Pedidos confirmados</dt>
+          <dd>{{ m.ordersConfirmed | count }}</dd>
+        </div>
+        <div class="kpi">
+          <dt>Pedidos cancelados</dt>
+          <dd>{{ m.ordersCancelled | count }}</dd>
+        </div>
+        <div class="kpi">
+          <dt>Pedidos no último minuto</dt>
+          <dd>{{ m.ordersLastMinute | count }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <div class="columns">
+      <section class="sectors" aria-labelledby="sectors-title">
+        <h2 id="sectors-title">Vendas por setor</h2>
+        @if (m.sectors.length === 0) {
+          <p class="empty">O show ainda não tem setores.</p>
+        }
+        <ul>
+          @for (sector of m.sectors; track sector.sectorId) {
+            <li><app-sector-card [sector]="sector" /></li>
+          }
+        </ul>
+      </section>
+
+      <section class="feed" aria-labelledby="feed-title">
+        <h2 id="feed-title">Atividade</h2>
+        <app-activity-feed
+          [entries]="store.activity()"
+          [now]="store.now()"
+          [timezone]="timezone()"
+        />
+      </section>
+    </div>
+  } @else {
+    <section class="loading" aria-busy="true" aria-label="Carregando o painel">
+      <div class="kpis" aria-hidden="true">
+        @for (item of [1, 2, 3, 4, 5, 6]; track item) {
+          <div class="skeleton"></div>
+        }
+      </div>
+    </section>
+  }
+
+  <div class="sr-only" aria-live="polite" aria-atomic="true">{{ store.announcement() }}</div>
+</div>

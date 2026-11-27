@@ -6,6 +6,9 @@
     <nav aria-label="Principal">
       <a routerLink="/" class="shows">Shows</a>
       @if (auth.authenticated()) {
+        @if (auth.hasRole('producer')) {
+          <a routerLink="/painel" routerLinkActive="active" ariaCurrentWhenActive="page">Painel</a>
+        }
         <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
           Meus ingressos
         </a>

@@ -2,8 +2,24 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { OidcSecurityService } from 'angular-auth-oidc-client';
-import { Observable, catchError, map, of, switchMap, take, tap, timeout } from 'rxjs';
+import {
+  EventTypes,
+  LoginResponse,
+  OidcSecurityService,
+  PublicEventsService,
+} from 'angular-auth-oidc-client';
+import {
+  Observable,
+  catchError,
+  distinctUntilChanged,
+  filter,
+  map,
+  of,
+  switchMap,
+  take,
+  tap,
+  timeout,
+} from 'rxjs';
 import { Role, firstNameOf, rolesFromAccessToken, safeReturnUrl } from './auth.claims';
 
 /** Onde fica, durante o login, a página que o comprador queria abrir. */
@@ -19,6 +35,7 @@ const RETURN_URL_KEY = 'lotou.auth.returnUrl';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly oidc = inject(OidcSecurityService);
+  private readonly events = inject(PublicEventsService);
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
 
@@ -43,6 +60,35 @@ export class AuthService {
   /** O access token atual, ou vazio sem login. */
   accessToken(): Observable<string> {
     return this.oidc.getAccessToken().pipe(take(1));
+  }
+
+  /**
+   * Cada access token novo: o do login e os das renovações. Quem mantém uma
+   * conexão aberta com o token (o WebSocket do painel) se autentica de novo.
+   */
+  tokenRenewed(): Observable<string> {
+    return this.events.registerForEvents().pipe(
+      filter(
+        (event) =>
+          event.type === EventTypes.NewAuthenticationResult &&
+          (event.value as { isAuthenticated?: boolean } | null)?.isAuthenticated === true,
+      ),
+      switchMap(() => this.accessToken()),
+      filter((token) => token !== ''),
+      distinctUntilChanged(),
+    );
+  }
+
+  /**
+   * Renova a sessão agora, com o refresh token, e devolve o access token novo.
+   * Vazio se a sessão acabou de vez (aí só um login novo resolve).
+   */
+  refreshSession(): Observable<string> {
+    return this.oidc.forceRefreshSession().pipe(
+      map((response: LoginResponse) => (response.isAuthenticated ? response.accessToken : '')),
+      catchError(() => of('')),
+      take(1),
+    );
   }
 
   /**
