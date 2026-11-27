@@ -800,6 +800,8 @@ Os testes de carga e caos são a vitrine: cada um gera um print do Grafana e um 
 
 São oito fases, e cada uma termina com algo demonstrável. Parar no meio ainda deixa um projeto sólido no GitHub.
 
+**Ordem de execução:** depois da fase 4 vêm a 6 e a 7, e a fase 5 (agente de IA) fica para o fim, como complemento. O produto (portaria, cancelamento, cupons e financeiro) e a vitrine vêm antes; o agente só lê dados que essas fases produzem, então ganha ferramentas mais úteis chegando por último. A numeração foi mantida porque o resto da documentação se refere às fases pelo número.
+
 | Fase | Entregas | Pronta quando |
 | --- | --- | --- |
 | 0. Fundação | Compose, CI, OTel, gateway, shows e loja Angular | trace do clique no Angular até o MongoDB aparece no Tempo |
@@ -807,7 +809,7 @@ São oito fases, e cada uma termina com algo demonstrável. Parar no meio ainda 
 | 2. Redis e abertura de vendas | cache-aside, fila virtual, reserva Lua e mapa de assentos | k6: zero venda dupla; reserva Lua comparada ao lock no Postgres |
 | 3. Kafka e saga | outbox, saga com payment-mock, analytics e read models | replay reconstrói os read models; saga compensa com 30% de recusa |
 | 4. RabbitMQ e tempo real | ingresso com QR code, DLQ, painel ao vivo e Streams | DLQ demonstrada; evento chega ao painel em menos de 2 s |
-| 5. Agente de IA | producer-assistant com LangGraph e ferramentas de leitura | conjunto de avaliação passa no CI; traces do LLM aparecem no Tempo |
+| 5. Agente de IA (por último) | producer-assistant com LangGraph e ferramentas de leitura | conjunto de avaliação passa no CI; traces do LLM aparecem no Tempo |
 | 6. Produto completo | check-in, cancelamento, cupons e relatório financeiro | portaria barra entrada dupla; reembolso devolve ingresso e cupom |
 | 7. Vitrine | seed realista, caos, SLOs, ADRs, README e vídeo | docker compose up funciona numa máquina limpa |
 
