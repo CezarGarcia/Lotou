@@ -9,6 +9,11 @@
         @if (auth.hasRole('producer')) {
           <a routerLink="/painel" routerLinkActive="active" ariaCurrentWhenActive="page">Painel</a>
         }
+        @if (auth.hasRole('gate-staff')) {
+          <a routerLink="/portaria" routerLinkActive="active" ariaCurrentWhenActive="page">
+            Portaria
+          </a>
+        }
         <a routerLink="/meus-ingressos" routerLinkActive="active" ariaCurrentWhenActive="page">
           Meus ingressos
         </a>

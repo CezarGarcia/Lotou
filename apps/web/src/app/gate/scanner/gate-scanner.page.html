@@ -1,0 +1,107 @@
+<div class="container page">
+  <header class="bar">
+    <a
+      matIconButton
+      routerLink="/portaria"
+      [queryParams]="{ show: showId() }"
+      aria-label="Trocar show ou portão"
+    >
+      <mat-icon>arrow_back</mat-icon>
+    </a>
+    <div class="what">
+      @if (store.show(); as show) {
+        <strong>{{ show.artist }}</strong>
+        <span>{{ show.startsAt | showDate: show.timezone : 'short' }} · {{ show.venueName }}</span>
+      } @else {
+        <strong>Portaria</strong>
+      }
+      <span class="gate"><mat-icon aria-hidden="true">door_front</mat-icon>{{ gate() }}</span>
+    </div>
+    <button
+      matIconButton
+      type="button"
+      [attr.aria-pressed]="settings.sound()"
+      aria-label="Som dos resultados"
+      (click)="toggleSound()"
+    >
+      <mat-icon>{{ settings.sound() ? 'volume_up' : 'volume_off' }}</mat-icon>
+    </button>
+  </header>
+
+  <dl class="counter" aria-label="Entradas registradas">
+    <div>
+      <dt>Entradas no show</dt>
+      <dd>{{ store.summary()?.checkedIn ?? 0 | count }}</dd>
+    </div>
+    <div>
+      <dt>Por este portão</dt>
+      <dd>{{ store.gateCount() | count }}</dd>
+    </div>
+  </dl>
+
+  <app-camera-scanner [paused]="store.busy()" (scanned)="store.submit($event, 'camera')" />
+
+  <form class="manual" [formGroup]="form" (ngSubmit)="submitManual()">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Código do ingresso</mat-label>
+      <input
+        #codeInput
+        matInput
+        [formControl]="code"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        enterkeyhint="go"
+        maxlength="500"
+      />
+      <mat-hint>Digite o código, se a câmera não ler, ou use um leitor USB.</mat-hint>
+    </mat-form-field>
+    <button matButton="filled" type="submit" [disabled]="store.checking() || !code.value.trim()">
+      Validar
+    </button>
+  </form>
+
+  @if (store.history().length > 0) {
+    <section class="history" aria-labelledby="history-title">
+      <h2 id="history-title">Últimas leituras</h2>
+      <ol>
+        @for (record of store.history(); track record.id) {
+          <li [attr.data-tone]="record.view.tone">
+            <mat-icon aria-hidden="true">{{ record.view.icon }}</mat-icon>
+            <span>
+              <strong>{{ record.view.title }}</strong>
+              @if (record.view.place) {
+                <small>{{ record.view.place }}</small>
+              }
+            </span>
+            <time>{{ record.at | showDate: store.show()?.timezone : 'time' }}</time>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+</div>
+
+@if (store.checking() && !store.result()) {
+  <div class="checking" role="status">Validando...</div>
+}
+
+<!-- O resultado ocupa a tela inteira: verde, amarelo ou vermelho, com o motivo. -->
+<div class="sr-only" aria-live="assertive" aria-atomic="true">
+  {{ store.result() ? sentence(store.result()!.view) : '' }}
+</div>
+@if (store.result(); as record) {
+  <div class="result" [attr.data-tone]="record.view.tone" (click)="store.dismiss()">
+    <mat-icon aria-hidden="true">{{ record.view.icon }}</mat-icon>
+    <p class="title">{{ record.view.title }}</p>
+    @if (record.view.place) {
+      <p class="place">{{ record.view.place }}</p>
+    }
+    @if (record.view.detail) {
+      <p class="detail">{{ record.view.detail }}</p>
+    }
+    <button type="button" class="next" (click)="store.dismiss(); $event.stopPropagation()">
+      Próxima leitura
+    </button>
+  </div>
+}
