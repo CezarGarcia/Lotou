@@ -32,12 +32,13 @@ O valor é o envelope em JSON (UTF-8); a chave é o ID do agregado, em texto. O 
 
 | Tópico | Chave | Mensagens | Produz | Consome | Retenção |
 | --- | --- | --- | --- | --- | --- |
-| `shows.catalog` | `showId` | ShowPublished, ShowUpdated | event-service | inventory, analytics | compactado: fica a última versão de cada show |
-| `order.events` | `orderId` | OrderCreated, OrderConfirmed, OrderCancelled, TicketsIssued | order-service | analytics | sem prazo: é a fonte do replay dos read models |
+| `shows.catalog` | `showId` | ShowPublished, ShowUpdated | event-service | inventory, analytics, order-service, checkin-service | compactado: fica a última versão de cada show |
+| `order.events` | `orderId` | OrderCreated, OrderConfirmed, OrderCancelled, TicketsIssued, TicketsCancelled, OrderRefunded, OrderRefundFailed | order-service | analytics, notification, checkin | sem prazo: é a fonte do replay dos read models |
 | `payment.commands` | `orderId` | AuthorizePayment, RefundPayment | order-service | payment-mock | 7 dias |
 | `payment.events` | `orderId` | PaymentAuthorized, PaymentDeclined, PaymentRefunded, RefundFailed | payment-mock | order-service | 7 dias |
-| `inventory.commands` | `orderId` | ConfirmReservation, ReleaseReservation | order-service | inventory | 7 dias |
-| `inventory.events` | `showId` | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened | inventory | order-service, analytics | sem prazo: o replay também lê daqui |
+| `inventory.commands` | `orderId` | ConfirmReservation, ReleaseReservation, ReturnTickets | order-service | inventory | 7 dias |
+| `inventory.events` | `showId` | ReservationConfirmed, ReservationReleased, ReservationReturned, LotSoldOut, LotOpened | inventory | order-service, analytics, event-service | sem prazo: o replay também lê daqui |
+| `checkin.events` | `showId` | TicketCheckedIn, CheckinRejected | checkin-service | order-service, analytics | sem prazo: o replay também lê daqui |
 | `<tópico>.dlt` | igual à origem | mensagens que falharam depois das tentativas | consumidores | inspeção manual | 7 dias |
 
 A chave decide a partição, e a ordem só é garantida dentro dela: tudo de um pedido chega em ordem ao consumidor, e tudo de um show também (`LotSoldOut` antes do `LotOpened` do lote seguinte).

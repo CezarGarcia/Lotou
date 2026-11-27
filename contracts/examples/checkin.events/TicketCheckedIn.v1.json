@@ -1,0 +1,16 @@
+{
+  "eventId": "01a21b00-0000-7000-8000-000000000035",
+  "type": "TicketCheckedIn",
+  "version": 1,
+  "occurredAt": "2026-11-27T18:00:00Z",
+  "payload": {
+    "ticketId": "01a21a00-0000-7000-8000-000000000013",
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "sectorId": "01a21a00-0000-7000-8000-000000000004",
+    "sectorName": "Plateia",
+    "seat": "A-5",
+    "gate": "Portão B",
+    "checkedInAt": "2026-12-16T22:31:00Z"
+  }
+}

@@ -27,6 +27,12 @@
         "unitPriceCents": 16000
       }
     ],
-    "createdAt": "2026-11-26T18:00:00Z"
+    "createdAt": "2026-11-26T18:00:00Z",
+    "subtotalCents": 32000,
+    "discountCents": 3200,
+    "serviceFeeCents": 3200,
+    "serviceFeePaidBy": "BUYER",
+    "couponId": "01a21b00-0000-7000-8000-000000000050",
+    "couponCode": "LANCAMENTO10"
   }
 }

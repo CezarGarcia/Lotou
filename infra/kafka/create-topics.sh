@@ -21,6 +21,7 @@ create shows.catalog --config cleanup.policy=compact --config min.compaction.lag
 # Fatos lidos no replay dos read models: sem prazo.
 create order.events --config retention.ms=-1
 create inventory.events --config retention.ms=-1
+create checkin.events --config retention.ms=-1
 
 # Comandos e respostas da saga: 7 dias.
 create payment.commands --config retention.ms="${WEEK}"
@@ -28,6 +29,6 @@ create payment.events --config retention.ms="${WEEK}"
 create inventory.commands --config retention.ms="${WEEK}"
 
 # Mensagens que falharam depois das tentativas, para inspeção.
-for topic in shows.catalog order.events inventory.events payment.commands payment.events inventory.commands; do
+for topic in shows.catalog order.events inventory.events checkin.events payment.commands payment.events inventory.commands; do
   create "${topic}.dlt" --config retention.ms="${WEEK}"
 done

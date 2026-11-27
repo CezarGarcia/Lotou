@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lotou:contracts:checkin.events:CheckinRejected:v1",
+  "title": "CheckinRejected v1",
+  "description": "Leitura recusada na portaria. Tópico `checkin.events`, chave `showId`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "type",
+    "version",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID v7 da mensagem; o consumidor o usa para ignorar repetições"
+    },
+    "type": {
+      "const": "CheckinRejected"
+    },
+    "version": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "showId",
+        "gate",
+        "reason",
+        "ticketId",
+        "rejectedAt"
+      ],
+      "properties": {
+        "showId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "gate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "enum": [
+            "INVALID_CODE",
+            "UNKNOWN_TICKET",
+            "CANCELLED",
+            "ALREADY_USED",
+            "WRONG_SHOW",
+            "NOT_OPEN"
+          ]
+        },
+        "ticketId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "rejectedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "eventId": "01a21b00-0000-7000-8000-000000000032",
+  "type": "OrderRefundFailed",
+  "version": 1,
+  "occurredAt": "2026-11-27T18:00:00Z",
+  "payload": {
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "buyerId": "8f1c2b9e-3a4d-4c5e-9f60-7a8b9c0d1e2f",
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "attempts": 5,
+    "failedAt": "2026-11-27T19:00:00Z"
+  }
+}

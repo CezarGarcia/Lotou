@@ -1,0 +1,13 @@
+{
+  "eventId": "01a21b00-0000-7000-8000-000000000036",
+  "type": "CheckinRejected",
+  "version": 1,
+  "occurredAt": "2026-11-27T18:00:00Z",
+  "payload": {
+    "showId": "01a21a00-0000-7000-8000-000000000001",
+    "gate": "Portão B",
+    "reason": "ALREADY_USED",
+    "ticketId": "01a21a00-0000-7000-8000-000000000013",
+    "rejectedAt": "2026-12-16T22:33:10Z"
+  }
+}

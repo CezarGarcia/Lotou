@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lotou:contracts:order.events:OrderRefundFailed:v1",
+  "title": "OrderRefundFailed v1",
+  "description": "O estorno falhou depois das tentativas: o pedido precisa de tratamento manual. Tópico `order.events`, chave `orderId`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "type",
+    "version",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID v7 da mensagem; o consumidor o usa para ignorar repetições"
+    },
+    "type": {
+      "const": "OrderRefundFailed"
+    },
+    "version": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "buyerId",
+        "showId",
+        "attempts",
+        "failedAt"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "buyerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "showId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

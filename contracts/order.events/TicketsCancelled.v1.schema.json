@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lotou:contracts:order.events:TicketsCancelled:v1",
+  "title": "TicketsCancelled v1",
+  "description": "Os ingressos do pedido foram cancelados: a portaria deixa de aceitá-los. Começo do reembolso. Tópico `order.events`, chave `orderId`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "type",
+    "version",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID v7 da mensagem; o consumidor o usa para ignorar repetições"
+    },
+    "type": {
+      "const": "TicketsCancelled"
+    },
+    "version": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "buyerId",
+        "showId",
+        "ticketIds",
+        "reason",
+        "cancelledAt"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "buyerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "showId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "ticketIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "minItems": 1
+        },
+        "reason": {
+          "enum": [
+            "ORDER_CANCELLED",
+            "SHOW_CANCELLED"
+          ],
+          "description": "ORDER_CANCELLED: o comprador cancelou dentro do prazo; SHOW_CANCELLED: o produtor cancelou o show"
+        },
+        "cancelledAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

@@ -72,6 +72,7 @@
         ]
       }
     ],
-    "updatedAt": "2026-11-26T15:00:00.123Z"
+    "updatedAt": "2026-11-26T15:00:00.123Z",
+    "serviceFeePaidBy": "BUYER"
   }
 }

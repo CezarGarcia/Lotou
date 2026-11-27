@@ -1,0 +1,11 @@
+{
+  "eventId": "01a21b00-0000-7000-8000-000000000033",
+  "type": "ReturnTickets",
+  "version": 1,
+  "occurredAt": "2026-11-27T18:00:00Z",
+  "payload": {
+    "orderId": "01a21a00-0000-7000-8000-000000000010",
+    "reservationId": "01a21a00-0000-7000-8000-000000000011",
+    "reason": "ORDER_CANCELLED"
+  }
+}

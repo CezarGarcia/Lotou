@@ -38,7 +38,13 @@
         "reservationId",
         "totalCents",
         "items",
-        "confirmedAt"
+        "confirmedAt",
+        "subtotalCents",
+        "discountCents",
+        "serviceFeeCents",
+        "serviceFeePaidBy",
+        "couponId",
+        "couponCode"
       ],
       "properties": {
         "orderId": {
@@ -59,7 +65,8 @@
         },
         "totalCents": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "valor cobrado do comprador: subtotal − desconto + taxa (quando o comprador paga a taxa)"
         },
         "items": {
           "type": "array",
@@ -109,6 +116,42 @@
         "confirmedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "subtotalCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "soma dos ingressos, ao preço da reserva"
+        },
+        "discountCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "desconto do cupom, só sobre os ingressos"
+        },
+        "serviceFeeCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "taxa de serviço de 10% sobre os ingressos"
+        },
+        "serviceFeePaidBy": {
+          "enum": [
+            "BUYER",
+            "PRODUCER"
+          ],
+          "description": "Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o produtor (descontada do valor a receber)"
+        },
+        "couponId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "cupom aplicado, ou null"
+        },
+        "couponCode": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }

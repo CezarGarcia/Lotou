@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lotou:contracts:order.events:OrderRefunded:v1",
+  "title": "OrderRefunded v1",
+  "description": "Estorno concluído: o comprador recebeu o valor pago de volta, incluindo a taxa. Tópico `order.events`, chave `orderId`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "type",
+    "version",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID v7 da mensagem; o consumidor o usa para ignorar repetições"
+    },
+    "type": {
+      "const": "OrderRefunded"
+    },
+    "version": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "buyerId",
+        "showId",
+        "reservationId",
+        "refundedCents",
+        "reason",
+        "refundedAt",
+        "subtotalCents",
+        "discountCents",
+        "serviceFeeCents",
+        "serviceFeePaidBy",
+        "couponId",
+        "couponCode"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "buyerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "showId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "reservationId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "refundedCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "valor devolvido ao comprador (o total pago)"
+        },
+        "reason": {
+          "enum": [
+            "ORDER_CANCELLED",
+            "SHOW_CANCELLED"
+          ],
+          "description": "ORDER_CANCELLED: o comprador cancelou dentro do prazo; SHOW_CANCELLED: o produtor cancelou o show"
+        },
+        "refundedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "subtotalCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "soma dos ingressos, ao preço da reserva"
+        },
+        "discountCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "desconto do cupom, só sobre os ingressos"
+        },
+        "serviceFeeCents": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "taxa de serviço de 10% sobre os ingressos"
+        },
+        "serviceFeePaidBy": {
+          "enum": [
+            "BUYER",
+            "PRODUCER"
+          ],
+          "description": "Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o produtor (descontada do valor a receber)"
+        },
+        "couponId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "cupom aplicado, ou null"
+        },
+        "couponCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

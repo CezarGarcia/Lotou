@@ -45,7 +45,8 @@
         "highDemand",
         "venue",
         "sectors",
-        "updatedAt"
+        "updatedAt",
+        "serviceFeePaidBy"
       ],
       "properties": {
         "showId": {
@@ -238,6 +239,13 @@
         "updatedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "serviceFeePaidBy": {
+          "enum": [
+            "BUYER",
+            "PRODUCER"
+          ],
+          "description": "Quem paga a taxa de serviço de 10%: o comprador (somada ao total) ou o produtor (descontada do valor a receber)"
         }
       },
       "description": "O show inteiro, como está depois da mudança. O consumidor guarda a versão mais alta e ignora as anteriores."

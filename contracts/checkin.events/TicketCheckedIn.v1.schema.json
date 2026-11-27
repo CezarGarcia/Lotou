@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lotou:contracts:checkin.events:TicketCheckedIn:v1",
+  "title": "TicketCheckedIn v1",
+  "description": "Entrada registrada na portaria: o ingresso foi usado. Tópico `checkin.events`, chave `showId`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "type",
+    "version",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "UUID v7 da mensagem; o consumidor o usa para ignorar repetições"
+    },
+    "type": {
+      "const": "TicketCheckedIn"
+    },
+    "version": {
+      "const": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticketId",
+        "showId",
+        "orderId",
+        "sectorId",
+        "sectorName",
+        "seat",
+        "gate",
+        "checkedInAt"
+      ],
+      "properties": {
+        "ticketId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "showId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "orderId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sectorId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sectorName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seat": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkedInAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}
