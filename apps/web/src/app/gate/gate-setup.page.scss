@@ -1,0 +1,229 @@
+// Escolha do show e do portão, de pé e com uma mão: cartões grandes de toque
+// e o botão de começar sempre fácil de alcançar.
+.page {
+  display: grid;
+  gap: 24px;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  padding: 24px 16px 64px;
+}
+
+header {
+  display: grid;
+  gap: 8px;
+
+  .eyebrow {
+    margin: 0;
+    color: var(--lt-accent);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(3rem, 14vw, 4.5rem);
+  }
+
+  .lead {
+    margin: 0;
+    color: var(--lt-text-3);
+  }
+}
+
+form {
+  display: grid;
+  gap: 28px;
+}
+
+fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  margin-bottom: 10px;
+  font-family: var(--lt-display);
+  font-size: 1.75rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+
+  .n {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--lt-text);
+    color: var(--lt-bg);
+    font-size: 1.125rem;
+  }
+}
+
+.help {
+  margin: -6px 0 4px;
+  color: var(--lt-muted);
+  font-size: 0.875rem;
+}
+
+.shows {
+  display: grid;
+  gap: 10px;
+}
+
+.placeholder {
+  height: 104px;
+}
+
+.show {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 88px;
+  padding: 12px 16px 12px 12px;
+  border: 2px solid var(--lt-line-strong);
+  border-radius: var(--lt-radius);
+  background: var(--lt-surface);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--lt-muted);
+  }
+
+  &.checked {
+    border-color: var(--lt-cta);
+    background: var(--mat-sys-primary-container);
+  }
+
+  &:has(input:focus-visible) {
+    outline: 3px solid var(--lt-cta);
+    outline-offset: 3px;
+  }
+
+  app-cartaz {
+    flex: none;
+    width: 72px;
+    height: 72px;
+    border-radius: var(--lt-radius-sm);
+  }
+}
+
+.text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-size: 1.0625rem;
+    line-height: 1.25;
+  }
+
+  .title {
+    color: var(--lt-text-3);
+    font-size: 0.9375rem;
+  }
+}
+
+.meta {
+  color: var(--lt-muted);
+  font-size: 0.8125rem;
+}
+
+.today {
+  margin-right: 2px;
+  color: var(--lt-ok);
+  font-family: var(--lt-mono);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.doors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--lt-text-2);
+  font-size: 0.8125rem;
+}
+
+// O rádio nativo (para teclado e leitor de tela), desenhado como um alvo grande.
+input[type='radio'] {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border: 2px solid var(--lt-muted);
+  border-radius: 50%;
+  appearance: none;
+  cursor: pointer;
+
+  &::after {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--lt-on-cta);
+    transform: scale(0);
+    transition: transform 0.15s var(--lt-ease);
+  }
+
+  &:checked {
+    border-color: var(--lt-cta);
+    background: var(--lt-cta);
+
+    &::after {
+      transform: scale(1);
+    }
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 20px;
+  color: var(--lt-text-3);
+  text-align: center;
+
+  p {
+    margin: 0;
+  }
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+
+  .chip {
+    min-height: 44px;
+  }
+}
+
+.cta {
+  width: 100%;
+  font-size: 1.125rem;
+
+  ng-icon {
+    font-size: 22px;
+  }
+}

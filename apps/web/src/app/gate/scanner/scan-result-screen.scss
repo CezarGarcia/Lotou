@@ -1,0 +1,162 @@
+// Cores fixas: na fila, a cor é a mensagem. Texto escuro sobre o verde e o
+// amarelo, claro sobre o vermelho (todos acima de 4,5:1).
+.result {
+  --paper: #3ddc84;
+  --ink: #121015;
+
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding: 18px max(22px, calc((100% - 720px) / 2)) calc(26px + env(safe-area-inset-bottom, 0px));
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.35;
+  cursor: pointer;
+  animation: entra 0.16s var(--lt-ease);
+
+  &[data-tone='warn'] {
+    --paper: #ffd23f;
+  }
+
+  &[data-tone='error'] {
+    --paper: #c62828;
+    --ink: #ffffff;
+  }
+}
+
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+// O tempo até a tela voltar sozinha ao leitor.
+.tempo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: var(--ink);
+  transform-origin: left;
+  animation: encolhe var(--tempo, 5s) linear forwards;
+}
+
+@keyframes encolhe {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tempo {
+    opacity: 0.4;
+    animation: none;
+  }
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding-top: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+
+  span {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .artist {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+
+  ng-icon {
+    --ng-icon__stroke-width: 2.4;
+    font-size: 88px;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(4rem, 22vw, 8.5rem);
+  line-height: 0.94;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  font-size: 1.375rem;
+  font-weight: 600;
+  text-wrap: pretty;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  margin: 0;
+  padding-top: 16px;
+  border-top: 3px solid var(--ink);
+
+  dt {
+    font-size: 0.75rem;
+  }
+
+  dd {
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 700;
+  }
+
+  dd.mono {
+    font-size: 1.125rem;
+    font-weight: 500;
+  }
+}
+
+.advice {
+  font-size: 1.0625rem;
+  text-wrap: pretty;
+}
+
+.next {
+  flex: none;
+  min-height: 64px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 4px solid var(--ink);
+    outline-offset: 4px;
+  }
+}

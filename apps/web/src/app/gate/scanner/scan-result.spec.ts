@@ -1,10 +1,13 @@
 import { CheckinResponse } from '../data/checkin.api';
 import {
+  SCAN_ICONS,
   acceptedOnRetry,
+  clockOf,
   connectionFailure,
   describeCheckin,
   placeOf,
   scanSentence,
+  ticketEnd,
 } from './scan-result';
 
 const ticket = { ticketId: 't1', sectorName: 'Plateia', seat: 'A-5' };
@@ -26,7 +29,44 @@ describe('describeCheckin', () => {
       tone: 'ok',
       title: 'Entrada liberada',
       place: 'Plateia · Cadeira A-5',
+      icon: 'lucideCircleCheck',
     });
+  });
+
+  it('mostra o final do ingresso, quando ele é conhecido', () => {
+    const known = {
+      ticketId: '0192a1b2-c3d4-7e5f-8a9b-ab81914b0001',
+      sectorName: 'Pista',
+      seat: null,
+    };
+    expect(ticketEnd(known)).toBe('…914b0001');
+    expect(describeCheckin(response({ ticket: known }), options).ticket).toBe('…914b0001');
+    expect(ticketEnd(null)).toBe('');
+  });
+
+  it('todo ícone de resultado está registrado para o leitor', () => {
+    const results = [
+      'ACCEPTED',
+      'ALREADY_USED',
+      'INVALID_CODE',
+      'UNKNOWN_TICKET',
+      'CANCELLED',
+      'WRONG_SHOW',
+      'NOT_OPEN',
+      'OUTRO',
+    ];
+    const icons = [
+      ...results.map((result) => describeCheckin(response({ result }), options).icon),
+      connectionFailure('x').icon,
+      'lucideLock',
+    ];
+    for (const icon of icons) {
+      expect(Object.keys(SCAN_ICONS)).toContain(icon);
+    }
+  });
+
+  it('a hora da leitura sai com segundos, no fuso do show', () => {
+    expect(clockOf('2026-12-17T00:00:05Z', 'America/Recife')).toBe('21:00:05');
   });
 
   it('pista não tem cadeira', () => {

@@ -10,8 +10,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideCameraOff, lucideRotateCw } from '@ng-icons/lucide';
 import { GET_USER_MEDIA, QR_DETECTOR_FACTORY, QrDetector } from './qr-detector';
 
 /** Situação da câmera, para a tela explicar o que fazer. */
@@ -47,80 +47,39 @@ export function cameraErrorState(error: unknown): CameraState {
 @Component({
   selector: 'app-camera-scanner',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatIconModule],
+  imports: [NgIcon],
+  viewProviders: [provideIcons({ lucideCameraOff, lucideRotateCw })],
   template: `
     <div class="frame" [attr.data-state]="state()">
       <video #video muted playsinline [muted]="true" aria-hidden="true"></video>
-      @if (state() === 'running') {
-        <div class="target" aria-hidden="true"></div>
-        <p class="hint">Aponte para o QR code do ingresso</p>
-      } @else if (state() === 'starting') {
-        <p class="hint">Ligando a câmera...</p>
+      @if (state() === 'running' || state() === 'starting') {
+        <div class="target" aria-hidden="true">
+          <span class="corner tl"></span>
+          <span class="corner tr"></span>
+          <span class="corner bl"></span>
+          <span class="corner br"></span>
+          @if (state() === 'running') {
+            <span class="sweep"></span>
+          }
+        </div>
+        <p class="hint" aria-live="polite">
+          {{ state() === 'running' ? 'Aponte para o QR code do ingresso' : 'Ligando a câmera...' }}
+        </p>
       } @else {
         <div class="problem" role="alert">
-          <mat-icon aria-hidden="true">no_photography</mat-icon>
+          <ng-icon name="lucideCameraOff" aria-hidden="true" />
           <p>{{ message() }}</p>
           @if (state() === 'denied' || state() === 'error') {
-            <button matButton="filled" type="button" (click)="start()">Tentar de novo</button>
+            <button class="btn btn-light" type="button" (click)="start()">
+              <ng-icon name="lucideRotateCw" aria-hidden="true" />
+              Tentar de novo
+            </button>
           }
         </div>
       }
     </div>
   `,
-  styles: `
-    :host {
-      display: block;
-    }
-    .frame {
-      position: relative;
-      overflow: hidden;
-      aspect-ratio: 1;
-      max-height: 56dvh;
-      margin-inline: auto;
-      border-radius: 20px;
-      background: #111;
-      color: #fff;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .target {
-      position: absolute;
-      inset: 18%;
-      border: 4px solid rgb(255 255 255 / 0.85);
-      border-radius: 16px;
-      box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.35);
-    }
-    .hint {
-      position: absolute;
-      inset: auto 0 12px;
-      margin: 0;
-      text-align: center;
-      font: var(--mat-sys-label-large);
-      text-shadow: 0 1px 3px #000;
-    }
-    .problem {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-content: center;
-      justify-items: center;
-      gap: 12px;
-      padding: 24px;
-      text-align: center;
-    }
-    .problem p {
-      margin: 0;
-      max-width: 32ch;
-    }
-    .problem mat-icon {
-      width: 48px;
-      height: 48px;
-      font-size: 48px;
-    }
-  `,
+  styleUrl: './camera-scanner.scss',
 })
 export class CameraScanner {
   private readonly getUserMedia = inject(GET_USER_MEDIA);

@@ -75,6 +75,28 @@ describe('GateSetupPage', () => {
     expect(radios.map((radio) => radio.checked)).toEqual([false, true]);
   });
 
+  it('as sugestões preenchem o portão com um toque', async () => {
+    await render([show('s1', 'Banda A')]);
+    const chip = [...element().querySelectorAll<HTMLButtonElement>('.suggestions button')].find(
+      (button) => button.textContent!.trim() === 'Acesso PCD',
+    )!;
+    chip.click();
+    fixture.detectChanges();
+    expect(element().querySelector<HTMLInputElement>('input[formControlName="gate"]')!.value).toBe(
+      'Acesso PCD',
+    );
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect(submit().disabled).toBe(false);
+  });
+
+  it('marca os shows de hoje', async () => {
+    const tonight = { ...show('s1', 'Banda A'), startsAt: new Date().toISOString() };
+    await render([tonight, show('s2', 'Banda B')]);
+    const cards = element().querySelectorAll('.show');
+    expect(cards[0].querySelector('.today')?.textContent).toContain('Hoje');
+    expect(cards[1].querySelector('.today')).toBeNull();
+  });
+
   it('não começa sem portão', async () => {
     await render([show('s1', 'Banda A')]);
     setGate('   ');
