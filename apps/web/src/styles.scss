@@ -381,10 +381,15 @@ a {
     transform: scale(0.98);
   }
 
+  // Desabilitado fica neutro, em qualquer variante: o amarelo é só para a
+  // ação que dá para fazer agora.
   &:disabled,
   &[aria-disabled='true'] {
-    opacity: 0.5;
+    border-color: var(--lt-line-strong);
+    background: var(--lt-raised);
+    color: var(--lt-muted);
     cursor: not-allowed;
+    transform: none;
   }
 
   &.btn-cta {
@@ -414,6 +419,13 @@ a {
     min-height: 56px;
     padding: 0 30px;
     font-size: 1.0625rem;
+  }
+
+  &.btn-cta:disabled,
+  &.btn-cta[aria-disabled='true'],
+  &.btn-light:disabled {
+    background: var(--lt-raised);
+    color: var(--lt-muted);
   }
 }
 
