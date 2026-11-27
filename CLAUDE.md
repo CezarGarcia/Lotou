@@ -29,7 +29,7 @@ Na raiz (`make help` lista todos):
 - `make infra`: sobe só a infraestrutura, para rodar um serviço fora do Compose
 - `make seed`: carrega shows e locais fictícios pela API (pode rodar mais de uma vez)
 - `make test`: roda os testes de todos os serviços
-- `make smoke`: confere o ambiente no ar: faz uma compra de ponta a ponta pela saga e confere os traces no Tempo
+- `make smoke`: confere o ambiente no ar: compra de ponta a ponta pela saga, cancelamento com reembolso, portaria barrando a segunda entrada e os traces no Tempo (precisa do `make seed` do dia, que cria um show de hoje)
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
@@ -41,7 +41,7 @@ Por serviço:
 - `services/event-service`: `npm test` (unitários), `npm run test:e2e` (integração com Testcontainers), `npm run lint`, `npm run format:check`
 - `services/api-gateway`, `services/inventory-service`: `./mvnw test`
 - `services/order-service`: `make test-order-service` na raiz (constrói a imagem do inventory, que os testes de ponta a ponta usam) ou `./mvnw test` se a imagem já existe
-- `services/payment-mock`: `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format:check`
+- `services/payment-mock`, `services/checkin-service`: `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format:check`
 - `services/analytics-service`, `services/notification-service`: `uv run pytest`, `uv run ruff check`, `uv run mypy` (ou `make test-analytics-service` e `make test-notification-service` na raiz)
 - `apps/web`: `npm test -- --watch=false`, `npm run build`, `npm run format:check`
 - `contracts/`: `python contracts/check.py` confere os JSON Schemas das mensagens e os exemplos

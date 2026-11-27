@@ -117,9 +117,9 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 
 ### Taxa de serviço
 
-- A plataforma cobra 10% sobre o valor de cada ingresso, valor inspirado no que o mercado pratica.
+- A plataforma cobra 10% sobre o valor de cada ingresso (antes do desconto), valor inspirado no que o mercado pratica. A taxa é calculada ingresso a ingresso e arredondada para o centavo mais próximo.
 - O produtor escolhe, por show, se repassa a taxa ao comprador ou se a absorve.
-- Quando repassada, a taxa aparece separada no checkout, antes do pagamento.
+- Quando repassada, a taxa aparece separada no checkout, antes do pagamento (`POST /orders/quote`). O total cobrado é subtotal − desconto + taxa (se repassada). A escolha não muda depois que as vendas abrem.
 
 ### Cupons
 
@@ -369,14 +369,17 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | inventory | `reservations`, `reservation_items` | reserva com status e `expires_at`; um item por ingresso, com o preço congelado. Na fase 1 é gravada direto; na fase 2 passa a vir do Redis Stream |
 | inventory | `purchase_limits` | ingressos por CPF em cada show; a chave usa o HMAC do CPF |
 | inventory | `outbox` | fatos de reservas e lotes a publicar em `inventory.events`, gravados por trigger na mesma transação de cada mudança de status (ADR 8) |
-| order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; o cupom aplicado entra na fase 6 |
+| order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; subtotal, desconto, taxa, quem paga a taxa, cupom aplicado e valor reembolsado |
 | order | `tickets` | ingresso emitido, status (VALID, USED ou CANCELLED) e o código do QR assinado com HMAC (ADR 15); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla |
-| order | `coupons` | código, desconto, limite de uso, validade e show |
-| order | `refunds` | pedido de reembolso, valor, status e tentativas |
+| order | `coupons`, `coupon_redemptions` | código, desconto, limite de uso, usos (com `CHECK uses <= max_uses`), validade, setores e show; um uso por pedido, marcado como devolvido no cancelamento ou reembolso (ADR 33) |
+| order | `refunds` | saga de reembolso de cada pedido: motivo, status (QUEUED, REFUNDING, COMPLETED, FAILED), valor, falhas e prazo da resposta |
+| order | `shows` | cópia local do catálogo: produtor, data, status e quem paga a taxa |
 | order | `outbox` | eventos e comandos a publicar no Kafka, gravados na mesma transação do pedido e da saga |
-| order | `saga_state` | passo atual de cada saga (compra ou cancelamento), para retomar após falha |
-| checkin | `valid_tickets` | cópia local dos ingressos válidos, alimentada por eventos do Kafka |
+| order | `saga_state` | passo atual da saga de compra de cada pedido, para retomar após falha |
+| checkin | `valid_tickets` | cópia local dos ingressos, alimentada por `TicketsIssued` e `TicketsCancelled`; o cancelado fica, com status, para o leitor dizer "cancelado" |
+| checkin | `shows` | cópia local do catálogo: abertura dos portões, data e fuso, para a regra de horário |
 | checkin | `checkins` | entrada registrada, com portão e horário; constraint única em `ticket_id` |
+| checkin | `checkin_rejections` | leituras recusadas (código inválido, cancelado, já usado), gravadas em lote fora da requisição; alimentam o resumo da portaria |
 | todos os consumidores | `processed_events` | `event_id` já processado, para idempotência |
 | payment-mock | `payments` | tentativas e estornos por pedido, para responder igual a comandos repetidos |
 
@@ -389,6 +392,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | `sales_by_sector` | vendas, receita e ocupação por show, setor e hora | read model desnormalizado, montado a partir de eventos |
 | `producer_statements` | por show: vendas brutas, descontos, cancelamentos, reembolsos, taxa da plataforma e valor a receber | read model financeiro, recalculável por replay |
 | `order_view` | pedido completo para o painel e o agente | evita joins entre serviços na leitura |
+| `checkins_by_gate` | entradas por show e portão | contador do painel e do resumo da portaria |
 | `shows`, `lot_timeline` | cópia do catálogo que o analytics usa e a linha do tempo dos lotes (abertura e esgotamento) | apoio dos read models acima |
 | `agent_conversations` | histórico do chat e chamadas de ferramenta | estrutura aninhada e variável |
 | `idempotency_keys` | `Idempotency-Key` já vista nos POSTs do event-service, com a resposta original; TTL de 24 h | o índice único do `_id` decide a corrida entre requisições iguais (ADR 22) |
@@ -440,12 +444,12 @@ Todo evento usa o mesmo envelope: `eventId`, `type`, `version`, `occurredAt` e `
 | Tópico | Chave | Mensagens | Produz | Consome |
 | --- | --- | --- | --- | --- |
 | `shows.catalog` (compactado) | showId | ShowPublished, ShowUpdated (o show inteiro, com versão; uma mudança de preço de lote é um ShowUpdated) | event | inventory, analytics |
-| `order.events` | orderId | OrderCreated, OrderConfirmed, OrderCancelled, OrderRefunded, TicketsIssued, TicketsCancelled | order (via outbox) | analytics, notification, checkin |
+| `order.events` | orderId | OrderCreated, OrderConfirmed, OrderCancelled, OrderRefunded, OrderRefundFailed, TicketsIssued, TicketsCancelled | order (via outbox) | analytics, notification, checkin |
 | `payment.commands` | orderId | AuthorizePayment, RefundPayment | order | payment-mock |
 | `payment.events` | orderId | PaymentAuthorized, PaymentDeclined, PaymentRefunded, RefundFailed | payment-mock | order |
 | `inventory.commands` | orderId | ConfirmReservation, ReleaseReservation (ReturnTickets na fase 6) | order | inventory |
 | `inventory.events` | showId | ReservationConfirmed, ReservationReleased, LotSoldOut, LotOpened: fatos de cada mudança de status, não respostas a comandos | inventory | order, analytics, event-service (apaga o cache do show) |
-| `checkin.events` | showId | TicketCheckedIn, CheckinRejected | checkin | analytics |
+| `checkin.events` | showId | TicketCheckedIn, CheckinRejected | checkin (via outbox) | analytics, order |
 | `*.dlt` | igual à origem | mensagens que falharam após os retries | consumidores | inspeção manual |
 
 A chave define a partição: todos os eventos de um mesmo pedido ou show chegam em ordem ao consumidor, então `LotSoldOut` sempre vem antes do `LotOpened` do lote seguinte. O preço disso é a **partição quente**: um show grande concentra seus eventos numa partição só. Medir no teste de carga e, se virar gargalo, trocar a chave para show + setor; a decisão vira um ADR.
@@ -459,9 +463,10 @@ A chave define a partição: todos os eventos de um mesmo pedido ou show chegam 
 | `notifications.retry` | direct | `10s`, `1m`, `5m` | `notifications.retry.*` | TTL por fila + dead-letter de volta à fila principal |
 | `notifications.dlx` | fanout | — | `notifications.email.dlq` | destino final após 4 tentativas |
 | `tickets.dlx` | fanout | — | `tickets.render.dlq` | PDF que não dá para gerar (show inexistente, tarefa ilegível) sai da fila em vez de voltar para sempre |
-| `reports` | direct | `statement.pdf` | `reports.generate` | gera o PDF do relatório financeiro do produtor sob demanda (fase 6) |
+| `reports` | direct | `statement.pdf` | `reports.generate` | gera o PDF do relatório financeiro do produtor sob demanda e o envia por e-mail; prefetch 1 |
+| `reports.dlx` | fanout | — | `reports.generate.dlq` | relatório que não dá para gerar sai da fila; volta com `make requeue-notifications` |
 
-O `notification-service` consome `order.events` do Kafka. Ao ver um `TicketsIssued`, enfileira a geração do PDF com os ingressos; quando o PDF fica pronto, enfileira o e-mail, com prioridade alta. Um `OrderCancelled` vira o e-mail de pedido cancelado. O e-mail do comprador vem do Keycloak, pelo `sub`, na hora de enviar: nenhum evento carrega e-mail. Assim o retry com backoff, a prioridade, a divisão de carga entre workers e a DLQ ficam onde o RabbitMQ é melhor (ADR 2).
+O `notification-service` consome `order.events` do Kafka. Ao ver um `TicketsIssued`, enfileira a geração do PDF com os ingressos; quando o PDF fica pronto, enfileira o e-mail, com prioridade alta. Um `OrderCancelled` vira o e-mail de pedido cancelado, e um `OrderRefunded`, o de reembolso concluído. O relatório financeiro em PDF é pedido pelo produtor (`POST /reports/statements`), lido do analytics pela conta de serviço e enviado ao e-mail dele. O e-mail do comprador vem do Keycloak, pelo `sub`, na hora de enviar: nenhum evento carrega e-mail. Assim o retry com backoff, a prioridade, a divisão de carga entre workers e a DLQ ficam onde o RabbitMQ é melhor (ADR 2).
 
 ### Redis Streams e pub/sub
 
@@ -538,23 +543,25 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 
 ### Fluxo E: check-in na portaria
 
-1. Quando o pedido é confirmado, o order-service publica `TicketsIssued` e o checkin-service grava os ingressos em `valid_tickets`. Um `TicketsCancelled` os remove.
+1. Quando o pedido é confirmado, o order-service publica `TicketsIssued` e o checkin-service grava os ingressos em `valid_tickets`. Um `TicketsCancelled` os marca como cancelados.
 2. O QR code carrega o id do ingresso e uma assinatura HMAC, então um QR falsificado é recusado sem consultar o banco.
 3. No dia do show, o leitor da portaria envia o código, e o checkin-service confere a assinatura e se o ingresso está em `valid_tickets`.
 4. Um `SET NX` em `checkin:{ticketId}` decide quem chega primeiro: o primeiro portão libera, e o segundo recebe "já utilizado às 20h31 no portão B".
-5. A entrada é gravada em `checkins` (constraint única) e publicada como `TicketCheckedIn`, e o painel mostra a ocupação ao vivo.
+5. A entrada é gravada em `checkins` (constraint única, a palavra final se o Redis falhar) e publicada como `TicketCheckedIn` pelo outbox. O painel mostra as entradas por portão ao vivo, e o order-service marca o ingresso como USED, o que impede o cancelamento.
 
 Como a portaria tem sua própria cópia dos ingressos, ela continua funcionando mesmo com o order-service fora do ar.
 
 ### Fluxo F: cancelamento e reembolso
 
-1. O comprador pede o cancelamento em "Meus ingressos", e o order-service confere o prazo da política.
-2. Os ingressos passam a CANCELLED e `TicketsCancelled` sai pelo outbox; a portaria deixa de aceitá-los.
-3. `RefundPayment` vai ao payment-mock; com `PaymentRefunded`, o pedido fica REFUNDED e o uso do cupom volta.
-4. `ReturnTickets` devolve os ingressos à venda no inventory: o contador da pista sobe ou o assento é liberado no bitmap.
-5. O notification-service envia o e-mail de reembolso concluído.
+1. O comprador pede o cancelamento em "Meus ingressos", e o order-service confere a política (7 dias, 48 h antes do show, nenhum ingresso usado).
+2. Numa transação: pedido REFUNDING, ingressos CANCELLED, passo da saga de reembolso em `refunds`, e no outbox `TicketsCancelled` (a portaria deixa de aceitá-los), `RefundPayment` e `ReturnTickets`.
+3. O inventory devolve os ingressos à venda e a reserva vira RETURNED: o contador da pista sobe ou o assento é liberado no bitmap.
+4. Com `PaymentRefunded`, o pedido fica REFUNDED, o uso do cupom volta e sai `OrderRefunded`.
+5. O notification-service envia o e-mail de reembolso concluído, e o relatório financeiro desconta o pedido.
 
-Se o estorno falhar, a saga tenta de novo com backoff. Depois de 5 falhas o pedido vai para REFUND\_FAILED, dispara um alerta e aparece no painel para tratamento manual.
+Se o estorno falhar, a saga tenta de novo com backoff; sem resposta no prazo, o comando é repetido. Depois de 5 falhas o pedido vai para REFUND\_FAILED (`OrderRefundFailed`) e o produtor o reprocessa pela API.
+
+Quando o produtor cancela o show, o `ShowUpdated` com CANCELLED põe todos os pedidos confirmados numa fila em `refunds`. Um job começa os reembolsos no ritmo configurado (20 por segundo, por padrão), para não despejar milhares de estornos no gateway de pagamento de uma vez, e a cada rodada confere se algum pedido confirmado depois do cancelamento ficou de fora. Os ingressos de show cancelado não voltam à venda.
 
 ## Estratégia de cache e Redis
 
