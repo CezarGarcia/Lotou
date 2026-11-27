@@ -51,6 +51,8 @@ async function api(method, path, { token, body, trace, idempotent } = {}) {
   const response = await fetch(`${API}${path}`, {
     method,
     headers: {
+      // O tail sampling do Collector guarda todo trace do smoke (ele confere os traces no Tempo).
+      'User-Agent': 'lotou-smoke',
       ...(token && { Authorization: `Bearer ${token}` }),
       ...(body && { 'Content-Type': 'application/json' }),
       ...(trace && { traceparent: trace.header }),

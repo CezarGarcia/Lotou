@@ -616,11 +616,13 @@ O OpenTelemetry entra na fase 0, e a meta é um único trace do clique no Angula
 | Serviços Node | `@opentelemetry/auto-instrumentations-node` |
 | Serviços Python | `opentelemetry-instrument` + spans GenAI no agente |
 | Kafka e RabbitMQ | contexto nos headers; onde a biblioteca não propaga sozinha, injetar e extrair manualmente |
-| Redis, Postgres, MongoDB | clientes auto-instrumentados + exporters de métricas (redis, postgres, mongodb, lag do Kafka, plugin Prometheus do RabbitMQ) |
+| Redis, Postgres, MongoDB | clientes auto-instrumentados; métricas lidas pelo Collector (receivers postgresql, redis, mongodb, kafka_metrics e rabbitmq) |
 
 **Pipeline:** serviços → OTel Collector (batch + tail sampling: 100% dos traces com erro ou acima de 500 ms, 10% do resto) → Tempo, Prometheus (com exemplars ligando métrica a trace) e Loki → Grafana. Logs em JSON com `trace_id` e `span_id`, para pular do log ao trace com um clique.
 
-Na fase 0 o Collector guarda 100% dos traces, para o desenvolvimento enxergar toda requisição. O tail sampling entra junto com os testes de carga, quando o volume justificar.
+Na fase 0 o Collector guardava 100% dos traces. Desde a fase 7 vale o tail sampling acima, com duas exceções: os traces do `make smoke` e dos testes ponta a ponta (identificados pelo `User-Agent`), que conferem o trace no Tempo, ficam sempre; e `TRACE_SAMPLE_PERCENT=100` guarda tudo, para depurar uma requisição que não deu erro. Spans que chegam depois da decisão (um consumidor do Kafka atrasado) seguem o destino do trace.
+
+As métricas da infraestrutura são lidas pelo próprio Collector (receivers do OpenTelemetry Collector Contrib), sem um exporter por banco: Postgres, os dois Redis, MongoDB, lag de cada consumer group no Kafka e a profundidade de cada fila do RabbitMQ, com as DLQs.
 
 ### Métricas de negócio
 

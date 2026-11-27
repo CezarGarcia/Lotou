@@ -1,6 +1,7 @@
 # OTel Collector: ponto único de entrada da telemetria.
 #
 #   serviços e navegador --OTLP--> Collector --OTLP--> Tempo, Prometheus e Loki
+#   Postgres, Redis, MongoDB, Kafka e RabbitMQ <--lidos pelo Collector (receivers)
 #
 # O Collector é quem garante a regra de LGPD do projeto: CPF e e-mail não chegam
 # ao backend de observabilidade, mesmo que um serviço os coloque num span ou log
@@ -13,6 +14,53 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+
+  # Métricas da infraestrutura, lidas direto pelo Collector, sem um exporter por
+  # banco: conexões e tamanho no Postgres, memória, evictions e acertos nos dois
+  # Redis, operações no MongoDB, lag por consumer group no Kafka e profundidade
+  # de cada fila no RabbitMQ (as DLQs incluídas).
+  postgresql:
+    endpoint: postgres:5432
+    transport: tcp
+    username: ${env:POSTGRES_USER:-lotou}
+    password: ${env:POSTGRES_PASSWORD:-lotou}
+    databases: [inventory, orders, payments, checkin]
+    collection_interval: 15s
+    tls:
+      insecure: true
+
+  redis/cache:
+    endpoint: redis-cache:6379
+    collection_interval: 15s
+    resource_attributes:
+      server.address:
+        enabled: true
+
+  redis/core:
+    endpoint: redis-core:6379
+    collection_interval: 15s
+    resource_attributes:
+      server.address:
+        enabled: true
+
+  mongodb:
+    hosts:
+      - endpoint: mongodb:27017
+    replica_set: rs0
+    collection_interval: 15s
+    tls:
+      insecure: true
+
+  kafka_metrics:
+    brokers: [kafka:9092]
+    scrapers: [brokers, topics, consumers]
+    collection_interval: 15s
+
+  rabbitmq:
+    endpoint: http://rabbitmq:15672
+    username: ${env:RABBITMQ_USER:-lotou}
+    password: ${env:RABBITMQ_PASSWORD:-lotou}
+    collection_interval: 15s
 
 processors:
   # Evita que um pico de telemetria derrube o Collector por falta de memória.
@@ -40,8 +88,50 @@ processors:
     timeout: 1s
     send_batch_size: 1024
 
+  # Nas métricas de infraestrutura, o que distingue as séries (a fila do RabbitMQ,
+  # o endereço do Redis, o banco do MongoDB) vem como atributo de recurso, que o
+  # Prometheus não transforma em label: copia para os pontos.
+  transform/infra-labels:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - merge_maps(datapoint.attributes, resource.attributes, "insert")
+
+  # Tail sampling: a decisão é tomada com o trace inteiro na mão. Fica todo trace
+  # com erro ou acima de 500 ms, todo trace do `make smoke` e do e2e (que conferem
+  # o trace no Tempo) e 10% do resto. TRACE_SAMPLE_PERCENT=100 guarda tudo, para
+  # depurar uma requisição que não deu erro.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
+    # Spans que chegam depois da decisão (um consumidor do Kafka atrasado) seguem
+    # o destino do trace, em vez de virar um trace novo pela metade.
+    decision_cache:
+      sampled_cache_size: 100000
+      non_sampled_cache_size: 100000
+    policies:
+      - name: erros
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: lentos
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: verificacao-do-ambiente
+        type: string_attribute
+        string_attribute:
+          key: user_agent.original
+          values: ["lotou-(smoke|e2e).*"]
+          enabled_regex_matching: true
+      - name: amostra
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: ${env:TRACE_SAMPLE_PERCENT:-10}
+
 exporters:
-  otlphttp/lgtm:
+  otlp_http/lgtm:
     endpoint: http://lgtm:4318
 
 extensions:
@@ -53,13 +143,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, redaction/pii, batch]
-      exporters: [otlphttp/lgtm]
+      processors: [memory_limiter, redaction/pii, tail_sampling, batch]
+      exporters: [otlp_http/lgtm]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, redaction/pii, batch]
-      exporters: [otlphttp/lgtm]
+      exporters: [otlp_http/lgtm]
+    metrics/infra:
+      receivers: [postgresql, redis/cache, redis/core, mongodb, kafka_metrics, rabbitmq]
+      processors: [memory_limiter, transform/infra-labels, batch]
+      exporters: [otlp_http/lgtm]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, redaction/pii, batch]
-      exporters: [otlphttp/lgtm]
+      exporters: [otlp_http/lgtm]
