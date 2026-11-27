@@ -22,7 +22,9 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     Optional<Order> findByReservationId(UUID reservationId);
 
-    List<Order> findByShowIdAndStatusOrderById(UUID showId, OrderStatus status);
+    /** Pedidos do show num estado, do mais novo ao mais antigo, paginados por cursor. */
+    @Query("select o from Order o where o.showId = :showId and o.status = :status and (:before is null or o.id < :before) order by o.id desc")
+    List<Order> findByShowAndStatus(UUID showId, OrderStatus status, UUID before, Limit limit);
 
     /** O pedido de um ingresso, travado: a entrada na portaria e o cancelamento não se cruzam. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

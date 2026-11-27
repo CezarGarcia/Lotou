@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class CouponService {
 
-    private static final Pattern CODE = Pattern.compile("[A-Z0-9-]{3,32}");
+    private static final Pattern CODE = Pattern.compile("[A-Z0-9][A-Z0-9_-]{2,29}");
 
     /** O que o produtor envia para criar um cupom. */
     public record NewCoupon(UUID showId, String code, Coupon.Kind kind, Integer percent, Long amountCents,
@@ -112,7 +112,7 @@ public class CouponService {
     private void validate(NewCoupon request, String code) {
         var errors = new java.util.ArrayList<String>();
         if (!CODE.matcher(code).matches()) {
-            errors.add("code: use de 3 a 32 letras, números ou hífen");
+            errors.add("code: use de 3 a 30 letras, números, hífen ou sublinhado, começando por letra ou número");
         }
         if (request.kind() == Coupon.Kind.PERCENT && (request.percent() == null || request.percent() < 1
                 || request.percent() > 100)) {

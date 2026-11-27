@@ -376,8 +376,10 @@ class RefundAndCouponTests {
         this.mvc.perform(get("/v1/orders/refund-failed").param("showId", show.id().toString())
                 .header("Authorization", producer()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].orderId").value(orderId.toString()))
-                .andExpect(jsonPath("$[0].totalCents").value(total));
+                .andExpect(jsonPath("$.items[0].id").value(orderId.toString()))
+                .andExpect(jsonPath("$.items[0].totalCents").value(total))
+                .andExpect(jsonPath("$.items[0].tickets").value(1))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
         // Outro produtor não vê nem reprocessa; o comprador também não.
         String other = "Bearer " + neighbours.token("outro-produtor", "producer");
         this.mvc.perform(get("/v1/orders/refund-failed").param("showId", show.id().toString())

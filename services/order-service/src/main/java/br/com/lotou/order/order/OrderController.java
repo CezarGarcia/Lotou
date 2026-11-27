@@ -58,7 +58,11 @@ class OrderController {
     }
 
     /** Pedido com estorno que falhou, para o produtor tratar. */
-    record FailedRefund(UUID orderId, String buyerId, long totalCents, Instant confirmedAt) {
+    record FailedRefund(UUID id, UUID showId, String buyerId, long totalCents, int tickets, Instant createdAt,
+            Instant confirmedAt) {
+    }
+
+    record FailedRefundPage(List<FailedRefund> items, String nextCursor) {
     }
 
     private final CheckoutService checkout;
@@ -127,13 +131,20 @@ class OrderController {
         return ResponseEntity.accepted().body(this.checkout.describe(order));
     }
 
-    /** Pedidos do show com estorno que falhou cinco vezes. */
+    /** Pedidos do show com estorno que falhou cinco vezes, paginados por cursor. */
     @GetMapping("/refund-failed")
-    List<FailedRefund> refundFailed(@RequestParam UUID showId, @AuthenticationPrincipal Jwt jwt) {
-        return this.refunds.failed(showId, jwt.getSubject()).stream()
-                .map(order -> new FailedRefund(order.getId(), order.getBuyerId(), order.getTotalCents(),
-                        order.getConfirmedAt()))
-                .toList();
+    @Transactional(readOnly = true)
+    FailedRefundPage refundFailed(@RequestParam UUID showId, @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @RequestParam(required = false) String cursor) {
+        List<Order> found = this.refunds.failed(showId, jwt.getSubject(), cursor == null ? null : decode(cursor),
+                limit + 1);
+        List<Order> items = found.stream().limit(limit).toList();
+        String next = found.size() > limit ? encode(items.getLast().getId()) : null;
+        return new FailedRefundPage(items.stream()
+                .map(order -> new FailedRefund(order.getId(), order.getShowId(), order.getBuyerId(),
+                        order.getTotalCents(), order.getItems().size(), order.getCreatedAt(), order.getConfirmedAt()))
+                .toList(), next);
     }
 
     /** "Meus pedidos", do mais novo ao mais antigo, paginados por cursor. */

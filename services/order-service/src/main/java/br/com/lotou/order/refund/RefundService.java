@@ -140,11 +140,12 @@ public class RefundService {
         return order;
     }
 
-    /** Pedidos do show com estorno que falhou, para o produtor tratar. */
+    /** Pedidos do show com estorno que falhou, para o produtor tratar, do mais novo ao mais antigo. */
     @Transactional(readOnly = true)
-    public List<Order> failed(UUID showId, String producerId) {
+    public List<Order> failed(UUID showId, String producerId, UUID before, int limit) {
         ownedShow(showId, producerId);
-        return this.orders.findByShowIdAndStatusOrderById(showId, OrderStatus.REFUND_FAILED);
+        return this.orders.findByShowAndStatus(showId, OrderStatus.REFUND_FAILED, before,
+                org.springframework.data.domain.Limit.of(limit));
     }
 
     // ----------------------------------------------------- show cancelado e fila
