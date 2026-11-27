@@ -46,6 +46,10 @@ public class Ticket {
 
     private String code;
 
+    private Instant usedAt;
+
+    private String gate;
+
     protected Ticket() {
     }
 
@@ -60,6 +64,34 @@ public class Ticket {
         this.seatLabel = item.getSeatLabel();
         this.status = TicketStatus.VALID;
         this.issuedAt = issuedAt;
+    }
+
+    /** VALID -> CANCELLED. Devolve {@code false} se o ingresso já não estava válido. */
+    boolean cancel() {
+        if (!this.status.canTransitionTo(TicketStatus.CANCELLED)) {
+            return false;
+        }
+        this.status = TicketStatus.CANCELLED;
+        return true;
+    }
+
+    /** VALID -> USED, com a hora e o portão da entrada. Devolve {@code false} se não estava válido. */
+    boolean use(Instant at, String gate) {
+        if (!this.status.canTransitionTo(TicketStatus.USED)) {
+            return false;
+        }
+        this.status = TicketStatus.USED;
+        this.usedAt = at;
+        this.gate = gate;
+        return true;
+    }
+
+    public Instant getUsedAt() {
+        return this.usedAt;
+    }
+
+    public String getGate() {
+        return this.gate;
     }
 
     public UUID getId() {

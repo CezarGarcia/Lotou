@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import br.com.lotou.order.messaging.OutboxRelay;
+import br.com.lotou.order.support.CatalogFeed;
 import br.com.lotou.order.support.Contracts;
 import br.com.lotou.order.support.EndToEndEnvironment;
 import br.com.lotou.order.support.InventoryStub;
@@ -95,7 +96,8 @@ class PurchaseSagaTests {
         assertThat(statusOf(purchase.orderId())).isEqualTo("PENDING");
 
         JsonNode authorize = counterparts.await("AuthorizePayment", purchase.orderId()).payload();
-        assertThat(authorize.get("amountCents").asLong()).isEqualTo(2 * PRICE);
+        // Os ingressos mais a taxa de serviço de 10%, que neste show o comprador paga.
+        assertThat(authorize.get("amountCents").asLong()).isEqualTo(2 * PRICE + 2 * PRICE / 10);
         assertThat(authorize.get("buyerId").asString()).isEqualTo("comprador-feliz");
 
         counterparts.payment("PaymentAuthorized", purchase.orderId(), 2 * PRICE);
@@ -291,8 +293,9 @@ class PurchaseSagaTests {
 
     @Test
     void mesmaIdempotencyKeyDevolveOMesmoPedidoSemComecarOutraSaga() throws Exception {
-        UUID reservation = inventory.hold("comprador-duplo", UUID.randomUUID(), UUID.randomUUID(), List.of("K-1"),
-                PRICE);
+        UUID show = UUID.randomUUID();
+        inCatalog(show);
+        UUID reservation = inventory.hold("comprador-duplo", show, UUID.randomUUID(), List.of("K-1"), PRICE);
         String key = UUID.randomUUID().toString();
         String first = place("comprador-duplo", reservation, key, 201);
         String second = place("comprador-duplo", reservation, key, 201);
@@ -322,10 +325,18 @@ class PurchaseSagaTests {
     }
 
     private Purchase buy(String buyer, UUID show, UUID sector, List<String> seats) throws Exception {
+        inCatalog(show);
         UUID reservation = inventory.hold(buyer, show, sector, seats, PRICE);
         UUID orderId = UUID.fromString(place(buyer, reservation, UUID.randomUUID().toString(), 201));
         this.relay.publishPending();
         return new Purchase(orderId, reservation, show);
+    }
+
+    /** O show na cópia local do catálogo, como o event-service o publicaria: o checkout precisa dele. */
+    private void inCatalog(UUID show) {
+        CatalogFeed.show(show, 2, "produtor-1", "ON_SALE", java.time.Instant.now().plus(Duration.ofDays(30)), "BUYER");
+        Awaitility.await().atMost(Duration.ofSeconds(15)).until(() -> this.jdbc
+                .sql("SELECT count(*) FROM shows WHERE id = :id").param("id", show).query(Integer.class).single() == 1);
     }
 
     /** Pagamento aprovado e reserva confirmada: a saga termina com o pedido confirmado. */

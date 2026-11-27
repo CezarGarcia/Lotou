@@ -47,6 +47,8 @@ spring:
       group-id: order-service
       # Um consumer group novo lê o tópico desde o começo: nada publicado antes da subida se perde.
       auto-offset-reset: earliest
+      # O event-service publica o catálogo com transações do Kafka: só lê o que foi confirmado.
+      isolation-level: read_committed
     listener:
       # Confirma o offset de cada mensagem logo depois de processada (e gravada no banco).
       ack-mode: record
@@ -83,10 +85,16 @@ lotou:
       # Quanto a saga espera a resposta de um passo antes de repetir o comando.
       step-timeout: ${SAGA_STEP_TIMEOUT:15s}
       max-attempts: 5
+    refunds:
+      # Reembolsos de show cancelado que começam por segundo: não despeja tudo no pagamento de uma vez.
+      rate: ${REFUND_RATE:20}
+      # Falhas do estorno até o pedido ir para tratamento manual (REFUND_FAILED).
+      max-failures: 5
     jobs:
       enabled: ${JOBS_ENABLED:true}
       outbox-interval: ${OUTBOX_INTERVAL:100ms}
       saga-deadline-interval: ${SAGA_DEADLINE_INTERVAL:2s}
+      refund-interval: ${REFUND_INTERVAL:1s}
 
 management:
   endpoints:

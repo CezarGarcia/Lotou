@@ -34,7 +34,7 @@ public final class EndToEndEnvironment {
     private static final String HOST = "host.docker.internal";
 
     private static final List<String> TOPICS = List.of("shows.catalog", "order.events", "payment.commands",
-            "payment.events", "inventory.commands", "inventory.events");
+            "payment.events", "inventory.commands", "inventory.events", "checkin.events");
 
     public static final Neighbours NEIGHBOURS = Neighbours.start();
 

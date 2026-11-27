@@ -4,6 +4,7 @@ package br.com.lotou.order.shared.security;
 public final class Roles {
 
     public static final String BUYER = "buyer";
+    public static final String PRODUCER = "producer";
 
     private Roles() {
     }

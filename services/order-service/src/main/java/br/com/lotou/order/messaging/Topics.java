@@ -8,6 +8,8 @@ public final class Topics {
     public static final String PAYMENT_EVENTS = "payment.events";
     public static final String INVENTORY_COMMANDS = "inventory.commands";
     public static final String INVENTORY_EVENTS = "inventory.events";
+    public static final String SHOWS_CATALOG = "shows.catalog";
+    public static final String CHECKIN_EVENTS = "checkin.events";
 
     /** Para onde vai a mensagem que falhou depois das tentativas. */
     public static String deadLetterOf(String topic) {

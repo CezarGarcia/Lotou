@@ -3,6 +3,7 @@ package br.com.lotou.order.shared.security;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -38,6 +39,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/actuator/health/**").permitAll()
+                        // Cupons e o tratamento de estornos que falharam são do produtor; o serviço
+                        // confere se o show é dele. O resto de /v1/orders é do comprador.
+                        .requestMatchers("/v1/coupons/**").hasRole(Roles.PRODUCER)
+                        .requestMatchers(HttpMethod.POST, "/v1/orders/*/refund/retry").hasRole(Roles.PRODUCER)
+                        .requestMatchers(HttpMethod.GET, "/v1/orders/refund-failed").hasRole(Roles.PRODUCER)
                         .requestMatchers("/v1/orders/**").hasRole(Roles.BUYER)
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth2 -> oauth2

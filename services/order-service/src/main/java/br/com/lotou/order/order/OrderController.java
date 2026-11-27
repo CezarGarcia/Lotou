@@ -2,16 +2,22 @@ package br.com.lotou.order.order;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
+import br.com.lotou.order.coupon.Coupon;
+import br.com.lotou.order.pricing.Quote;
+import br.com.lotou.order.pricing.ServiceFeePayer;
+import br.com.lotou.order.refund.RefundService;
 import br.com.lotou.order.shared.problem.ProblemException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
@@ -38,15 +44,43 @@ class OrderController {
     static final String IDEMPOTENCY_KEY = "Idempotency-Key";
     static final String REPLAYED = "Idempotent-Replayed";
 
-    record CreateOrderRequest(@NotNull(message = "Informe a reserva") UUID reservationId) {
+    /** @param couponCode o cupom que o comprador digitou; opcional */
+    record CreateOrderRequest(@NotNull(message = "Informe a reserva") UUID reservationId,
+            @Size(max = 64, message = "Use até 64 caracteres") String couponCode) {
+    }
+
+    /** O cupom aplicado na cotação. */
+    record AppliedCoupon(String code, Coupon.Kind kind, Integer percent, Long amountCents) {
+    }
+
+    record QuoteResponse(long subtotalCents, long discountCents, long serviceFeeCents,
+            ServiceFeePayer serviceFeePaidBy, long totalCents, AppliedCoupon coupon) {
+    }
+
+    /** Pedido com estorno que falhou, para o produtor tratar. */
+    record FailedRefund(UUID orderId, String buyerId, long totalCents, Instant confirmedAt) {
     }
 
     private final CheckoutService checkout;
+    private final RefundService refunds;
     private final OrderRepository orders;
 
-    OrderController(CheckoutService checkout, OrderRepository orders) {
+    OrderController(CheckoutService checkout, RefundService refunds, OrderRepository orders) {
         this.checkout = checkout;
+        this.refunds = refunds;
         this.orders = orders;
+    }
+
+    /** Quanto a reserva vai custar, com a taxa e o cupom, sem criar nada. */
+    @PostMapping("/quote")
+    QuoteResponse quote(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CreateOrderRequest request) {
+        CheckoutService.Priced priced = this.checkout.quote(jwt.getSubject(), request.reservationId(),
+                request.couponCode());
+        Quote quote = priced.quote();
+        Coupon coupon = priced.coupon();
+        return new QuoteResponse(quote.subtotalCents(), quote.discountCents(), quote.serviceFeeCents(),
+                quote.serviceFeePaidBy(), quote.totalCents(), coupon == null ? null
+                        : new AppliedCoupon(coupon.code(), coupon.kind(), coupon.percent(), coupon.amountCents()));
     }
 
     /**
@@ -61,7 +95,7 @@ class OrderController {
             String idempotencyKey,
             @Valid @RequestBody CreateOrderRequest request) {
         CheckoutService.Outcome outcome = this.checkout.create(jwt.getSubject(), idempotencyKey,
-                request.reservationId());
+                request.reservationId(), request.couponCode());
         var response = ResponseEntity.created(URI.create("/v1/orders/" + outcome.order().id()));
         if (outcome.replayed()) {
             response.header(REPLAYED, "true");
@@ -72,6 +106,34 @@ class OrderController {
     @GetMapping("/{id}")
     OrderResponse get(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return this.checkout.getOwned(id, jwt.getSubject());
+    }
+
+    /**
+     * O comprador cancela o pedido inteiro, com reembolso integral. {@code 202}: os ingressos são
+     * cancelados na hora e o estorno segue pela saga de reembolso. Repetir é seguro.
+     */
+    @PostMapping("/{id}/cancel")
+    @Transactional
+    ResponseEntity<OrderResponse> cancel(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        Order order = this.refunds.cancelByBuyer(id, jwt.getSubject());
+        return ResponseEntity.accepted().body(this.checkout.describe(order));
+    }
+
+    /** O produtor manda tentar de novo um estorno que falhou. */
+    @PostMapping("/{id}/refund/retry")
+    @Transactional
+    ResponseEntity<OrderResponse> retryRefund(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        Order order = this.refunds.retry(id, jwt.getSubject());
+        return ResponseEntity.accepted().body(this.checkout.describe(order));
+    }
+
+    /** Pedidos do show com estorno que falhou cinco vezes. */
+    @GetMapping("/refund-failed")
+    List<FailedRefund> refundFailed(@RequestParam UUID showId, @AuthenticationPrincipal Jwt jwt) {
+        return this.refunds.failed(showId, jwt.getSubject()).stream()
+                .map(order -> new FailedRefund(order.getId(), order.getBuyerId(), order.getTotalCents(),
+                        order.getConfirmedAt()))
+                .toList();
     }
 
     /** "Meus pedidos", do mais novo ao mais antigo, paginados por cursor. */

@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import br.com.lotou.order.pricing.ServiceFeePayer;
+
 /**
  * Os payloads das mensagens que a saga de compra publica e consome, como descritos em
  * {@code contracts/}. Os testes de contrato conferem que o que sai daqui passa no JSON Schema.
@@ -16,11 +18,13 @@ final class Messages {
     }
 
     record OrderCreated(UUID orderId, String buyerId, UUID showId, UUID reservationId, long totalCents,
-            List<Item> items, Instant createdAt) {
+            List<Item> items, Instant createdAt, long subtotalCents, long discountCents, long serviceFeeCents,
+            ServiceFeePayer serviceFeePaidBy, UUID couponId, String couponCode) {
     }
 
     record OrderConfirmed(UUID orderId, String buyerId, UUID showId, UUID reservationId, long totalCents,
-            List<Item> items, Instant confirmedAt) {
+            List<Item> items, Instant confirmedAt, long subtotalCents, long discountCents, long serviceFeeCents,
+            ServiceFeePayer serviceFeePaidBy, UUID couponId, String couponCode) {
     }
 
     record OrderCancelled(UUID orderId, String buyerId, UUID showId, UUID reservationId, long totalCents,

@@ -18,7 +18,8 @@ public record OrderProperties(
         @NotNull @Valid Inventory inventory,
         @NotNull @Valid Saga saga,
         @NotNull @Valid Tickets tickets,
-        @NotNull @Valid Jobs jobs) {
+        @NotNull @Valid Jobs jobs,
+        @NotNull @Valid Refunds refunds) {
 
     /** @param baseUrl endereço do inventory-service */
     public record Inventory(@NotBlank String baseUrl) {
@@ -37,6 +38,14 @@ public record OrderProperties(
      *     desenvolvimento não serve para um ambiente real
      */
     public record Tickets(@NotBlank String qrKey) {
+    }
+
+    /**
+     * @param rate quantos reembolsos da fila de um show cancelado começam por segundo (controle de
+     *     vazão sobre o gateway de pagamento)
+     * @param maxFailures depois de quantas falhas do estorno o pedido vai para tratamento manual
+     */
+    public record Refunds(@Min(1) @DefaultValue("20") int rate, @Min(1) @DefaultValue("5") int maxFailures) {
     }
 
     /** @param enabled liga os jobs agendados; os testes desligam e chamam os jobs direto */

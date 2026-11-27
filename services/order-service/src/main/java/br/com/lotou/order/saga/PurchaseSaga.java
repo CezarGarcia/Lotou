@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import br.com.lotou.order.config.OrderProperties;
+import br.com.lotou.order.coupon.CouponRepository;
 import br.com.lotou.order.messaging.Envelope;
 import br.com.lotou.order.messaging.Inbox;
 import br.com.lotou.order.messaging.MalformedMessageException;
@@ -22,6 +23,7 @@ import br.com.lotou.order.order.OrderStatus;
 import br.com.lotou.order.order.PaymentStatus;
 import br.com.lotou.order.order.TicketCodes;
 import br.com.lotou.order.order.TicketRepository;
+import br.com.lotou.order.refund.RefundService;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
@@ -60,6 +62,8 @@ public class PurchaseSaga {
     private final OrderRepository orders;
     private final TicketRepository tickets;
     private final TicketCodes ticketCodes;
+    private final CouponRepository coupons;
+    private final RefundService refunds;
     private final Outbox outbox;
     private final Inbox inbox;
     private final JsonMapper json;
@@ -69,12 +73,14 @@ public class PurchaseSaga {
     private final DoubleHistogram sagaDuration;
 
     public PurchaseSaga(SagaStateRepository sagas, OrderRepository orders, TicketRepository tickets,
-            TicketCodes ticketCodes, Outbox outbox, Inbox inbox, JsonMapper json, Clock clock,
-            OrderProperties properties) {
+            TicketCodes ticketCodes, CouponRepository coupons, RefundService refunds, Outbox outbox, Inbox inbox,
+            JsonMapper json, Clock clock, OrderProperties properties) {
         this.sagas = sagas;
         this.orders = orders;
         this.tickets = tickets;
         this.ticketCodes = ticketCodes;
+        this.coupons = coupons;
+        this.refunds = refunds;
         this.outbox = outbox;
         this.inbox = inbox;
         this.json = json;
@@ -99,7 +105,9 @@ public class PurchaseSaga {
         this.sagas.save(SagaState.purchase(order.getId(), now, deadline(now, 1)));
         this.outbox.enqueue(Topics.ORDER_EVENTS, key(order), "OrderCreated",
                 new Messages.OrderCreated(order.getId(), order.getBuyerId(), order.getShowId(), order.getReservationId(),
-                        order.getTotalCents(), items(order), order.getCreatedAt()));
+                        order.getTotalCents(), items(order), order.getCreatedAt(), order.getSubtotalCents(),
+                        order.getDiscountCents(), order.getServiceFeeCents(), order.getServiceFeePaidBy(),
+                        order.getCouponId(), order.getCouponCode()));
         authorizePayment(order);
     }
 
@@ -112,8 +120,15 @@ public class PurchaseSaga {
     @Transactional
     public boolean handle(String topic, Envelope message) {
         return switch (message.type()) {
-            case "PaymentAuthorized", "PaymentDeclined", "PaymentRefunded", "RefundFailed" ->
+            case "PaymentAuthorized", "PaymentDeclined" ->
                     onPayment(topic, message, read(message, Messages.PaymentAnswer.class).orderId());
+            case "PaymentRefunded", "RefundFailed" -> {
+                // Estorno de um pedido confirmado é da saga de reembolso; o de um pedido que nem
+                // chegou a confirmar é a compensação desta saga.
+                UUID orderId = read(message, Messages.PaymentAnswer.class).orderId();
+                yield this.refunds.owns(orderId) ? this.refunds.handle(topic, message)
+                        : onPayment(topic, message, orderId);
+            }
             case "ReservationConfirmed", "ReservationReleased" -> onReservation(topic, message,
                     read(message, Messages.ReservationFact.class));
             default -> false; // LotSoldOut, LotOpened e tipos novos não interessam à saga.
@@ -221,7 +236,9 @@ public class PurchaseSaga {
         String key = key(order);
         this.outbox.enqueue(Topics.ORDER_EVENTS, key, "OrderConfirmed",
                 new Messages.OrderConfirmed(order.getId(), order.getBuyerId(), order.getShowId(),
-                        order.getReservationId(), order.getTotalCents(), items(order), now));
+                        order.getReservationId(), order.getTotalCents(), items(order), now, order.getSubtotalCents(),
+                        order.getDiscountCents(), order.getServiceFeeCents(), order.getServiceFeePaidBy(),
+                        order.getCouponId(), order.getCouponCode()));
         this.outbox.enqueue(Topics.ORDER_EVENTS, key, "TicketsIssued",
                 new Messages.TicketsIssued(order.getId(), order.getBuyerId(), order.getShowId(),
                         order.getTickets().stream()
@@ -345,6 +362,8 @@ public class PurchaseSaga {
     private void cancel(SagaState saga, Order order, CancelReason reason) {
         Instant now = now();
         order.cancel(reason, now);
+        // O uso do cupom volta: o pedido não aconteceu.
+        this.coupons.giveBack(order.getId(), now);
         saga.compensateFor(reason);
         saga.moveTo(SagaStep.COMPENSATED, now, null);
         this.outbox.enqueue(Topics.ORDER_EVENTS, key(order), "OrderCancelled",

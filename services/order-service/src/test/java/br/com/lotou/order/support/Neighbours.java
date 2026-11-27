@@ -153,6 +153,7 @@ public final class Neighbours {
                 "state", "PE", "timezone", "America/Recife"));
         show.put("sectors", List.of(sector));
         show.put("updatedAt", now.toString());
+        show.put("serviceFeePaidBy", "BUYER");
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("eventId", UUID.randomUUID().toString());
         envelope.put("type", "ShowPublished");

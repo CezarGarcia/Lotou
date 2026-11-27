@@ -94,7 +94,7 @@ class CheckoutEndToEndTests {
                 .andExpect(header().string("Location", matchesPattern("/v1/orders/[0-9a-f-]{36}")))
                 .andExpect(jsonPath("$.id", matchesPattern("[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f-]+")))
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalCents").value(36_000))
+                .andExpect(jsonPath("$.totalCents").value(39_600))
                 .andExpect(jsonPath("$.tickets", hasSize(0)))
                 .andReturn().getResponse().getHeader("Location");
 
@@ -105,6 +105,11 @@ class CheckoutEndToEndTests {
                 .andExpect(jsonPath("$.reservationId").value(reservation.toString()))
                 .andExpect(jsonPath("$.cancelReason").value(nullValue()))
                 .andExpect(jsonPath("$.confirmedAt").isNotEmpty())
+                .andExpect(jsonPath("$.subtotalCents").value(36_000))
+                .andExpect(jsonPath("$.serviceFeeCents").value(3_600))
+                .andExpect(jsonPath("$.serviceFeePaidBy").value("BUYER"))
+                .andExpect(jsonPath("$.discountCents").value(0))
+                .andExpect(jsonPath("$.cancellation.allowed").value(true))
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.items[0].sectorName").value("Pista"))
                 .andExpect(jsonPath("$.items[0].unitPriceCents").value(18_000))
@@ -119,12 +124,36 @@ class CheckoutEndToEndTests {
     }
 
     @Test
+    void cancelamentoPeloCompradorEstornaEDevolveOsIngressosAVenda() throws Exception {
+        Neighbours.Show show = onSale(neighbours.showWithPista(6, 18_000));
+        UUID reservation = inventory.reserve("caio", show, 2);
+        String location = order("caio", reservation).andExpect(status().isCreated())
+                .andReturn().getResponse().getHeader("Location");
+        awaitStatus("caio", location, "CONFIRMED");
+        assertThat(inventory.sector(show).get("available").asInt()).isEqualTo(4);
+
+        this.mvc.perform(post(location + "/cancel").header("Authorization", token("caio")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("REFUNDING"))
+                .andExpect(jsonPath("$.tickets[*].status", contains("CANCELLED", "CANCELLED")));
+
+        // O payment-mock estorna e o inventory devolve os ingressos à venda.
+        awaitStatus("caio", location, "REFUNDED");
+        this.mvc.perform(get(location).header("Authorization", token("caio")))
+                .andExpect(jsonPath("$.refundedCents").value(39_600));
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+            assertThat(inventory.reservationStatus(reservation)).isEqualTo("RETURNED");
+            assertThat(inventory.sector(show).get("available").asInt()).isEqualTo(6);
+        });
+    }
+
+    @Test
     void compraDeCadeirasEmiteUmIngressoPorCadeira() throws Exception {
         Neighbours.Show show = onSale(neighbours.showWithSeats(2, 5, 30_000));
         UUID reservation = inventory.reserveSeats("ana", show, "B-2", "B-1");
 
         String location = order("ana", reservation).andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalCents").value(60_000))
+                .andExpect(jsonPath("$.totalCents").value(66_000))
                 .andReturn().getResponse().getHeader("Location");
         awaitStatus("ana", location, "CONFIRMED");
         this.mvc.perform(get(location).header("Authorization", token("ana")))
@@ -301,7 +330,7 @@ class CheckoutEndToEndTests {
                 .andExpect(jsonPath("$.items[*].id", contains(created.get(2), created.get(1))))
                 .andExpect(jsonPath("$.items[0].status").value("CONFIRMED"))
                 .andExpect(jsonPath("$.items[0].tickets").value(1))
-                .andExpect(jsonPath("$.items[0].totalCents").value(10_000))
+                .andExpect(jsonPath("$.items[0].totalCents").value(11_000))
                 .andReturn().getResponse().getContentAsString();
         String cursor = JsonPath.read(page, "$.nextCursor");
 
@@ -345,12 +374,17 @@ class CheckoutEndToEndTests {
 
     // ------------------------------------------------------------------ apoio
 
-    /** Publica o show no catálogo e espera o inventory lê-lo e abrir as vendas. */
-    private static Neighbours.Show onSale(Neighbours.Show show) {
+    /**
+     * Publica o show no catálogo e espera o inventory lê-lo e abrir as vendas, e o order-service
+     * guardar a cópia dele (quem paga a taxa).
+     */
+    private Neighbours.Show onSale(Neighbours.Show show) {
         await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
             var sector = inventory.sector(show);
             assertThat(sector).isNotNull();
             assertThat(sector.get("sale").asString()).isEqualTo("ON_SALE");
+            assertThat(this.jdbc.sql("SELECT count(*) FROM shows WHERE id = :id").param("id", show.id())
+                    .query(Integer.class).single()).isEqualTo(1);
         });
         return show;
     }

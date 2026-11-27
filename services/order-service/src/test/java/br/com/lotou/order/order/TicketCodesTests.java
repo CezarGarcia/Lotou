@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TicketCodesTests {
 
     private static TicketCodes withKey(String key) {
-        return new TicketCodes(new OrderProperties(null, null, new OrderProperties.Tickets(key), null));
+        return new TicketCodes(new OrderProperties(null, null, new OrderProperties.Tickets(key), null, null));
     }
 
     @Test
