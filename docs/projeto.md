@@ -139,6 +139,7 @@ As regras abaixo valem para o produto inteiro e viram validações no código. O
 
 - Cada ingresso libera uma única entrada; não existe saída e reentrada.
 - O leitor mostra três resultados: liberado (verde), já utilizado com horário e portão (amarelo) e inválido ou cancelado (vermelho).
+- Sem internet, o leitor valida no aparelho contra a lista do show baixada antes e envia as leituras quando a rede volta. Cada portão pode atender só alguns setores; offline, ingresso de outro setor é recusado. Uma entrada que a sincronização descobre indevida (o mesmo ingresso em dois aparelhos sem rede, ou um ingresso cancelado depois da última lista) vira um conflito registrado, com alerta (ADR 38).
 
 ### Fila virtual
 
@@ -373,7 +374,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | inventory | `purchase_limits` | ingressos por CPF em cada show; a chave usa o HMAC do CPF |
 | inventory | `outbox` | fatos de reservas e lotes a publicar em `inventory.events`, gravados por trigger na mesma transação de cada mudança de status (ADR 8) |
 | order | `orders`, `order_items` | pedido, status, resultado do pagamento e `idempotency_key` única; subtotal, desconto, taxa, quem paga a taxa, cupom aplicado e valor reembolsado |
-| order | `tickets` | ingresso emitido, status (VALID, USED ou CANCELLED) e o código do QR assinado com HMAC (ADR 15); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla |
+| order | `tickets` | ingresso emitido, status (VALID, USED ou CANCELLED) e o código do QR assinado com Ed25519 (ADR 38; os antigos, com HMAC, ADR 15); índice único parcial em (show, setor, cadeira) como última defesa contra venda dupla |
 | order | `coupons`, `coupon_redemptions` | código, desconto, limite de uso, usos (com `CHECK uses <= max_uses`), validade, setores e show; um uso por pedido, marcado como devolvido no cancelamento ou reembolso (ADR 33) |
 | order | `refunds` | saga de reembolso de cada pedido: motivo, status (QUEUED, REFUNDING, COMPLETED, FAILED), valor, falhas e prazo da resposta |
 | order | `shows` | cópia local do catálogo: produtor, data, status e quem paga a taxa |
@@ -383,6 +384,7 @@ O Postgres guarda o que precisa de transação, o MongoDB guarda documentos de f
 | checkin | `shows` | cópia local do catálogo: abertura dos portões, data e fuso, para a regra de horário |
 | checkin | `checkins` | entrada registrada, com portão e horário; constraint única em `ticket_id` |
 | checkin | `checkin_rejections` | leituras recusadas (código inválido, cancelado, já usado), gravadas em lote fora da requisição; alimentam o resumo da portaria |
+| checkin | `offline_scans`, `offline_conflicts` | leituras feitas sem internet e enviadas depois, com o resultado de cada uma (idempotência pelo id da leitura); e as entradas indevidas que a sincronização descobriu (ADR 38) |
 | todos os consumidores | `processed_events` | `event_id` já processado, para idempotência |
 | payment-mock | `payments` | tentativas e estornos por pedido, para responder igual a comandos repetidos |
 
@@ -546,12 +548,14 @@ A reserva é síncrona porque o comprador precisa saber na hora se garantiu o in
 ### Fluxo E: check-in na portaria
 
 1. Quando o pedido é confirmado, o order-service publica `TicketsIssued` e o checkin-service grava os ingressos em `valid_tickets`. Um `TicketsCancelled` os marca como cancelados.
-2. O QR code carrega o id do ingresso e uma assinatura HMAC, então um QR falsificado é recusado sem consultar o banco.
+2. O QR code carrega o id do ingresso e uma assinatura Ed25519 do order-service, então um QR falsificado é recusado sem consultar o banco, e a portaria confere com a chave pública (ADR 38).
 3. No dia do show, o leitor da portaria envia o código, e o checkin-service confere a assinatura e se o ingresso está em `valid_tickets`.
 4. Um `SET NX` em `checkin:{ticketId}` decide quem chega primeiro: o primeiro portão libera, e o segundo recebe "já utilizado às 20h31 no portão B".
 5. A entrada é gravada em `checkins` (constraint única, a palavra final se o Redis falhar) e publicada como `TicketCheckedIn` pelo outbox. O painel mostra as entradas por portão ao vivo, e o order-service marca o ingresso como USED, o que impede o cancelamento.
 
 Como a portaria tem sua própria cópia dos ingressos, ela continua funcionando mesmo com o order-service fora do ar.
+
+**Sem internet no local (ADR 38).** Ao abrir o show, o leitor baixa a lista dos ingressos (setor e situação de cada um) e a chave pública, e a atualiza a cada 2 minutos. Se o checkin-service não responde, o leitor confere a assinatura e a lista no próprio aparelho, lembra o que já passou por ele e guarda as leituras. Quando a rede volta, envia tudo: a primeira entrada pelo horário da leitura vale e vira um check-in normal; as outras viram conflito em `offline_conflicts`, com alerta. Os portões divididos por setor limitam a entrada dupla a aparelhos do mesmo portão, os dois sem rede.
 
 ### Fluxo F: cancelamento e reembolso
 
@@ -664,6 +668,7 @@ Regras do Grafana provisionadas em `infra/grafana/provisioning/alerting/lotou.ya
 | Saga presa | pedido em PENDING há mais de 15 min | compensação falhou |
 | Reembolso falhou | qualquer pedido em REFUND\_FAILED | dinheiro do comprador parado |
 | DLT | mensagem nova num tópico `.dlt` nos últimos 15 min | um consumidor desistiu de uma mensagem |
+| Entrada indevida pela portaria offline | conflito novo em `offline_conflicts` nos últimos 15 min | alguém entrou sem ingresso válido enquanto a portaria estava sem internet |
 
 ### E o Datadog?
 
@@ -728,7 +733,7 @@ Um único app Angular com duas áreas carregadas sob demanda: a loja e o painel 
 | Produtor | Cupons | criar, pausar e acompanhar cupons | — |
 | Produtor | Financeiro | vendas, descontos, reembolsos, taxa da plataforma, valor a receber e PDF do relatório | — |
 | Produtor | Assistente | chat com resposta em streaming | SSE |
-| Portaria | Leitor de QR | câmera do celular no navegador; tela verde, vermelha ou amarela com o motivo | — |
+| Portaria | Leitor de QR | câmera do celular no navegador; tela verde, vermelha ou amarela com o motivo; funciona sem internet com a lista do show no aparelho (ADR 38) | — |
 
 **Mapa de assentos:** é a tela mais rica do projeto. Ela desenha o layout do local a partir do MongoDB, pinta o status a partir do bitmap e aplica as mudanças que chegam por SSE sem redesenhar tudo, um bom exercício de signals e performance de renderização.
 
@@ -781,6 +786,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 34 | Reembolso em massa com fila em `refunds` e um job que começa N por segundo | mandar todos os estornos de uma vez; fila no RabbitMQ | o gateway de pagamento não recebe milhares de estornos de uma vez; o estado do reembolso fica junto do pedido |
 | 36 | Visual de cartaz de show: cada show é um cartaz tipográfico com a cor do artista; tema noite na loja e na portaria e dia no painel; Angular Material restilizado por tokens, ícones Lucide e fontes servidas pelo site | trocar o Material por outra biblioteca de componentes; fotos de banco de imagem; um tema só | o problema era o tema, não os componentes; o cartaz identifica o show sem depender de imagem; cada público usa o sistema numa situação diferente |
 | 37 | A loja é um PWA: o service worker guarda o app, e uma carteira no `localStorage` guarda os ingressos dos próximos shows; uma página pública os mostra sem internet e sem login | cache da API no service worker; app nativo ou Wallet | dado pessoal fora de cache genérico; o ingresso abre na porta do show sem sinal, sem loja de apps nem conta paga |
+| 38 | Portaria sem internet: QR assinado com Ed25519, lista do show no aparelho, leituras enviadas depois e conflitos registrados com alerta; portões divididos por setor | HMAC com a chave no aparelho; portaria só online; recusar a leitura em conflito | quem tem a chave pública não cria ingresso; a portaria não para quando o local enche; a entrada que já aconteceu fica registrada para a operação |
 
 ## Testes, carga e caos
 
@@ -1035,6 +1041,7 @@ Interface concluída em 27/11/2026; falta o vídeo de apresentação.
 - [x] Tela de login do Keycloak com o mesmo visual, só em CSS por cima do tema padrão
 - [x] Transição entre telas com a View Transitions API, e todo movimento desligado com `prefers-reduced-motion`
 - [x] A loja como PWA: instalável, com os ingressos dos próximos shows abrindo sem internet (ADR 37)
+- [x] Portaria sem internet: QR assinado com Ed25519, lista do show no aparelho, leituras enviadas depois e conflitos com alerta (ADR 38)
 - [ ] Vídeo de apresentação
 
 O que ficou para depois, de propósito:
@@ -1047,8 +1054,8 @@ O que ficou para depois, de propósito:
 
 - [ ] Nome definido: Lotou. Falta conferir a marca no INPI e o domínio no Registro.br
 - [ ] Política de cancelamento: confirmar como o direito de arrependimento do CDC se aplica a ingressos comprados online (a regra atual usa 7 dias e 48 horas como referência)
-- [ ] Portaria sem internet: o leitor precisa funcionar offline e sincronizar depois?
-- [ ] QR dinâmico, que muda a cada 30 segundos para impedir print e revenda, como fase extra?
+- [x] Portaria sem internet: o leitor valida no aparelho e sincroniza depois, com os conflitos registrados (ADR 38)
+- [ ] QR dinâmico, que muda a cada 30 segundos para impedir print e revenda, como fase extra? Exige segredo no celular do comprador, o que conflita com o ingresso offline (ADR 37 e 38)
 - [ ] LLM: API paga (melhor qualidade, custo por uso) ou modelo local via Ollama (custo zero)?
 - [x] Outbox: polling publisher com advisory lock; Debezium fica como passo seguinte se o volume crescer (ADR 8)
 - [x] Contratos: JSON Schema autocontido, com exemplos conferidos no CI (ADR 28)

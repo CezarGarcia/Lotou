@@ -48,8 +48,8 @@ As rotas `/internal/**` não existem no gateway: só são alcançáveis dentro d
 
 | Ameaça | Proteção |
 | --- | --- |
-| QR code falsificado ou editado | o QR leva o id do ingresso e uma assinatura HMAC; a portaria recusa a assinatura errada sem ir ao banco (ADR 15) |
-| print do ingresso usado duas vezes | `SET NX` no Redis e constraint única no Postgres: só a primeira leitura entra |
+| QR code falsificado ou editado | o QR leva o id do ingresso e uma assinatura Ed25519 do order-service; a portaria confere com a chave pública, sem ir ao banco e até sem internet, e quem tem a chave pública não consegue criar ingresso (ADR 38) |
+| print do ingresso usado duas vezes | `SET NX` no Redis e constraint única no Postgres: só a primeira leitura entra. Sem internet, cada aparelho lembra o que já passou por ele, os portões podem ser divididos por setor, e a sincronização registra a entrada dupla com alerta (ADR 38) |
 | robô comprando tudo na abertura | rate limit por usuário no gateway, fila virtual com sorteio, limite de 4 ingressos por CPF |
 | clique duplo cobrando duas vezes | `Idempotency-Key` em todo POST que cria recurso |
 | dado pessoal vazando | CPF gravado como HMAC (ADR 24); nenhum evento leva e-mail ou CPF; o Collector do OpenTelemetry mascara dados pessoais antes de gravar traces e logs |
@@ -71,4 +71,4 @@ O realm `lotou` usa um tema próprio (`infra/keycloak/themes/lotou`), só em CSS
 | Login no Angular | [`apps/web/src/app/core/auth/`](../../apps/web/src/app/core/auth/) |
 | Conferência do JWT e rate limit no gateway | `services/api-gateway/src/main/java/br/com/lotou/gateway/` |
 
-Decisões relacionadas: [ADR 15](../adr/0015-qr-code-assinado-com-hmac.md) (QR assinado), [ADR 19](../adr/0019-keycloak-como-provedor-de-identidade.md) (Keycloak), [ADR 21](../adr/0021-servicos-revalidam-o-jwt.md) (serviços revalidam o JWT), [ADR 24](../adr/0024-cpf-como-hmac-e-limite-por-cpf-no-banco.md) (CPF como HMAC), [ADR 27](../adr/0027-oidc-e-sse-na-loja.md) (OIDC e SSE na loja).
+Decisões relacionadas: [ADR 15](../adr/0015-qr-code-assinado-com-hmac.md) e [ADR 38](../adr/0038-portaria-offline-com-qr-ed25519.md) (QR assinado), [ADR 19](../adr/0019-keycloak-como-provedor-de-identidade.md) (Keycloak), [ADR 21](../adr/0021-servicos-revalidam-o-jwt.md) (serviços revalidam o JWT), [ADR 24](../adr/0024-cpf-como-hmac-e-limite-por-cpf-no-banco.md) (CPF como HMAC), [ADR 27](../adr/0027-oidc-e-sse-na-loja.md) (OIDC e SSE na loja).

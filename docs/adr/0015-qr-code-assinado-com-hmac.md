@@ -1,6 +1,6 @@
 # 0015. QR code do ingresso assinado com HMAC
 
-- **Status:** aceita
+- **Status:** substituída pelo ADR 38 (QR assinado com Ed25519); os códigos LOTOU1 continuam aceitos
 - **Data:** 2026-11-26
 
 ## Contexto

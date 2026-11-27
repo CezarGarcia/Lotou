@@ -104,6 +104,8 @@ Entre com `portaria` / `lotou123` no celular e abra **Portaria**: escolha o show
 
 O checkin-service tem a própria cópia dos ingressos, alimentada pelo Kafka, e continua funcionando com o order-service fora do ar ([ADR 14](docs/adr/0014-portaria-com-copia-local-dos-ingressos.md)).
 
+E a portaria funciona sem internet: ao abrir o show, o leitor baixa a lista dos ingressos e a chave pública que confere o QR. Se o servidor não responde, ele valida no próprio celular, mostra o selo "sem internet" e guarda as leituras, que sobem quando a rede volta. Cada portão pode atender só alguns setores, o que limita a entrada dupla entre aparelhos sem rede; a que acontecer mesmo assim vira um conflito com alerta no Grafana ([ADR 38](docs/adr/0038-portaria-offline-com-qr-ed25519.md)).
+
 ## Abertura de vendas sob carga
 
 A reserva tem dois motores, escolhidos por implantação: o script Lua no `redis-core` (padrão) e o lock no Postgres da fase 1, mantido como linha de base. Os testes de carga rodam com k6 dentro do Compose e, no fim, conferem no Postgres que nada foi vendido além da capacidade.
@@ -302,7 +304,7 @@ lotou/
 - **Limite exato sob disputa, sem Redis.** O uso do cupom é contado com um `UPDATE` condicional na transação que cria o pedido: 12 compradores disputando 3 usos, exatamente 3 levam ([ADR 33](docs/adr/0033-uso-do-cupom-contado-no-postgres.md)).
 - **Entrada dupla barrada.** Na portaria, um `SET NX` no Redis decide qual portão chegou primeiro e uma constraint única no Postgres tem a palavra final; com 10 portões lendo o mesmo ingresso, 1 entra ([`checkin.service.ts`](services/checkin-service/src/checkin/checkin.service.ts)).
 - **Reembolso em massa com vazão.** Cancelar um show põe os pedidos numa fila no Postgres, e um job começa N estornos por segundo ([ADR 34](docs/adr/0034-reembolso-em-massa-com-fila-e-vazao.md)).
-- **QR que a portaria confere sem banco.** O código do ingresso é assinado com HMAC; um QR forjado é recusado antes de qualquer consulta ([ADR 15](docs/adr/0015-qr-code-assinado-com-hmac.md)).
+- **QR que a portaria confere sem banco, e sem internet.** O código do ingresso é assinado com Ed25519: a portaria confere com a chave pública, que não serve para criar ingresso, e um QR forjado é recusado antes de qualquer consulta. Sem rede, o leitor valida contra a lista do show no aparelho e envia as leituras depois; a entrada dupla que isso permite vira um conflito registrado, com alerta ([ADR 38](docs/adr/0038-portaria-offline-com-qr-ed25519.md)).
 - **Tempo real com várias instâncias.** Cada métrica do painel é calculada uma vez por segundo por show, por quem ganha a disputa daquele segundo no Redis, e todas as instâncias repassam aos seus WebSockets ([ADR 32](docs/adr/0032-painel-ao-vivo-com-varias-instancias.md)).
 - **Última defesa no banco.** Um `CHECK` impede contador de estoque negativo, e um índice único parcial impede dois ingressos ativos para a mesma cadeira ([ADR 4](docs/adr/0004-constraint-unica-de-show-e-assento.md)).
 - **Idempotência.** Todo POST que cria recurso exige `Idempotency-Key`; requisições simultâneas com a mesma chave criam um único recurso.
@@ -324,7 +326,7 @@ make test
 | api-gateway | regras de acesso e roteamento, rate limit num Redis real e um teste com um Keycloak real (Testcontainers) usando o mesmo realm do Compose |
 | inventory-service | regras de lote sem banco; testes de concorrência, de ciclo das vendas, de API, da fila e da reconstrução do Redis num Postgres e num Redis reais (Testcontainers), cada cenário contra os dois motores de reserva |
 | order-service | a saga de compra passo a passo e a de reembolso (falhas, reprocessamento e show cancelado) com Kafka e Postgres reais e dublês dos outros participantes; cupons sob disputa; o checkout e o cancelamento de ponta a ponta com o inventory-service de verdade (a imagem Docker dele), incluindo 30% de pagamentos recusados |
-| checkin-service | HMAC do QR, regras da portaria, 10 portões disputando o mesmo ingresso (com e sem Redis) e a cópia local pelo Kafka, contra Postgres, Redis e Kafka reais |
+| checkin-service | assinatura do QR (Ed25519 e o HMAC antigo), pacote offline e sincronização das leituras feitas sem internet, regras da portaria, 10 portões disputando o mesmo ingresso (com e sem Redis) e a cópia local pelo Kafka, contra Postgres, Redis e Kafka reais |
 | payment-mock | decisões, estornos, idempotência e DLT, contra Postgres e Kafka reais |
 | analytics-service | read models, idempotência, chegada fora de ordem e o replay comparando a geração nova com a anterior, contra MongoDB e Kafka reais; o painel ao vivo com duas instâncias, medindo o evento chegando em menos de 2 s |
 | notification-service | PDF e QR, prioridade, deduplicação, retry e DLQ (com a requeue) e serviço parado sem perder mensagem, contra Kafka, RabbitMQ, Redis e Mailpit reais |

@@ -38,7 +38,7 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0011](0011-pubsub-streams-e-kafka.md) | Pub/sub para o mapa, Streams para as reservas, Kafka para fatos de domínio | aceita |
 | [0013](0013-fila-virtual-so-em-shows-de-alta-demanda.md) | Fila virtual só em shows de alta demanda | aceita |
 | [0014](0014-portaria-com-copia-local-dos-ingressos.md) | Portaria com cópia local dos ingressos | aceita |
-| [0015](0015-qr-code-assinado-com-hmac.md) | QR code do ingresso assinado com HMAC | aceita |
+| [0015](0015-qr-code-assinado-com-hmac.md) | QR code do ingresso assinado com HMAC | substituída pelo ADR 38 |
 | [0017](0017-sse-na-loja-websocket-no-painel.md) | SSE na loja, WebSocket no painel | aceita |
 | [0018](0018-um-banco-por-servico.md) | Um banco por serviço | aceita |
 | [0019](0019-keycloak-como-provedor-de-identidade.md) | Keycloak como provedor de identidade | aceita |
@@ -60,3 +60,4 @@ O que fica mais fácil, o que fica mais difícil e o que precisa ser revisto dep
 | [0035](0035-slos-burn-rate-e-alertas-no-grafana.md) | SLOs com burn rate, alertas no Grafana e invariantes consultadas nos bancos | aceita |
 | [0036](0036-visual-de-cartaz-e-design-system-da-loja.md) | Visual de cartaz de show, com o Angular Material restilizado e dois temas | aceita |
 | [0037](0037-pwa-com-ingresso-offline.md) | A loja como PWA, com os ingressos salvos no aparelho para abrir sem internet | aceita |
+| [0038](0038-portaria-offline-com-qr-ed25519.md) | Portaria sem internet: QR assinado com Ed25519, lista no aparelho e conflitos conciliados depois | aceita |
