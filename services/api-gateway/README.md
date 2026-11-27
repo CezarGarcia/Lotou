@@ -80,4 +80,5 @@ A imagem Docker roda com o Java agent do OpenTelemetry: traces, métricas e logs
 | `AUTH_ISSUER` | `http://localhost:8180/realms/lotou` | emissor esperado no JWT |
 | `AUTH_JWKS_URI` | `<emissor>/protocol/openid-connect/certs` | de onde baixar as chaves públicas |
 | `AUTH_AUDIENCE` | `lotou-api` | audiência esperada no JWT |
+| `WEBSOCKET_ALLOWED_ORIGINS` | `http://localhost:4200` | de onde o navegador pode abrir o WebSocket do painel (o resto recebe 403) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | endereço do OTel Collector |

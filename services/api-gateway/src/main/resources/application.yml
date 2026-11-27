@@ -17,6 +17,10 @@ spring:
           # Só repassa X-Forwarded-For de proxies da rede privada (o nginx da loja). Os serviços
           # usam o IP original no rate limit de quem não está autenticado.
           trusted-proxies: "10\\..*|172\\.(1[6-9]|2[0-9]|3[01])\\..*|192\\.168\\..*|127\\..*"
+          # WebSocket só a partir da loja: o navegador manda o Origin da página no handshake, e um
+          # site qualquer não abre o painel em nome de quem está logado (cross-site WebSocket hijacking).
+          websocket:
+            allowed-origins: ${WEBSOCKET_ALLOWED_ORIGINS:http://localhost:4200}
           routes:
             # Operações de compra, com rate limit por usuário (token bucket no redis-core). Vêm antes
             # das rotas gerais do mesmo serviço.

@@ -47,6 +47,13 @@ class WebSocketRoutingTests {
         registry.add("ANALYTICS_SERVICE_URL", () -> "http://127.0.0.1:" + analytics.port());
     }
 
+    /** O navegador sempre manda o Origin da página no handshake, e a loja está em outro host:porta. */
+    private static org.springframework.http.HttpHeaders browserOrigin() {
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setOrigin("http://localhost:4200");
+        return headers;
+    }
+
     @AfterAll
     static void stop() {
         analytics.disposeNow();
@@ -56,7 +63,7 @@ class WebSocketRoutingTests {
     void painelConectaSemTokenNaAberturaEAsMensagensVaoEVoltam() {
         List<String> received = new CopyOnWriteArrayList<>();
         new ReactorNettyWebSocketClient()
-                .execute(URI.create("ws://localhost:" + this.port + "/api/v1/analytics/live"), session -> session
+                .execute(URI.create("ws://localhost:" + this.port + "/api/v1/analytics/live"), browserOrigin(), session -> session
                         .send(Mono.just(session.textMessage("{\"type\":\"auth\",\"token\":\"t\"}")))
                         .thenMany(session.receive().map(WebSocketMessage::getPayloadAsText).take(1)
                                 .doOnNext(received::add))
@@ -65,5 +72,16 @@ class WebSocketRoutingTests {
 
         assertThat(received).containsExactly("eco: {\"type\":\"auth\",\"token\":\"t\"}");
         assertThat(paths).containsExactly("/v1/analytics/live");
+    }
+
+    @Test
+    void outroSiteNaoAbreOWebSocketDoPainel() {
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setOrigin("https://site-qualquer.example");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new ReactorNettyWebSocketClient()
+                .execute(URI.create("ws://localhost:" + this.port + "/api/v1/analytics/live"), headers,
+                        session -> session.close())
+                .block(Duration.ofSeconds(10)))
+                .hasMessageContaining("403");
     }
 }
