@@ -35,3 +35,6 @@ playwright-report/
 
 # Worktrees temporários das ferramentas de desenvolvimento.
 .claude/worktrees/
+
+# Dados gerados pelos testes de carga (ingressos da portaria)
+load-tests/.data/

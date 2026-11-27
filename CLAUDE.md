@@ -34,6 +34,7 @@ Na raiz (`make help` lista todos):
 - `make replay-analytics`: reconstrói os read models do analytics a partir do começo dos tópicos, sem parar o serviço
 - `make requeue-notifications`: devolve à fila as mensagens que foram para as DLQs do notification-service
 - `make load-opening`, `make load-contention` (`ENGINE=redis|postgres`) e `make load-show-page`: testes de carga com k6 dentro do Compose; `make load-check` confere as invariantes no Postgres. Rode `make clean up seed` antes de trocar de motor de reserva
+- `make load-gate-prepare` e `make load-gate` (portaria, `GATE_TICKETS=30000`), `make load-coupon`, `make load-consumer-lag` (para e sobe o analytics-service) e `make load-render` (recria o notification-service com 1, 2 e 4 workers): os outros cenários de carga, cada um conferindo as invariantes no fim (veja `load-tests/README.md`)
 
 Depois de mudar o realm do Keycloak ou os bancos do Postgres, rode `make clean` antes do `make up`: os dois só são criados com o volume vazio.
 

@@ -127,6 +127,24 @@ Com o cache da página do show, o event-service atendeu 2,5 vezes mais leituras 
 
 Os números vêm de uma máquina só, de 4 CPUs, com os doze containers e o k6 disputando os mesmos núcleos: o que importa é a comparação, não o valor absoluto. A análise, com o que ficou abaixo da meta, está no [ADR 3](docs/adr/0003-reserva-com-lua-no-redis.md).
 
+### Portaria, cupom, consumidor lento e geração dos ingressos
+
+```bash
+make load-gate-prepare load-gate   # 30 mil check-ins em 10 portões, 5% de leituras repetidas
+make load-coupon                   # mil compradores disputando um cupom de 100 usos
+make load-consumer-lag             # pico de pedidos com o analytics-service parado
+make load-render                   # vazão da fila tickets.render com 1, 2 e 4 workers
+```
+
+| Cenário | Resultado |
+| --- | --- |
+| Portaria: 30 mil ingressos a 150 leituras/s | 30.000 entradas, 1.500 repetidas barradas, nenhuma entrada dupla; p99 de 145 ms (meta: 200 ms) |
+| Cupom de 100 usos, mil compradores ao mesmo tempo | exatamente 100 pedidos com o cupom; 900 recusados como esgotado |
+| 9.285 pedidos em 60 s com o analytics parado | lag de até 18 mil mensagens, de volta à linha de base 292 s depois; relatório igual ao banco |
+| Geração dos PDFs com 1, 2 e 4 workers | 16,1, 26,8 e 40,6 pedidos por segundo |
+
+Cada cenário cria os próprios dados pela API e confere as invariantes no banco no fim. O passo a passo e a análise de cada um estão em [load-tests/README.md](load-tests/README.md).
+
 ## A compra pela API
 
 `make smoke` faz uma compra como um comprador faria, passando pelo gateway:
