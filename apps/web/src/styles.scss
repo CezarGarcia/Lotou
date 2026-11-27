@@ -526,6 +526,13 @@ ng-icon {
   flex: none;
 }
 
+// Ícone dentro dos botões do Material, centrado com o texto.
+.mat-mdc-button-base ng-icon {
+  margin-right: 2px;
+  font-size: 18px;
+  vertical-align: -4px;
+}
+
 // Transição entre telas (View Transitions API).
 ::view-transition-old(root),
 ::view-transition-new(root) {

@@ -180,11 +180,6 @@ const CANCELLABLE = new Set(['PUBLISHED', 'ON_SALE']);
       --mat-button-outlined-container-height: 44px;
       background: var(--lt-surface);
     }
-    .danger ng-icon {
-      margin-right: 2px;
-      font-size: 18px;
-      vertical-align: -4px;
-    }
     .banner {
       display: flex;
       align-items: center;
