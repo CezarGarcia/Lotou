@@ -28,6 +28,9 @@ x-auth-env: &auth-env
   # Onde um serviço busca o token da sua conta de serviço (client credentials).
   AUTH_TOKEN_URI: http://keycloak:8080/realms/lotou/protocol/openid-connect/token
 
+# Os serviços voltam sozinhos se o processo cair (restart: unless-stopped); um
+# `docker stop` manual, como nos experimentos de caos, é respeitado.
+#
 # Cada container tem limite de memória (mem_limit), medido com folga sobre o uso
 # em repouso e sob carga. Sem limite, a JVM usa até 75% da RAM da máquina como
 # heap e um serviço sob carga chegou a 4,5 GB; com limite, as JVMs ficam com 60%
@@ -39,6 +42,7 @@ services:
   # /otlp ao Collector: tudo no mesmo domínio para o navegador.
   web:
     mem_limit: 64m
+    restart: unless-stopped
     build:
       context: ../apps/web
     ports:
@@ -52,6 +56,7 @@ services:
   # Porta de entrada da API: roteia para os serviços e valida o JWT.
   api-gateway:
     mem_limit: 768m
+    restart: unless-stopped
     build:
       context: ../services/api-gateway
     environment:
@@ -87,6 +92,7 @@ services:
   # Sem porta publicada: só o api-gateway fala com ele.
   event-service:
     mem_limit: 512m
+    restart: unless-stopped
     build:
       context: ../services/event-service
     environment:
@@ -118,6 +124,7 @@ services:
   # comandos da saga e publica os fatos de reservas e lotes em inventory.events.
   inventory-service:
     mem_limit: 1g
+    restart: unless-stopped
     build:
       context: ../services/inventory-service
     environment:
@@ -148,12 +155,14 @@ services:
   # Pedidos e ingressos. Orquestra a saga de compra pelo Kafka; lê a reserva no inventory-service.
   order-service:
     mem_limit: 1g
+    restart: unless-stopped
     build:
       context: ../services/order-service
     environment:
       <<: [*otel-env, *auth-env]
       OTEL_SERVICE_NAME: order-service
-      DATABASE_URL: jdbc:postgresql://postgres:5432/orders
+      # O experimento de caos postgres-lento troca pelo Toxiproxy (make chaos EXP=postgres-lento).
+      DATABASE_URL: ${ORDERS_DATABASE_URL:-jdbc:postgresql://postgres:5432/orders}
       DATABASE_USERNAME: orders
       DATABASE_PASSWORD: ${ORDERS_DB_PASSWORD:-orders}
       INVENTORY_SERVICE_URL: http://inventory-service:8082
@@ -176,6 +185,7 @@ services:
   # responde em payment.events. Sem porta publicada: só conversa pelo Kafka.
   payment-mock:
     mem_limit: 512m
+    restart: unless-stopped
     build:
       context: ../services/payment-mock
     environment:
@@ -208,6 +218,7 @@ services:
   # checkin.events. Sem porta publicada: só o api-gateway fala com ele.
   checkin-service:
     mem_limit: 768m
+    restart: unless-stopped
     build:
       context: ../services/checkin-service
     environment:
@@ -244,6 +255,7 @@ services:
   # Replay dos read models: `make replay-analytics`.
   analytics-service:
     mem_limit: 768m
+    restart: unless-stopped
     build:
       context: ../services/analytics-service
     environment:
@@ -275,6 +287,7 @@ services:
   # Sem porta publicada. DLQ de volta para a fila: `make requeue-notifications`.
   notification-service:
     mem_limit: 768m
+    restart: unless-stopped
     build:
       context: ../services/notification-service
     environment:
@@ -370,9 +383,19 @@ services:
       K6_PROMETHEUS_RW_SERVER_URL: http://lgtm:9090/api/v1/write
       K6_PROMETHEUS_RW_TREND_STATS: p(50),p(95),p(99),max
 
+  # Toxiproxy: injeta latência ou corta conexões entre um serviço e o banco, nos
+  # experimentos de caos (scripts/chaos.mjs). Só sobe com o perfil chaos.
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    mem_limit: 64m
+    profiles: [chaos]
+    ports:
+      - "8474:8474"
+
   # ---------------------------------------------------------------- dados
   postgres:
     mem_limit: 1g
+    restart: unless-stopped
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lotou}
@@ -401,6 +424,7 @@ services:
   # directConnection=true (o membro se anuncia como mongodb:27017).
   mongodb:
     mem_limit: 1g
+    restart: unless-stopped
     image: mongo:8.0
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
@@ -422,6 +446,7 @@ services:
   # kafka:9092; do host, use localhost:9094.
   kafka:
     mem_limit: 1536m
+    restart: unless-stopped
     image: apache/kafka:4.2.0
     environment:
       KAFKA_NODE_ID: 1
@@ -469,6 +494,7 @@ services:
   # Painel do Kafka: tópicos, mensagens e lag dos consumer groups.
   kafka-ui:
     mem_limit: 512m
+    restart: unless-stopped
     image: kafbat/kafka-ui:v1.3.0
     environment:
       KAFKA_CLUSTERS_0_NAME: lotou
@@ -482,6 +508,7 @@ services:
   # Cache: pode perder dados. Descarta por LRU e não persiste nada.
   redis-cache:
     mem_limit: 256m
+    restart: unless-stopped
     image: redis:8.8-alpine
     command:
       - redis-server
@@ -505,6 +532,7 @@ services:
   # Nunca descarta chave e grava AOF a cada segundo.
   redis-core:
     mem_limit: 512m
+    restart: unless-stopped
     image: redis:8.8-alpine
     command:
       - redis-server
@@ -525,6 +553,7 @@ services:
   # Painel: http://localhost:15672 (lotou / lotou).
   rabbitmq:
     mem_limit: 512m
+    restart: unless-stopped
     image: rabbitmq:4.2-management-alpine
     # O nome do nó (rabbit@rabbitmq) vem do hostname e nomeia o diretório dos
     # dados no volume: fixo, as filas sobrevivem a recriar o container.
@@ -548,6 +577,7 @@ services:
   # http://localhost:8025. Nada sai para a internet.
   mailpit:
     mem_limit: 128m
+    restart: unless-stopped
     image: axllent/mailpit:v1.29
     ports:
       - "1025:1025"
@@ -561,6 +591,7 @@ services:
   # ------------------------------------------------------------ identidade
   keycloak:
     mem_limit: 1g
+    restart: unless-stopped
     image: quay.io/keycloak/keycloak:26.8
     command: ["start-dev", "--import-realm"]
     environment:
@@ -601,6 +632,7 @@ services:
   # e repassa para o Tempo, o Prometheus e o Loki.
   otel-collector:
     mem_limit: 512m
+    restart: unless-stopped
     image: otel/opentelemetry-collector-contrib:0.166.0
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -621,6 +653,7 @@ services:
   # Tempo, Prometheus, Loki e Grafana num container só (desenvolvimento).
   lgtm:
     mem_limit: 1536m
+    restart: unless-stopped
     image: grafana/otel-lgtm:0.41.1
     environment:
       OBSERVER_DB_PASSWORD: ${OBSERVER_DB_PASSWORD:-observer}
