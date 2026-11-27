@@ -1,0 +1,44 @@
+name: notification-service
+
+# Só roda quando o serviço, os contratos que ele lê, o realm do Keycloak (a conta
+# de serviço dele) ou este workflow mudam.
+on:
+  push:
+    paths:
+      - services/notification-service/**
+      - contracts/order.events/**
+      - contracts/examples/order.events/**
+      - infra/keycloak/lotou-realm.json
+      - .github/workflows/notification-service.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/notification-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: services/notification-service/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy
+      - name: Testes unitários
+        run: uv run pytest tests/unit
+      # O Testcontainers sobe Kafka, RabbitMQ, Redis, Mailpit e o Keycloak com o realm do repositório.
+      - name: Testes de integração
+        run: uv run pytest tests/integration
