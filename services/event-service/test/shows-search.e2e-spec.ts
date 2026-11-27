@@ -83,6 +83,8 @@ describe('Busca de shows', () => {
       // Sem data agendada, as vendas abrem na publicação.
       salesStartAt: expect.any(String),
       highDemand: false,
+      // Padrão quando o produtor não escolhe: a taxa de serviço é repassada ao comprador.
+      serviceFeePaidBy: 'BUYER',
       venue: {
         id: saoPaulo.id,
         name: 'Arena Lotou',
