@@ -77,7 +77,7 @@ class CatalogSyncTests {
                  "artist": "Artista de teste", "startsAt": "%s", "doorsOpenAt": null, "salesStartAt": "%s",
                  "salesEndAt": "%s", "highDemand": %s,
                  "venue": {"id": "%s", "name": "Local", "city": "Recife", "state": "PE", "timezone": "America/Recife"},
-                 "sectors": [%s], "updatedAt": "%s"}}
+                 "sectors": [%s], "updatedAt": "%s", "serviceFeePaidBy": "BUYER"}}
                 """.formatted(UUID.randomUUID(), type, show.updatedAt(), show.id(), show.version(),
                 show.producerId(), show.status(), show.startsAt(), show.salesStartAt(), show.salesEndAt(),
                 show.highDemand(), UUID.randomUUID(), sectors, show.updatedAt());
