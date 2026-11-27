@@ -5,6 +5,7 @@ INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui rab
 
 .DEFAULT_GOAL := help
 .PHONY: help up infra down clean seed seed-vendas smoke e2e logs ps test load-opening load-contention load-show-page load-check \
+	load-gate-prepare load-gate load-coupon load-consumer-lag load-render \
 	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-checkin-service \
 	test-analytics-service test-notification-service test-web replay-analytics requeue-notifications
 
@@ -66,6 +67,26 @@ load-show-page: ## Carga: página do show com o cache ligado e desligado
 	SHOW_CACHE_ENABLED=false RATE_LIMIT_ENABLED=false $(COMPOSE) up -d --wait event-service
 	-$(COMPOSE) run --rm --no-deps k6 run --out experimental-prometheus-rw show-page.js
 	$(COMPOSE) up -d --wait event-service
+
+# Portaria em duas etapas: o preparo compra os ingressos pela saga (uns 8 minutos para 30 mil) e
+# serve para várias rodadas; cada rodada lê só ingressos ainda válidos. Veja load-tests/README.md.
+GATE_TICKETS ?= 30000
+
+load-gate-prepare: ## Carga: compra os ingressos do show da portaria (GATE_TICKETS=30000) e espera a cópia local
+	COMPOSE="$(COMPOSE)" ./load-tests/gate.sh prepare $(GATE_TICKETS)
+
+load-gate: ## Carga: check-ins em 10 portões com 5% de leituras repetidas (GATE_TICKETS=30000) e confere as entradas
+	COMPOSE="$(COMPOSE)" ./load-tests/gate.sh run $(GATE_TICKETS)
+
+load-coupon: ## Carga: mil compradores disputando um cupom de 100 usos, e confere os usos no banco
+	-$(COMPOSE) run --rm --no-deps k6 run --out experimental-prometheus-rw coupon.js
+	$(COMPOSE) exec -T postgres psql -U lotou -d orders -f /dev/stdin < load-tests/check-coupon.sql
+
+load-consumer-lag: ## Carga: pico de pedidos com o analytics-service parado; o lag sobe e volta ao normal
+	COMPOSE="$(COMPOSE)" ./load-tests/consumer-lag.sh
+
+load-render: ## Carga: vazão da fila tickets.render com 1, 2 e 4 workers (recria o notification-service)
+	COMPOSE="$(COMPOSE)" ./load-tests/render.sh
 
 chaos: ## Experimento de caos (EXP=notificacao-fora|pagamento-recusando|estorno-falhando|pedidos-fora|portaria-sem-consumir|redis-core-reiniciado|postgres-lento|mensagem-malformada|todos)
 	COMPOSE="$(COMPOSE)" node scripts/chaos.mjs $(or $(EXP),todos)

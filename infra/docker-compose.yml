@@ -378,7 +378,12 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       EVENT_SERVICE_URL: http://event-service:3000
       INVENTORY_URL: http://inventory-service:8082
+      ORDER_URL: http://order-service:8083
+      CHECKIN_URL: http://checkin-service:3003
       GATEWAY_URL: http://api-gateway:8080
+      # Filas e consumer groups, para os cenários de mensageria.
+      RABBITMQ_API_URL: http://${RABBITMQ_USER:-lotou}:${RABBITMQ_PASSWORD:-lotou}@rabbitmq:15672/api
+      KAFKA_UI_URL: http://kafka-ui:8080
       # Métricas do k6 no Prometheus do Grafana, junto com as dos serviços.
       K6_PROMETHEUS_RW_SERVER_URL: http://lgtm:9090/api/v1/write
       K6_PROMETHEUS_RW_TREND_STATS: p(50),p(95),p(99),max
