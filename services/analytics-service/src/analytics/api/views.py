@@ -188,3 +188,19 @@ def order(doc: Doc) -> schemas.Order:
         ],
         show=schemas.ShowSummary.model_validate(show) if show else None,
     )
+
+
+def producer_show(show: Doc, statement: Doc | None) -> schemas.ProducerShow:
+    """Item da lista de shows do produtor. Sem venda ainda, vendidos e receita saem zerados."""
+    return schemas.ProducerShow(
+        show_id=show["_id"],
+        title=show["title"],
+        artist=show["artist"],
+        starts_at=show["startsAt"],
+        timezone=show["venue"]["timezone"],
+        venue_name=show["venue"]["name"],
+        city=show["venue"]["city"],
+        status=show["status"],
+        tickets_sold=statement["ticketsSold"] if statement else 0,
+        revenue_cents=statement["grossSalesCents"] if statement else 0,
+    )

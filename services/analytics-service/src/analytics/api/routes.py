@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 
 from analytics.api import problems, schemas, views
 from analytics.api.auth import User, require_role
@@ -52,6 +53,34 @@ async def _owned_show(models: ReadModels, show_id: str, user: User) -> Doc:
     if show is None or show.get("producerId") != user.id:
         raise problems.not_found("Show")
     return show
+
+
+@analytics.get("/shows", response_model=schemas.ProducerShowPage)
+async def producer_shows(
+    user: Producer,
+    models: Models,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=200)] = None,
+) -> schemas.ProducerShowPage:
+    """Shows do produtor do token, do mais novo para o mais antigo (o `showId` é UUID v7), com vendas e receita."""
+    query: Doc = {"producerId": user.id}
+    if cursor is not None:
+        try:
+            query["_id"] = {"$lt": decode_cursor(cursor)}
+        except InvalidCursor:
+            raise problems.validation([{"field": "cursor", "message": "Cursor inválido"}]) from None
+    found = await models.shows.find(query).sort("_id", -1).limit(limit + 1).to_list(None)
+    page = found[:limit]
+    statements = {
+        doc["_id"]: doc
+        async for doc in models.statements.find(
+            {"_id": {"$in": [show["_id"] for show in page]}}, projection={"ticketsSold": 1, "grossSalesCents": 1}
+        )
+    }
+    return schemas.ProducerShowPage(
+        items=[views.producer_show(show, statements.get(show["_id"])) for show in page],
+        next_cursor=encode_cursor(page[-1]["_id"]) if len(found) > limit else None,
+    )
 
 
 @analytics.get("/shows/{showId}/sales", response_model=schemas.ShowSales)
@@ -151,15 +180,21 @@ async def live() -> dict[str, str]:
 
 @health.get("/ready")
 async def ready(request: Request) -> JSONResponse:
-    """Pode atender? MongoDB responde e o consumidor ao vivo está rodando."""
+    """Pode atender? MongoDB e Redis respondem e o consumidor ao vivo está rodando."""
     registry: GenerationRegistry = request.app.state.registry
     supervisor: LiveSupervisor = request.app.state.supervisor
+    redis: Redis = request.app.state.redis
     checks: dict[str, str] = {}
     try:
         await asyncio.wait_for(registry.db.command("ping"), timeout=1.0)
         checks["mongodb"] = "up"
     except Exception:
         checks["mongodb"] = "down"
+    try:
+        await asyncio.wait_for(redis.ping(), timeout=1.0)
+        checks["redis"] = "up"
+    except Exception:
+        checks["redis"] = "down"
     checks["kafkaConsumer"] = "up" if supervisor.consuming else "down"
     healthy = all(value == "up" for value in checks.values())
     return JSONResponse(

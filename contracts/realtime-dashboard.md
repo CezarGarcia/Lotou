@@ -20,13 +20,13 @@ O analytics-service é o hub de tempo real do painel (ADR 17). A loja Angular ab
 
 | `type` | Campos | Quando |
 | --- | --- | --- |
-| `ready` | `user` (o `sub`) | token aceito |
+| `ready` | `user` (o `sub`) | token aceito (também depois de cada `auth` de renovação) |
 | `snapshot` | `showId`, `metrics`, `activity` (até 50, do mais novo ao mais antigo) | logo depois do `subscribe` |
 | `metrics` | `showId`, `metrics` | 1 vez por segundo, enquanto houver assinantes do show |
 | `activity` | `showId`, `entry` | assim que o fato chega ao analytics |
-| `error` | `code`, `detail`, `showId` (opcional) | `forbidden` (show de outro produtor ou inexistente), `bad-request` |
+| `error` | `code`, `detail`, `showId` (opcional) | `forbidden` (show de outro produtor ou inexistente), `bad-request` (mensagem fora do protocolo, ou mais de 20 shows na mesma conexão) |
 
-Fechamentos: `4401` (token ausente, inválido ou expirado), `4403` (sem o papel `producer`), `4408` (autenticação não chegou a tempo).
+Fechamentos: `4401` (token ausente, inválido ou expirado, ou renovação com o token de outro usuário), `4403` (sem o papel `producer`), `4408` (autenticação não chegou a tempo), `1013` (tente mais tarde: o cliente não acompanhou o envio, ou uma falha temporária do servidor; reconecte e assine de novo). Um `unsubscribe` não tem resposta.
 
 ### `metrics`
 
@@ -63,7 +63,7 @@ Fechamentos: `4401` (token ausente, inválido ou expirado), `4403` (sem o papel 
 | `LotOpened` | `sectorName`, `lotName`, `priceCents` |
 | `LotSoldOut` | `sectorName`, `lotName` |
 
-`id` é o ID da entrada no Redis Stream `stream:activity:{showId}`; `at` é o `occurredAt` do fato. Nada de comprador, CPF ou e-mail no feed.
+`id` é o ID da entrada no Redis Stream `stream:activity:{showId}`; `at` é o `occurredAt` do fato. Nada de comprador, CPF ou e-mail no feed. Em `LotOpened` e `LotSoldOut`, `sectorName` e `lotName` vêm do catálogo e são `null` no caso raro de o lote chegar ao analytics antes do show.
 
 ## Medida do critério da fase 4
 

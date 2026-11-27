@@ -25,6 +25,9 @@ PRODUCER_STATEMENTS = "producer_statements"
 ORDER_VIEW = "order_view"
 LOT_TIMELINE = "lot_timeline"
 PROCESSED_EVENTS = "processed_events"
+# Fora das gerações: `eventId` dos fatos que já foram para o feed do painel
+# (`analytics.live.activity`). Vence junto com o `processed_events`.
+ACTIVITY_LOG = "activity_log"
 
 # Os read models propriamente ditos: o que o replay reconstrói e compara.
 READ_MODELS: tuple[str, ...] = (SHOWS, SALES_BY_SECTOR, PRODUCER_STATEMENTS, ORDER_VIEW, LOT_TIMELINE)
@@ -62,26 +65,29 @@ class ReadModels:
 
 
 async def create_indexes(db: AsyncDatabase[Doc], generation: int, *, processed_ttl: timedelta) -> None:
-    """Cria as coleções e os índices antes de consumir.
+    """Cria as coleções e os índices antes de consumir. Pode repetir: o que existe fica.
 
     As coleções nascem aqui, fora de transação: criar coleção dentro de uma
     transação funciona, mas disputa o catálogo do banco com as outras.
     """
     existing = set(await db.list_collection_names())
-    for base in ALL_COLLECTIONS:
-        name = collection_name(base, generation)
+    for name in [collection_name(base, generation) for base in ALL_COLLECTIONS] + [ACTIVITY_LOG]:
         if name not in existing:
             with suppress(CollectionInvalid):  # outra instância criou antes
                 await db.create_collection(name)
+    ttl = int(processed_ttl.total_seconds())
+    await db[ACTIVITY_LOG].create_index([("loggedAt", ASCENDING)], expireAfterSeconds=ttl)
     models = ReadModels.of(db, generation)
+    # Lista de shows do produtor no painel, do mais novo para o mais antigo.
+    await models.shows.create_index([("producerId", ASCENDING), ("_id", DESCENDING)])
     await models.sales.create_index([("showId", ASCENDING), ("hour", ASCENDING)])
     await models.orders.create_index([("showId", ASCENDING), ("_id", DESCENDING)])
     await models.orders.create_index([("showId", ASCENDING), ("status", ASCENDING), ("_id", DESCENDING)])
+    # Pedidos confirmados no último minuto, a cada segundo, nas métricas do painel.
+    await models.orders.create_index([("showId", ASCENDING), ("confirmedAt", ASCENDING)])
     await models.lots.create_index([("showId", ASCENDING)])
     await models.statements.create_index([("producerId", ASCENDING)])
-    await models.processed.create_index(
-        [("processedAt", ASCENDING)], expireAfterSeconds=int(processed_ttl.total_seconds())
-    )
+    await models.processed.create_index([("processedAt", ASCENDING)], expireAfterSeconds=ttl)
 
 
 async def drop(db: AsyncDatabase[Doc], generation: int) -> None:

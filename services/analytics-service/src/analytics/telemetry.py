@@ -3,8 +3,8 @@
 Traces, métricas e logs saem por OTLP (HTTP) para o OTel Collector; o destino e
 os atributos do recurso vêm das variáveis padrão (`OTEL_EXPORTER_OTLP_ENDPOINT`,
 `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`). A configuração é feita no
-código, antes de criar o cliente do MongoDB e a aplicação, para que a
-instrumentação do PyMongo e do FastAPI peguem tudo.
+código, antes de criar os clientes do MongoDB e do Redis e a aplicação, para que
+a instrumentação do PyMongo, do Redis e do FastAPI peguem tudo.
 
 O console recebe uma linha JSON por log, com `trace_id` e `span_id` do span
 corrente, para ir do log ao trace no Grafana. CPF e e-mail não aparecem nos
@@ -25,6 +25,7 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -113,6 +114,7 @@ def setup(settings: Settings) -> Telemetry:
     logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
 
     PymongoInstrumentor().instrument()
+    RedisInstrumentor().instrument()
 
     telemetry.providers.extend([tracer_provider, meter_provider, logger_provider])
     return telemetry

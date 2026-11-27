@@ -8,7 +8,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -25,8 +25,9 @@ from analytics.replay.__main__ import run as run_replay_cli
 from analytics.store.generations import GenerationRegistry, GenerationStatus
 from analytics.store.read_models import ALL_COLLECTIONS, collection_name
 from analytics.supervisor import LiveSupervisor
+from tests import events
 from tests.events import Message, OrderSpec
-from tests.integration.containers import KafkaKraft, MongoReplicaSet
+from tests.integration.containers import KafkaKraft, MongoReplicaSet, RedisCore
 from tests.readmodels import assert_same, snapshot
 from tests.scenario import Raw, Scenario, at, build
 from tests.tokens import ISSUER, JWKS_URI, FakeKeycloak
@@ -104,12 +105,15 @@ async def _end_offsets(bootstrap: str) -> dict[TopicPartition, int]:
 
 
 @pytest.fixture(scope="module")
-async def service(mongo: MongoReplicaSet, kafka: KafkaKraft, topics: list[str]) -> AsyncIterator[Service]:
+async def service(
+    mongo: MongoReplicaSet, kafka: KafkaKraft, redis_core: RedisCore, topics: list[str]
+) -> AsyncIterator[Service]:
     keycloak = FakeKeycloak()
     settings = Settings(
         mongodb_uri=mongo.uri(f"analytics_e2e_{uuid.uuid4().hex[:8]}"),
         kafka_brokers=kafka.bootstrap_servers,
         kafka_group_id=f"analytics-test-{uuid.uuid4().hex[:6]}",
+        redis_url=redis_core.url,
         auth_issuer=ISSUER,
         auth_jwks_uri=JWKS_URI,
         generation_poll_seconds=0.2,
@@ -227,6 +231,53 @@ async def test_read_models_follow_the_events(service: Service) -> None:
     assert [order["show"]["title"] for order in orders_b["items"]] == ["Samba de Quinta"]
 
 
+async def test_producer_lists_only_their_shows(service: Service) -> None:
+    scenario = await published(service)
+    a = scenario.show_a
+    # Mais dois shows do mesmo produtor, para a lista ter mais de uma página.
+    others = [replace(a, id=events.uuid7(), title=f"Show extra {n}") for n in (1, 2)]
+    await service.publish(
+        [
+            events.show_event(show, version=1, status="PUBLISHED", at=at(16), event_type="ShowPublished")
+            for show in others
+        ]
+    )
+    await service.caught_up()
+
+    seen: list[dict[str, Any]] = []
+    cursor = None
+    while True:
+        params = {"limit": "2"} | ({"cursor": cursor} if cursor else {})
+        response = await service.http.get("/v1/analytics/shows", params=params, headers=service.as_producer(a))
+        assert response.status_code == 200, response.text
+        page = response.json()
+        seen.extend(page["items"])
+        cursor = page["nextCursor"]
+        if cursor is None:
+            break
+    # Do mais novo para o mais antigo (o showId é UUID v7); o show B é de outro produtor.
+    assert [show["showId"] for show in seen] == sorted([a.id, *(show.id for show in others)], reverse=True)
+    by_id = {show["showId"]: show for show in seen}
+    assert by_id[a.id] == {
+        "showId": a.id,
+        "title": scenario.new_title,
+        "artist": a.artist,
+        "startsAt": a.starts_at.isoformat().replace("+00:00", "Z"),
+        "timezone": "America/Sao_Paulo",
+        "venueName": "Teatro Guanabara",
+        "city": "Rio de Janeiro",
+        "status": "ON_SALE",
+        "ticketsSold": 9,
+        "revenueCents": 128000,
+    }
+    assert (by_id[others[0].id]["ticketsSold"], by_id[others[0].id]["revenueCents"]) == (0, 0)
+
+    buyer = await service.http.get("/v1/analytics/shows", headers=service.keycloak.bearer(a.producer_id, ["buyer"]))
+    assert buyer.status_code == 403
+    bad = await service.http.get("/v1/analytics/shows", params={"cursor": "lixo"}, headers=service.as_producer(a))
+    assert bad.status_code == 400
+
+
 async def test_api_errors_are_problem_details(service: Service) -> None:
     scenario = await published(service)
     a, b = scenario.show_a, scenario.show_b
@@ -285,7 +336,7 @@ async def test_invalid_messages_go_to_the_dlt_and_the_consumer_moves_on(service:
     # Depois das mensagens inválidas, o pedido seguinte foi aplicado normalmente.
     health = await service.http.get("/health/ready")
     assert health.status_code == 200
-    assert health.json()["checks"] == {"mongodb": "up", "kafkaConsumer": "up"}
+    assert health.json()["checks"] == {"mongodb": "up", "redis": "up", "kafkaConsumer": "up"}
 
 
 async def test_replay_rebuilds_the_same_read_models_without_downtime(

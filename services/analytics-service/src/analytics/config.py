@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     mongodb_uri: str = Field(min_length=1)
 
+    # redis-core (ADR 10): feed de atividade, métricas do painel e o interesse pelos shows.
+    redis_url: str = Field(default="redis://localhost:6380", pattern=r"^rediss?://")
+
     # Comparado com o `iss` do token: é a URL pública do realm.
     auth_issuer: str = Field(pattern=r"^https?://")
     auth_jwks_uri: HttpUrl
@@ -49,6 +52,12 @@ class Settings(BaseSettings):
     processed_events_ttl_days: int = Field(default=30, ge=1)
     # Validade do lock do replay; renovado a cada lote enquanto o replay anda.
     replay_lease_seconds: PositiveSeconds = 60.0
+
+    # Painel ao vivo (WebSocket): prazo da primeira mensagem `auth`, shows por
+    # conexão e frames que não podem ser descartados na fila de um cliente lento.
+    live_auth_timeout_seconds: PositiveSeconds = 5.0
+    live_max_subscriptions: int = Field(default=20, ge=1, le=200)
+    live_max_pending_frames: int = Field(default=500, ge=10, le=100_000)
 
     otel_sdk_disabled: bool = False
 

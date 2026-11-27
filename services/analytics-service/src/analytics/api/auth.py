@@ -15,7 +15,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any
 
 import httpx
@@ -34,6 +34,8 @@ ROLES = frozenset({"buyer", "producer", "gate-staff", "service"})
 class User:
     id: str
     roles: frozenset[str]
+    # `exp` do token (epoch em segundos): o WebSocket do painel fecha quando ele vence.
+    expires_at: float | None = field(default=None, compare=False)
 
 
 class KeySetUnavailable(Exception):
@@ -108,7 +110,7 @@ class TokenVerifier:
         realm_access = claims.get("realm_access")
         raw_roles = realm_access.get("roles") if isinstance(realm_access, dict) else None
         roles = frozenset(role for role in raw_roles or [] if role in ROLES)
-        return User(id=str(claims["sub"]), roles=roles)
+        return User(id=str(claims["sub"]), roles=roles, expires_at=float(claims["exp"]))
 
 
 def _bearer_token(request: Request) -> str:

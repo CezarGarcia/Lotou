@@ -426,6 +426,8 @@ Durante a venda, o `redis-core` é a fonte da verdade do estoque, das cadeiras, 
 | `metrics:sectors:{showId}` | sorted set | 48 h | core | vendas por setor ao vivo |
 | `stream:reservations` | stream | aparado até a entrada mais antiga ainda não gravada (`XTRIM MINID`) | core | reservas a persistir no Postgres |
 | `stream:activity:{showId}` | stream | MAXLEN \~1000 | core | feed de atividade do painel, por show |
+| `dashboard:watched` | sorted set | membros vencem em 5 s sem renovação | core | shows com alguém no painel, em qualquer instância do analytics; score = até quando (ADR 32) |
+| `dashboard:metrics-tick:{showId}` | string | 5 s | core | último segundo em que as métricas do show foram calculadas: só uma instância calcula por segundo (ADR 32) |
 
 ## Mensageria
 
@@ -754,6 +756,7 @@ Cada linha vira um arquivo em `docs/adr/` no formato contexto, decisão e conseq
 | 29 | Outbox do event-service no MongoDB, na mesma transação do show (replica set), publicado em transações Kafka com um `transactional.id` só | gravar e publicar separadamente; change streams | sem escrita dupla; o broker corta um relay que perdeu a vez, então uma versão antiga do show nunca sai depois de uma nova |
 | 30 | Replay dos read models em gerações: cada geração tem coleções e consumer group próprios, e uma troca atômica de ponteiro a torna ativa | apagar e reconstruir no lugar | o painel segue respondendo durante o replay; se ele falha, a geração anterior continua ativa |
 | 31 | O analytics é o hub de tempo real só do painel; a fila e o mapa de assentos seguem no SSE do inventory | passar todo o tempo real pelo analytics | o analytics teria de ler o estado interno do inventory; cada fluxo sai de quem tem o dado |
+| 32 | Painel com várias instâncias: interesse num ZSET com prazo, o segundo de cada show disputado num script Lua e o feed registrado uma vez por `eventId`, fora das gerações | líder eleito calculando tudo; calcular em toda instância | sem failover nem trabalho repetido; o replay não repete linhas no feed |
 
 ## Testes, carga e caos
 

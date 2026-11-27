@@ -1,5 +1,8 @@
 """Containers das dependências reais, com as mesmas imagens do Compose.
 
+O Redis é o `redis-core` do Compose (`redis:8.8-alpine`): o feed usa `XADD IDMP`,
+do Redis 8.6 em diante.
+
 O módulo MongoDB do testcontainers-python sobe um mongod sem replica set, e sem
 replica set não há transação; o de Kafka só conhece a imagem da Confluent. Os
 dois daqui sobem `mongo:8.0` como replica set de um nó e `apache/kafka` em modo
@@ -18,6 +21,7 @@ from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 MONGO_IMAGE = "mongo:8.0"
 KAFKA_IMAGE = "apache/kafka:4.2.0"
+REDIS_IMAGE = "redis:8.8-alpine"
 
 
 class MongoReplicaSet(DockerContainer):
@@ -106,3 +110,15 @@ class KafkaKraft(DockerContainer):
     @property
     def bootstrap_servers(self) -> str:
         return f"{self.get_container_host_ip()}:{self.get_exposed_port(self.PORT)}"
+
+
+class RedisCore(DockerContainer):
+    def __init__(self, image: str = REDIS_IMAGE) -> None:
+        super().__init__(image)
+        self.with_exposed_ports(6379)
+        self.with_command("redis-server --maxmemory-policy noeviction")
+        self.waiting_for(LogMessageWaitStrategy(re.compile("Ready to accept connections")))
+
+    @property
+    def url(self) -> str:
+        return f"redis://{self.get_container_host_ip()}:{self.get_exposed_port(6379)}"

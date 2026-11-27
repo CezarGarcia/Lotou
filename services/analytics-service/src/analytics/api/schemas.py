@@ -152,6 +152,28 @@ class OrderPage(ApiModel):
     next_cursor: str | None
 
 
+# ------------------------------------------------------- shows do produtor
+
+
+class ProducerShow(ApiModel):
+    show_id: str
+    title: str
+    artist: str
+    starts_at: datetime
+    timezone: str
+    venue_name: str
+    city: str
+    status: str
+    tickets_sold: int
+    revenue_cents: int
+
+
+class ProducerShowPage(ApiModel):
+    items: list[ProducerShow]
+    # Devolva em `cursor` para ler a próxima página; `null` na última.
+    next_cursor: str | None
+
+
 # ------------------------------------------------------------------ replay
 
 

@@ -87,7 +87,7 @@ test-order-service: ## Testes do order-service (checkout de ponta a ponta com o 
 test-payment-mock: ## Testes do payment-mock (unitários e integração com Postgres e Kafka via Testcontainers)
 	cd services/payment-mock && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
 
-test-analytics-service: ## Testes do analytics-service (lint, tipos, unitários e integração com Kafka e MongoDB reais)
+test-analytics-service: ## Testes do analytics-service (lint, tipos, unitários e integração com Kafka, MongoDB e Redis reais)
 	cd services/analytics-service && uv sync --locked && uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
 
 # Reconstrói os read models do analytics a partir do começo dos tópicos, sem parar a leitura.

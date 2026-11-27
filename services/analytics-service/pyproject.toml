@@ -1,7 +1,7 @@
 [project]
 name = "analytics-service"
 version = "1.0.0"
-description = "Read models do painel do produtor (vendas, relatório financeiro e pedidos), montados a partir dos eventos do Kafka."
+description = "Read models do painel do produtor (vendas, relatório financeiro e pedidos), montados a partir dos eventos do Kafka, e o painel ao vivo por WebSocket."
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "fastapi>=0.165",
@@ -10,6 +10,7 @@ dependencies = [
   "pydantic-settings>=2.16",
   "aiokafka>=0.15",
   "pymongo>=4.20",
+  "redis>=8.2",
   "pyjwt[crypto]>=2.15",
   "httpx>=0.29",
   "opentelemetry-api>=1.45",
@@ -17,6 +18,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-http>=1.45",
   "opentelemetry-instrumentation-fastapi>=0.66b2",
   "opentelemetry-instrumentation-pymongo>=0.66b2",
+  "opentelemetry-instrumentation-redis>=0.66b2",
   "opentelemetry-instrumentation-logging>=0.66b2",
 ]
 
@@ -28,6 +30,7 @@ dev = [
   "mypy>=2.4",
   "jsonschema[format]>=4.26",
   "testcontainers[kafka,mongodb]>=4.15",
+  "websockets>=17",
 ]
 
 [build-system]

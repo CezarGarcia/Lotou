@@ -1,4 +1,4 @@
-"""Dependências reais para os testes de integração: um MongoDB e um Kafka por sessão."""
+"""Dependências reais para os testes de integração: um MongoDB, um Kafka e um Redis por sessão."""
 
 import uuid
 from collections.abc import AsyncIterator, Iterator
@@ -8,7 +8,7 @@ import pytest
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 
-from tests.integration.containers import KafkaKraft, MongoReplicaSet
+from tests.integration.containers import KafkaKraft, MongoReplicaSet, RedisCore
 
 TOPIC_CONFIGS: dict[str, dict[str, str]] = {
     "shows.catalog": {"cleanup.policy": "compact"},
@@ -32,6 +32,12 @@ def mongo() -> Iterator[MongoReplicaSet]:
 @pytest.fixture(scope="session")
 def kafka() -> Iterator[KafkaKraft]:
     with KafkaKraft() as container:
+        yield container
+
+
+@pytest.fixture(scope="session")
+def redis_core() -> Iterator[RedisCore]:
+    with RedisCore() as container:
         yield container
 
 

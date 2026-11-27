@@ -10,6 +10,7 @@ from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 
 from analytics.contracts import parse
+from analytics.live.activity import ACTIVITY_LOG, ActivityEntry
 from analytics.projection import Outcome, Projector, Source
 from analytics.store.read_models import ReadModels, create_indexes
 from tests import events
@@ -158,3 +159,73 @@ async def test_lot_timeline_is_ordered_by_the_time_of_the_fact(mongo_client: Cli
         ("SOLD_OUT", at(19, 20)),
         ("OPENED", at(19, 40)),
     ]
+
+
+async def apply_live(client: Client, projector: Projector, messages: list[Message]) -> list[ActivityEntry]:
+    """Como o consumidor ao vivo: cada evento numa transação, juntando as entradas do feed."""
+    entries: list[ActivityEntry] = []
+    for offset, message in enumerate(messages):
+        event = parse(message.raw())
+        assert event is not None
+        source = Source(message.topic, 0, offset)
+
+        async def apply(session: AsyncClientSession, event: Any = event, source: Source = source) -> list[Any]:
+            found: list[ActivityEntry] = []
+            await projector.apply(event, source, session, found)
+            return found
+
+        async with client.start_session() as session:
+            entries.extend(await session.with_transaction(apply))
+    return entries
+
+
+async def test_feed_entries_come_from_facts_applied_for_the_first_time(mongo_client: Client, setup: Any) -> None:
+    _, new_projector = setup
+    scenario = build()
+    projector = await new_projector()
+    o1, o4 = scenario.orders["o1"], scenario.orders["o4"]
+    show = events.show_event(scenario.show_a, version=1, status="ON_SALE", at=at(15), event_type="ShowPublished")
+    opened = events.lot_opened(scenario.show_a, scenario.pista, scenario.lot1, at(15, 0, 1))
+    confirmed = o1.confirmed(at(18, 0, 2))
+    cancelled = o4.cancelled(at(19, 15), "RESERVATION_EXPIRED")
+    entries = await apply_live(
+        mongo_client,
+        projector,
+        [
+            show,
+            opened,
+            confirmed,
+            confirmed,  # o mesmo eventId de novo
+            o1.confirmed(at(18, 0, 3)),  # o mesmo fato com outro eventId
+            o1.created(at(18)),  # fato anterior que chegou atrasado
+            o1.cancelled(at(18, 5), "PAYMENT_DECLINED"),  # fora da tabela: recusado
+            o1.tickets_issued(at(18, 0, 4)),  # não vai para o feed
+            cancelled,
+        ],
+    )
+    assert [(entry.type, entry.event_id) for entry in entries] == [
+        ("LotOpened", opened.event_id),
+        ("OrderConfirmed", confirmed.event_id),
+        ("OrderCancelled", cancelled.event_id),
+    ]
+    assert entries[0].fields == {"sectorName": "Pista", "lotName": "1º lote", "priceCents": 12000}
+    assert entries[2].fields == {"orderId": o4.id, "reason": "RESERVATION_EXPIRED", "totalCents": 12000}
+
+    # Outra geração (um replay, ou o consumidor ao vivo da geração nova) aplicando os
+    # mesmos eventos monta os read models, mas não repete o feed.
+    again = await new_projector()
+    assert await apply_live(mongo_client, again, [show, opened, confirmed]) == []
+    view = await again.models.orders.find_one({"_id": o1.id})
+    assert view is not None
+    assert view["status"] == "CONFIRMED"
+
+
+async def test_without_the_feed_list_nothing_is_logged(mongo_client: Client, setup: Any) -> None:
+    """O replay não passa a lista: não escreve no feed nem marca o evento como publicado."""
+    db, new_projector = setup
+    scenario = build()
+    confirmed = scenario.orders["o2"].confirmed(at(18, 11))
+    await apply_all(mongo_client, await new_projector(), [confirmed])
+    assert await db[ACTIVITY_LOG].find_one({"_id": confirmed.event_id}) is None
+    entries = await apply_live(mongo_client, await new_projector(), [confirmed])
+    assert [entry.event_id for entry in entries] == [confirmed.event_id]

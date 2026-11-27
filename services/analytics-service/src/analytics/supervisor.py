@@ -11,6 +11,7 @@ carência.
 import asyncio
 import logging
 from contextlib import suppress
+from datetime import timedelta
 from typing import Any
 
 from aiokafka.errors import NonEmptyGroup
@@ -20,6 +21,7 @@ from analytics.config import Settings
 from analytics.kafka.admin import delete_consumer_group
 from analytics.kafka.consumer import GenerationConsumer
 from analytics.kafka.dead_letter import DeadLetterPublisher
+from analytics.live.activity import ActivityFeed
 from analytics.store import read_models
 from analytics.store.generations import GenerationRegistry
 
@@ -36,8 +38,10 @@ class LiveSupervisor:
         client: AsyncMongoClient[Doc],
         registry: GenerationRegistry,
         dead_letter: DeadLetterPublisher,
+        feed: ActivityFeed | None = None,
     ) -> None:
         self._settings = settings
+        self._feed = feed
         self._client = client
         self._registry = registry
         self._dead_letter = dead_letter
@@ -86,6 +90,12 @@ class LiveSupervisor:
                 await asyncio.wait_for(self._stopping.wait(), timeout=self._settings.generation_poll_seconds)
 
     async def _start_consumer(self, generation: int) -> None:
+        # Índices novos de uma versão nova do serviço chegam também à geração que já existia.
+        await read_models.create_indexes(
+            self._registry.db,
+            generation,
+            processed_ttl=timedelta(days=self._settings.processed_events_ttl_days),
+        )
         consumer = GenerationConsumer(
             settings=self._settings,
             client=self._client,
@@ -94,6 +104,7 @@ class LiveSupervisor:
             group_id=self._registry.group_id(generation),
             dead_letter=self._dead_letter,
             role="live",
+            feed=self._feed,
         )
         try:
             await consumer.start()

@@ -19,6 +19,11 @@ no inventory). Cada read model é montado para não depender dela:
   `order_view` e a transação do catálogo gravam o mesmo documento
   (`producer_statements` do show); o MongoDB não deixa as duas passarem juntas,
   e a que perde repete com o estado novo.
+
+Feed do painel: com a lista `activity` (só o consumidor ao vivo passa), a
+projeção devolve as entradas do feed dos fatos aplicados pela primeira vez. O
+`eventId` vai para `activity_log` na mesma transação, para a entrada sair uma
+vez só mesmo quando outra geração reaplica o evento (`analytics.live.activity`).
 """
 
 import logging
@@ -41,6 +46,7 @@ from analytics.contracts import (
     TicketsIssued,
 )
 from analytics.domain import hour_bucket, orders, shows, statement
+from analytics.live.activity import ACTIVITY_LOG, ActivityEntry, lot_entry, order_entry
 from analytics.store.generations import utcnow
 from analytics.store.read_models import ReadModels
 
@@ -66,24 +72,37 @@ class Source:
 class Projector:
     def __init__(self, db: AsyncDatabase[Doc], generation: int) -> None:
         self.models = ReadModels.of(db, generation)
+        # Fora das gerações: o que já foi para o feed não volta a ir depois de um replay.
+        self._activity_log = db[ACTIVITY_LOG]
 
     @property
     def generation(self) -> int:
         return self.models.generation
 
-    async def apply(self, event: Event, source: Source, session: AsyncClientSession) -> Outcome:
+    async def apply(
+        self,
+        event: Event,
+        source: Source,
+        session: AsyncClientSession,
+        activity: list[ActivityEntry] | None = None,
+    ) -> Outcome:
+        """Aplica o evento. Com `activity`, acrescenta nela a entrada do feed, se houver uma."""
         models = self.models
         seen = await models.processed.find_one({"_id": event.event_id}, projection={"_id": 1}, session=session)
         if seen is not None:
             return Outcome.DUPLICATE
 
+        entry: ActivityEntry | None = None
         match event.payload:
             case ShowSnapshot() as show:
                 await self._show(show, session)
             case OrderCreated() | OrderConfirmed() | OrderCancelled() | TicketsIssued() as order:
-                await self._order(event, order, session)
+                entry = await self._order(event, order, session)
             case LotOpened() | LotSoldOut() as lot:
-                await self._lot(event, lot, session)
+                entry = await self._lot(event, lot, session, with_names=activity is not None)
+
+        if activity is not None and entry is not None and await self._first_in_feed(entry, session):
+            activity.append(entry)
 
         await models.processed.insert_one(
             {
@@ -98,6 +117,21 @@ class Projector:
             session=session,
         )
         return Outcome.APPLIED
+
+    async def _first_in_feed(self, entry: ActivityEntry, session: AsyncClientSession) -> bool:
+        if await self._activity_log.find_one({"_id": entry.event_id}, projection={"_id": 1}, session=session):
+            return False
+        await self._activity_log.insert_one(
+            {
+                "_id": entry.event_id,
+                "showId": entry.show_id,
+                "type": entry.type,
+                "occurredAt": entry.at,
+                "loggedAt": utcnow(),
+            },
+            session=session,
+        )
+        return True
 
     # ------------------------------------------------------------ catálogo
 
@@ -127,7 +161,8 @@ class Projector:
         event: Event,
         order: OrderCreated | OrderConfirmed | OrderCancelled | TicketsIssued,
         session: AsyncClientSession,
-    ) -> None:
+    ) -> ActivityEntry | None:
+        """Devolve a entrada do feed quando o pedido acabou de ser confirmado ou cancelado."""
         models = self.models
         view = await models.orders.find_one({"_id": order.order_id}, session=session)
         show_doc = None
@@ -162,6 +197,10 @@ class Projector:
             assert change.sold_at is not None
             await self._sales(order.show_id, change.sales, change.sold_at, session)
 
+        if change.step is orders.Step.ENTERED and isinstance(order, OrderConfirmed | OrderCancelled):
+            return order_entry(event, order)
+        return None
+
     async def _sales(
         self, show_id: str, lines: list[orders.SaleLine], sold_at: Any, session: AsyncClientSession
     ) -> None:
@@ -190,7 +229,10 @@ class Projector:
 
     # ---------------------------------------------------------- inventory
 
-    async def _lot(self, event: Event, lot: LotOpened | LotSoldOut, session: AsyncClientSession) -> None:
+    async def _lot(
+        self, event: Event, lot: LotOpened | LotSoldOut, session: AsyncClientSession, *, with_names: bool
+    ) -> ActivityEntry | None:
+        """Devolve a entrada do feed (com os nomes do catálogo) quando `with_names`."""
         entry: Doc
         match lot:
             case LotOpened():
@@ -213,3 +255,7 @@ class Projector:
             upsert=True,
             session=session,
         )
+        if not with_names:
+            return None
+        show = await self.models.shows.find_one({"_id": lot.show_id}, projection={"sectors": 1}, session=session)
+        return lot_entry(event, lot, show)

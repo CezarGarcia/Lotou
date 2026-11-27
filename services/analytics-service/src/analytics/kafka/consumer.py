@@ -16,6 +16,10 @@ isolar a que tem problema. Falhas:
 - infraestrutura (MongoDB fora, eleição no replica set): espera e tenta de novo
   sem limite. Mandar para a DLT aqui perderia eventos bons; o lag sobe e o
   alerta de consumer lag avisa.
+
+O consumidor ao vivo recebe o `feed` do painel: as entradas de atividade de cada
+transação vão para o Redis depois que ela confirma (`analytics.live.activity`).
+O do replay não recebe, e não escreve no feed.
 """
 
 import asyncio
@@ -40,6 +44,7 @@ from analytics.config import Settings
 from analytics.contracts import TOPICS, ContractError, Event, parse
 from analytics.kafka import admin
 from analytics.kafka.dead_letter import DeadLetterPublisher
+from analytics.live.activity import ActivityEntry, ActivityFeed
 from analytics.projection import Outcome, Projector, Source
 
 logger = logging.getLogger(__name__)
@@ -93,6 +98,7 @@ class GenerationConsumer:
         group_id: str,
         dead_letter: DeadLetterPublisher,
         role: str,
+        feed: ActivityFeed | None = None,
         retry_base_seconds: float = 0.2,
     ) -> None:
         self.generation = generation
@@ -102,6 +108,7 @@ class GenerationConsumer:
         self._client = client
         self._projector = Projector(db, generation)
         self._dead_letter = dead_letter
+        self._feed = feed
         self._batch_size = settings.consumer_batch_size
         self._max_attempts = settings.consumer_max_attempts
         self._retry_base = retry_base_seconds
@@ -220,17 +227,24 @@ class GenerationConsumer:
         batch_duration.record(time.perf_counter() - started, {"topic": tp.topic, "consumer": self.role})
 
     async def _apply(self, parsed: Sequence[tuple[Record, Event]]) -> list[str]:
+        # A transação pode rodar mais de uma vez (conflito): valem as entradas da que confirmou.
+        activity: list[ActivityEntry] = []
         async with self._client.start_session() as session:
 
             async def transaction(s: AsyncClientSession) -> list[str]:
+                activity.clear()
+                feed = activity if self._feed is not None else None
                 outcomes: list[str] = []
                 for record, event in parsed:
                     with _record_span(record, event, self.group_id):
                         source = Source(record.topic, record.partition, record.offset)
-                        outcomes.append(await self._projector.apply(event, source, s))
+                        outcomes.append(await self._projector.apply(event, source, s, feed))
                 return outcomes
 
-            return await session.with_transaction(transaction)
+            outcomes = await session.with_transaction(transaction)
+        if self._feed is not None and activity:
+            await self._feed.publish(activity)
+        return outcomes
 
     async def _apply_alone(self, record: Record, event: Event) -> str:
         last_error: Exception | None = None

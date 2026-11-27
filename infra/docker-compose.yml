@@ -196,11 +196,15 @@ services:
       PORT: "8084"
       KAFKA_BROKERS: kafka:9092
       MONGODB_URI: mongodb://mongodb:27017/analytics?replicaSet=rs0
+      # Painel ao vivo: feed de atividade (Stream), métricas (pub/sub) e o interesse pelos shows.
+      REDIS_URL: redis://redis-core:6379
     depends_on:
       mongodb:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+      redis-core:
+        condition: service_healthy
       otel-collector:
         condition: service_started
     healthcheck:
