@@ -15,7 +15,10 @@ const QUIET_ZONE = 2;
  * pacote próprio, baixado só quando um ingresso com código aparece na tela.
  */
 export async function qrMatrix(text: string): Promise<QrMatrix> {
-  const { create } = await import('qrcode');
+  // `qrcode` é CommonJS: no build de produção as funções chegam em `default`, no
+  // servidor de desenvolvimento e nos testes chegam direto no módulo.
+  const qrcode = await import('qrcode');
+  const create = qrcode.create ?? (qrcode as unknown as { default: typeof qrcode }).default.create;
   // Nível M: aguenta ~15% de dano (tela riscada, reflexo) sem engrossar demais o código.
   const { modules } = create(text, { errorCorrectionLevel: 'M' });
   let path = '';
