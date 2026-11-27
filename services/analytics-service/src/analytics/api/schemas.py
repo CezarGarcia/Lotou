@@ -14,6 +14,12 @@ class ApiModel(BaseModel):
 # ------------------------------------------------------------------- vendas
 
 
+# Nas vendas, "receita" (`revenueCents`) é o valor líquido dos ingressos: o preço
+# da reserva menos o desconto do cupom, sem a taxa de serviço, e sem os pedidos
+# reembolsados (que saem da hora em que foram vendidos, com os ingressos).
+# Somada no show inteiro, é bruto − descontos − reembolsos do relatório.
+
+
 class HourlySales(ApiModel):
     hour: datetime
     tickets_sold: int
@@ -85,15 +91,30 @@ class Statement(ApiModel):
     gross_sales_cents: int
     discounts_cents: int
     refunds_cents: int
+    # Taxa absorvida pelo produtor: sai do valor a receber.
     platform_fee_cents: int
+    # Taxa paga pelos compradores: informativa, não entra no valor a receber.
+    buyer_fees_cents: int
     receivable_cents: int
     orders_created: int
     confirmed_orders: int
     cancelled_orders: int
     cancelled_by_reason: dict[str, int]
+    refunded_orders: int
     tickets_sold: int
+    tickets_refunded: int
     tickets_issued: int
     last_event_at: datetime | None
+
+
+class InternalStatement(Statement):
+    """O relatório com o que o PDF do notification-service precisa do show."""
+
+    producer_id: str
+    artist: str
+    starts_at: datetime
+    timezone: str
+    venue_name: str
 
 
 # ----------------------------------------------------------------- pedidos
@@ -113,6 +134,10 @@ class Ticket(ApiModel):
     sector_id: str
     sector_name: str
     seat: str | None
+    status: Literal["VALID", "USED", "CANCELLED"]
+    used_at: datetime | None = None
+    gate: str | None = None
+    cancelled_at: datetime | None = None
 
 
 class TimelineEntry(ApiModel):
@@ -135,6 +160,11 @@ class Order(ApiModel):
     show_id: str
     status: str | None
     total_cents: int | None
+    subtotal_cents: int | None
+    discount_cents: int | None
+    service_fee_cents: int | None
+    service_fee_paid_by: Literal["BUYER", "PRODUCER"] | None
+    coupon_code: str | None
     items: list[OrderItem]
     tickets: list[Ticket]
     created_at: datetime | None
@@ -142,6 +172,12 @@ class Order(ApiModel):
     cancelled_at: datetime | None
     cancel_reason: str | None
     tickets_issued_at: datetime | None
+    tickets_cancelled_at: datetime | None
+    refund_reason: str | None
+    refunded_at: datetime | None
+    refunded_cents: int | None
+    refund_failed_at: datetime | None
+    refund_attempts: int | None
     timeline: list[TimelineEntry]
     show: ShowSummary | None
 
@@ -164,6 +200,7 @@ class ProducerShow(ApiModel):
     venue_name: str
     city: str
     status: str
+    # Líquidos, como nas vendas: sem os pedidos reembolsados; receita com o desconto e sem a taxa.
     tickets_sold: int
     revenue_cents: int
 

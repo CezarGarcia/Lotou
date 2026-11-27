@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     event_service_url: HttpUrl = HttpUrl("http://localhost:3000")
     show_cache_seconds: float = Field(default=60.0, ge=0)
 
+    # Relatório financeiro (`GET /internal/v1/shows/{id}/statement`), com o token da conta de serviço.
+    analytics_service_url: HttpUrl = HttpUrl("http://localhost:8084")
+
     keycloak_url: HttpUrl = HttpUrl("http://localhost:8180")
     keycloak_realm: str = Field(default="lotou", min_length=1)
     keycloak_client_id: str = Field(default="notification-service", min_length=1)

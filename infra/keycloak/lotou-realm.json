@@ -285,7 +285,7 @@
     {
       "clientId": "notification-service",
       "name": "Lotou notification-service",
-      "description": "Conta de serviço do notification-service: lê e-mail e nome do comprador na API de administração (só view-users; o escopo kc-admin-api põe a audiência que ela exige)",
+      "description": "Conta de serviço do notification-service: lê e-mail e nome na API de administração (só view-users, com o escopo kc-admin-api) e o relatório do analytics (papel service, escopo lotou-api)",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -297,7 +297,8 @@
       "fullScopeAllowed": false,
       "defaultClientScopes": [
         "basic",
-        "kc-admin-api"
+        "kc-admin-api",
+        "lotou-api"
       ],
       "optionalClientScopes": [],
       "protocolMappers": [
@@ -368,6 +369,9 @@
       "username": "service-account-notification-service",
       "enabled": true,
       "serviceAccountClientId": "notification-service",
+      "realmRoles": [
+        "service"
+      ],
       "clientRoles": {
         "realm-management": [
           "view-users"

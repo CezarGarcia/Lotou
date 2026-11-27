@@ -1,9 +1,11 @@
-"""Os e-mails do comprador: texto simples e HTML simples, em português.
+"""Os e-mails do comprador e do produtor: texto simples e HTML simples, em português.
 
 | Template | Assunto | Anexo |
 | --- | --- | --- |
 | `email.ticket.issued` | Seus ingressos para <show> | o PDF com uma página por ingresso |
 | `email.order.cancelled` | Pedido cancelado: <show> | — |
+| `email.refund.completed` | Reembolso concluído: <show> | — |
+| `email.report.statement` | Relatório financeiro: <show> | o PDF do relatório (para o produtor) |
 
 O `Message-ID` sai do `eventId` que originou o e-mail: um leitor de e-mail que
 receber o mesmo e-mail duas vezes (no caso raro em que a deduplicação não pega)
@@ -16,7 +18,7 @@ from html import escape
 
 from notification.clients.buyers import Buyer
 from notification.render import formatting
-from notification.tasks import CancellationEmail, ShowInfo, TicketsEmail
+from notification.tasks import CancellationEmail, RefundEmail, ShowInfo, StatementEmail, TicketsEmail
 
 DOMAIN = "lotou.test"
 
@@ -28,6 +30,12 @@ CANCELLATION_REASONS = {
     "TICKET_CONFLICT": "não foi possível emitir os ingressos. O valor pago será estornado.",
 }
 DEFAULT_REASON = "não foi possível concluir a compra. Se algum valor foi cobrado, ele será estornado."
+
+REFUND_REASONS = {
+    "ORDER_CANCELLED": "você cancelou o pedido dentro do prazo.",
+    "SHOW_CANCELLED": "o show foi cancelado pelo produtor.",
+}
+DEFAULT_REFUND_REASON = "o pedido foi cancelado."
 
 
 def tickets_email(task: TicketsEmail, buyer: Buyer, *, sender: str) -> EmailMessage:
@@ -100,6 +108,74 @@ def cancellation_email(task: CancellationEmail, buyer: Buyer, show: ShowInfo | N
     )
 
 
+def refund_email(task: RefundEmail, buyer: Buyer, show: ShowInfo | None, *, sender: str) -> EmailMessage:
+    reason = REFUND_REASONS.get(task.reason, DEFAULT_REFUND_REASON)
+    title = show.title if show is not None else "seu show"
+    greeting = _greeting(buyer)
+    amount = formatting.money(task.refunded_cents)
+    when = formatting.show_datetime(show.starts_at, show.timezone) if show is not None else None
+    where = formatting.venue_line(show.venue_name, show.venue_city, show.venue_state) if show is not None else None
+
+    text = (
+        f"{greeting}\n\n"
+        f"O reembolso do seu pedido para {title} foi concluído: {reason}\n\n"
+        f"Valor devolvido: {amount}, taxa de serviço incluída.\n"
+        + (f"Show: {title}, {when}\n" if when else "")
+        + f"Pedido: {task.order_id}\n\n"
+        "O valor volta pelo mesmo meio de pagamento da compra; o prazo para aparecer depende do banco ou do cartão. "
+        "Os ingressos do pedido foram cancelados e não valem mais na entrada.\n\nLotou\n"
+    )
+    html = _html(
+        greeting,
+        f"<p>O reembolso do seu pedido para <strong>{escape(title)}</strong> foi concluído: {escape(reason)}</p>"
+        f"{_details(when=when, where=where, order_id=task.order_id, total=amount, total_label='Valor devolvido')}"
+        "<p>O valor devolvido inclui a taxa de serviço e volta pelo mesmo meio de pagamento da compra; o prazo "
+        "para aparecer depende do banco ou do cartão. Os ingressos do pedido foram cancelados e não valem mais "
+        "na entrada.</p>",
+    )
+    return _message(
+        subject=f"Reembolso concluído: {title}",
+        sender=sender,
+        recipient=_recipient(buyer),
+        message_id=task.source_event_id,
+        text=text,
+        html=html,
+    )
+
+
+def statement_email(task: StatementEmail, producer: Buyer, *, sender: str) -> EmailMessage:
+    kind = "parcial" if task.partial else "final"
+    receivable = formatting.money(task.receivable_cents)
+    greeting = _greeting(producer)
+    note = (
+        "O relatório é parcial: as vendas, os cancelamentos e os reembolsos ainda podem mudar até o fim do show."
+        if task.partial
+        else "O relatório é final: o show terminou."
+    )
+    text = (
+        f"{greeting}\n\n"
+        f"Segue em anexo o relatório financeiro ({kind}) de {task.title}.\n\n"
+        f"Valor a receber: {receivable}\n\n{note}\n\nLotou\n"
+    )
+    html = _html(
+        greeting,
+        f"<p>Segue em anexo o relatório financeiro ({kind}) de <strong>{escape(task.title)}</strong>.</p>"
+        f'<p>Valor a receber: <strong>{escape(receivable)}</strong></p><p style="color:#666">{escape(note)}</p>',
+    )
+    message = _message(
+        subject=f"Relatório financeiro: {task.title}",
+        sender=sender,
+        recipient=_recipient(producer),
+        message_id=task.source_event_id,
+        text=text,
+        html=html,
+    )
+    attachment = task.attachment
+    maintype, _, subtype = attachment.content_type.partition("/")
+    message.add_attachment(attachment.content(), maintype=maintype, subtype=subtype, filename=attachment.filename)
+    return message
+
+
 def _greeting(buyer: Buyer) -> str:
     return f"Olá, {buyer.first_name}!" if buyer.first_name else "Olá!"
 
@@ -122,8 +198,15 @@ def _message(*, subject: str, sender: str, recipient: str, message_id: str, text
     return message
 
 
-def _details(*, when: str | None, where: str | None, order_id: str, total: str | None = None) -> str:
-    rows = [("Quando", when), ("Onde", where), ("Pedido", order_id), ("Valor do pedido", total)]
+def _details(
+    *,
+    when: str | None,
+    where: str | None,
+    order_id: str,
+    total: str | None = None,
+    total_label: str = "Valor do pedido",
+) -> str:
+    rows = [("Quando", when), ("Onde", where), ("Pedido", order_id), (total_label, total)]
     cells = "".join(
         f'<tr><td style="color:#666;padding:2px 12px 2px 0">{escape(label)}</td>'
         f"<td><strong>{escape(value)}</strong></td></tr>"

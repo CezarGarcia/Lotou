@@ -7,8 +7,10 @@ PDFs, que vai para o pool de processos (`render/pool.py`):
 | --- | --- | --- |
 | consumidor do Kafka | `order.events` | `tickets` (render), `notifications` (cancelamento) |
 | worker de PDF (`RENDER_WORKERS` consumidores, prefetch 1) | `tickets.render` | `notifications` (ingresso) |
+| worker de relatório (prefetch 1) | `reports.generate` | `notifications` (relatório financeiro) |
 | worker de e-mail (prefetch `EMAIL_PREFETCH`) | `notifications.email` | SMTP, `notifications.retry` e `.dlx` |
 | monitor das DLQs | profundidade das DLQs | métrica `notifications_dlq_depth` |
+| API (`POST /v1/reports/statements`) | relatório no analytics | `reports` (pedido de relatório) |
 
 Um processo só é o bastante: o trabalho de CPU já está fora do event loop, e o
 resto é espera de rede. Para mais vazão, sobe mais de uma instância: o consumer
@@ -31,7 +33,9 @@ from aio_pika.abc import AbstractRobustConnection
 from redis.asyncio import Redis
 
 from notification.clients.buyers import BuyerDirectory
+from notification.clients.service_token import ServiceAccountToken
 from notification.clients.shows import ShowDirectory
+from notification.clients.statements import StatementDirectory
 from notification.config import Settings
 from notification.dedupe import Dedupe
 from notification.dlq import DlqMonitor
@@ -44,13 +48,15 @@ from notification.rabbit.worker import QueueWorker
 from notification.render.pool import RenderPool
 from notification.workers.email import EmailHandler
 from notification.workers.render import RenderHandler
+from notification.workers.reports import ReportHandler
 
 logger = logging.getLogger(__name__)
 
 KAFKA = "kafka"
 RENDER = "render"
 EMAIL = "email"
-ALL_COMPONENTS = frozenset({KAFKA, RENDER, EMAIL})
+REPORTS = "reports"
+ALL_COMPONENTS = frozenset({KAFKA, RENDER, EMAIL, REPORTS})
 
 
 @dataclass
@@ -82,6 +88,14 @@ class NotificationService:
         self.redis: Redis | None = None
         self.dedupe: Dedupe | None = None
         self.workers: dict[str, QueueWorker] = {}
+        # Uma conta de serviço, um token: lê o comprador no Keycloak e o relatório no analytics.
+        self.tokens = ServiceAccountToken(
+            token_url=settings.keycloak_token_url,
+            client_id=settings.keycloak_client_id,
+            client_secret=settings.keycloak_client_secret,
+            http=self.http,
+        )
+        self.statements = StatementDirectory(str(settings.analytics_service_url), self.http, self.tokens)
         self._pool: RenderPool | None = None
         self._dead_letter: DeadLetterPublisher | None = None
         self._tasks: list[asyncio.Task[None]] = []
@@ -102,9 +116,11 @@ class NotificationService:
         shows = ShowDirectory(str(settings.event_service_url), self.http, ttl_seconds=settings.show_cache_seconds)
 
         enabled = self._components.enabled
-        if RENDER in enabled:
+        if RENDER in enabled or REPORTS in enabled:
             self._pool = RenderPool(settings.render_workers)
             await self._pool.warm_up()
+        if RENDER in enabled:
+            assert self._pool is not None
             render = RenderHandler(
                 shows=shows,
                 publisher=self.publisher,
@@ -113,6 +129,10 @@ class NotificationService:
                 retry_base_seconds=self._components.render_retry_base_seconds,
             )
             await self._start_worker(topology.RENDER_QUEUE, render, prefetch=1, consumers=settings.render_workers)
+        if REPORTS in enabled:
+            assert self._pool is not None
+            reports = ReportHandler(publisher=self.publisher, pool=self._pool)
+            await self._start_worker(topology.REPORTS_QUEUE, reports, prefetch=1, consumers=1)
         if EMAIL in enabled:
             email = EmailHandler(
                 buyers=BuyerDirectory(
@@ -122,6 +142,7 @@ class NotificationService:
                     client_secret=settings.keycloak_client_secret,
                     http=self.http,
                     ttl_seconds=settings.buyer_cache_seconds,
+                    tokens=self.tokens,
                 ),
                 shows=shows,
                 sender=SmtpSender(
@@ -163,7 +184,7 @@ class NotificationService:
                 await asyncio.sleep(wait)
 
     async def _start_worker(
-        self, queue: str, handler: RenderHandler | EmailHandler, *, prefetch: int, consumers: int
+        self, queue: str, handler: RenderHandler | EmailHandler | ReportHandler, *, prefetch: int, consumers: int
     ) -> None:
         assert self.connection is not None
         worker = QueueWorker(

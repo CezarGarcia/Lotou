@@ -1,9 +1,9 @@
 """Feed de atividade do painel: `stream:activity:{showId}`.
 
 A projeção monta uma entrada quando aplica pela primeira vez um `OrderConfirmed`,
-um `OrderCancelled` (o pedido entrou no estado agora, não é repetição nem fato
-atrasado), um `LotOpened` ou um `LotSoldOut`. Só o consumidor ao vivo faz isso;
-o replay não escreve no feed.
+um `OrderCancelled`, um `OrderRefunded` (não é repetição), um `TicketCheckedIn`
+(a primeira entrada do ingresso), um `LotOpened` ou um `LotSoldOut`. Só o
+consumidor ao vivo faz isso; o replay não escreve no feed.
 
 Uma vez só por evento, mesmo entre gerações: na troca de geração, o consumidor
 ao vivo da geração nova reaplica os eventos que chegaram durante o replay, que a
@@ -30,14 +30,22 @@ from typing import Any
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from analytics.contracts import Event, LotOpened, LotSoldOut, OrderCancelled, OrderConfirmed
+from analytics.contracts import (
+    Event,
+    LotOpened,
+    LotSoldOut,
+    OrderCancelled,
+    OrderConfirmed,
+    OrderRefunded,
+    TicketCheckedIn,
+)
 from analytics.live import keys
 from analytics.live.protocol import iso
 from analytics.store.read_models import ACTIVITY_LOG
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ACTIVITY_LOG", "ActivityEntry", "ActivityFeed", "decode", "lot_entry", "order_entry"]
+__all__ = ["ACTIVITY_LOG", "ActivityEntry", "ActivityFeed", "checkin_entry", "decode", "lot_entry", "order_entry"]
 
 
 @dataclass(frozen=True)
@@ -54,7 +62,7 @@ class ActivityEntry:
         return {"eventId": self.event_id, "type": self.type, "at": iso(self.at), **self.fields}
 
 
-def order_entry(event: Event, payload: OrderConfirmed | OrderCancelled) -> ActivityEntry:
+def order_entry(event: Event, payload: OrderConfirmed | OrderCancelled | OrderRefunded) -> ActivityEntry:
     fields: dict[str, Any]
     match payload:
         case OrderConfirmed():
@@ -67,6 +75,14 @@ def order_entry(event: Event, payload: OrderConfirmed | OrderCancelled) -> Activ
             }
         case OrderCancelled():
             fields = {"orderId": payload.order_id, "reason": payload.reason, "totalCents": payload.total_cents}
+        case OrderRefunded():
+            fields = {"orderId": payload.order_id, "refundedCents": payload.refunded_cents, "reason": payload.reason}
+    return ActivityEntry(payload.show_id, event.event_id, event.type, event.envelope.occurred_at, fields)
+
+
+def checkin_entry(event: Event, payload: TicketCheckedIn) -> ActivityEntry:
+    """Entrada na portaria: setor e portão. Sem ingresso, cadeira nem pedido: o feed não identifica ninguém."""
+    fields = {"sectorName": payload.sector_name, "gate": payload.gate}
     return ActivityEntry(payload.show_id, event.event_id, event.type, event.envelope.occurred_at, fields)
 
 

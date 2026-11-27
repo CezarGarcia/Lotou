@@ -118,7 +118,13 @@ def order_created(*, buyer_id: str, show_id: str) -> Message:
         "buyerId": buyer_id,
         "showId": show_id,
         "reservationId": uuid7(),
-        "totalCents": 16000,
+        "totalCents": 17600,
+        "subtotalCents": 16000,
+        "discountCents": 0,
+        "serviceFeeCents": 1600,
+        "serviceFeePaidBy": "BUYER",
+        "couponId": None,
+        "couponCode": None,
         "items": [
             {
                 "sectorId": uuid7(),
@@ -132,3 +138,34 @@ def order_created(*, buyer_id: str, show_id: str) -> Message:
         "createdAt": iso(datetime.now(UTC)),
     }
     return envelope("OrderCreated", order_id, payload)
+
+
+def order_refunded(
+    *,
+    buyer_id: str,
+    show_id: str,
+    reason: str = "ORDER_CANCELLED",
+    subtotal_cents: int = 32000,
+    discount_cents: int = 3200,
+    fee_paid_by: str = "BUYER",
+) -> Message:
+    """Estorno de um pedido com cupom; o reembolso é o total pago, taxa incluída."""
+    order_id = uuid7()
+    fee = subtotal_cents // 10
+    refunded = subtotal_cents - discount_cents + (fee if fee_paid_by == "BUYER" else 0)
+    payload = {
+        "orderId": order_id,
+        "buyerId": buyer_id,
+        "showId": show_id,
+        "reservationId": uuid7(),
+        "refundedCents": refunded,
+        "reason": reason,
+        "refundedAt": iso(datetime.now(UTC)),
+        "subtotalCents": subtotal_cents,
+        "discountCents": discount_cents,
+        "serviceFeeCents": fee,
+        "serviceFeePaidBy": fee_paid_by,
+        "couponId": uuid7() if discount_cents else None,
+        "couponCode": "LANCAMENTO10" if discount_cents else None,
+    }
+    return envelope("OrderRefunded", order_id, payload)

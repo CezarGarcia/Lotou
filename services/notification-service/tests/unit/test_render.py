@@ -6,6 +6,7 @@ import pytest
 
 from notification.ids import uuid7
 from notification.render.pdf import PdfJob, PdfTicket, pdf_text, qr_modules, render_pdf
+from notification.render.statement import StatementJob, render_statement
 from tests.events import ticket_code
 from tests.pdfs import read_pdf
 
@@ -98,3 +99,56 @@ def test_qr_matrix_has_the_quiet_zone() -> None:
     for line in (*modules[:4], *modules[-4:]):
         assert not any(line)
     assert all(not any(row[:4]) and not any(row[-4:]) for row in modules)
+
+
+def _statement(*, partial: bool) -> StatementJob:
+    return StatementJob(
+        request_id="01a21b00-0000-7000-8000-000000000099",
+        title="Samba de Quinta",
+        artist="Roda do Largo",
+        starts_at=datetime(2026, 12, 13, 0, 0, tzinfo=UTC),
+        timezone="America/Manaus",
+        venue_name="Teatro Guanabara",
+        partial=partial,
+        gross_sales_cents=54000,
+        discounts_cents=4050,
+        refunds_cents=9000,
+        platform_fee_cents=4500,
+        buyer_fees_cents=0,
+        receivable_cents=36450,
+        confirmed_orders=3,
+        refunded_orders=1,
+        tickets_sold=6,
+        tickets_refunded=1,
+        data_at=datetime(2026, 11, 27, 18, 0, tzinfo=UTC),
+        generated_at=datetime(2026, 11, 27, 18, 0, 3, tzinfo=UTC),
+    )
+
+
+def test_statement_pdf_has_the_lines_and_the_show_in_its_time_zone() -> None:
+    [page] = read_pdf(render_statement(_statement(partial=True)))
+    text = " ".join(page.text.split())
+    assert "Samba de Quinta" in text
+    assert "Roda do Largo" in text
+    # 00:00 UTC de 13/12 é 20h de sábado em Manaus.
+    assert "sábado, 12 de dezembro de 2026, às 20h00 (horário de America/Manaus)" in text
+    for line in (
+        "Vendas brutas R$ 540,00",
+        "Descontos de cupom -R$ 40,50",
+        "Reembolsos -R$ 90,00",
+        "Taxa de serviço absorvida -R$ 45,00",
+        "Valor a receber R$ 364,50",
+        "Taxa de serviço paga pelos compradores R$ 0,00",
+        "Pedidos reembolsados 1",
+    ):
+        assert line in text
+    assert "Relatório parcial" in text
+    # Dados e geração no fuso do show (18h UTC é 14h em Manaus).
+    assert "Dados de 27/11/2026 às 14h00 (horário de America/Manaus)" in text
+    assert "Gerado em 27/11/2026 às 14h00 (horário de America/Manaus)" in text
+
+
+def test_final_statement_says_so() -> None:
+    [page] = read_pdf(render_statement(_statement(partial=False)))
+    assert "Relatório final" in page.text
+    assert "parcial" not in page.text

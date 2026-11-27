@@ -281,7 +281,7 @@ async def test_activity_reaches_both_instances_in_under_two_seconds(cluster: Clu
                 "orderId": order.id,
                 "sectorName": "Pista",
                 "quantity": 3,
-                "totalCents": 36000,
+                "totalCents": 39600,  # 3 x 120,00 + a taxa de 10%, que este show repassa ao comprador
             }
             assert keys.parse_stream_id(entry["id"]) > keys.parse_stream_id(opened["id"])
 
@@ -337,6 +337,76 @@ async def test_nothing_is_lost_between_the_snapshot_and_live_frames(cluster: Clu
         assert len(live()) == len(set(live()))
         assert not set(live()) & set(in_snapshot)
         assert len(in_snapshot) + len(live()) == 1 + len(orders)
+    finally:
+        await client.close()
+
+
+async def test_check_in_and_refund_reach_the_dashboard_in_under_two_seconds(cluster: Cluster) -> None:
+    show = await published_show(cluster)
+    sold, refunded = show.order(seats=2), show.order(seats=1)
+    await cluster.publish(
+        sold.confirmed(now()), sold.tickets_issued(now()), refunded.confirmed(now()), refunded.tickets_issued(now())
+    )
+    client = await cluster.client(0, show.producer_id)
+    try:
+        await client.subscribe(show.id)
+        await client.wait_for(lambda f: f["type"] == "metrics" and f["metrics"]["ticketsSold"] == 3, within=10)
+
+        # Entrada na portaria: outro tópico (checkin.events), chave do show.
+        mark = client.mark()
+        gate = sold.checked_in(0, "Portão Norte", now())
+        published_at = time.monotonic()
+        await cluster.publish(gate)
+        received = await client.wait_for(
+            lambda f: f["type"] == "activity" and f["entry"]["type"] == "TicketCheckedIn", since=mark
+        )
+        assert received.monotonic - published_at < PHASE_CRITERION_SECONDS
+        entry = received.frame["entry"]
+        assert entry == {
+            "id": entry["id"],
+            "eventId": gate.event_id,
+            "type": "TicketCheckedIn",
+            "at": entry["at"],
+            "sectorName": "Pista",
+            "gate": "Portão Norte",
+        }
+        metrics = (
+            await client.wait_for(lambda f: f["type"] == "metrics" and f["metrics"]["checkedIn"] == 1, since=mark)
+        ).frame["metrics"]
+        assert metrics["checkinsByGate"] == [{"gate": "Portão Norte", "count": 1}]
+
+        # Cancelamento e estorno: o pedido sai das vendas e entra nos reembolsados.
+        mark = client.mark()
+        refund = refunded.refunded(now())
+        published_at = time.monotonic()
+        await cluster.publish(refunded.tickets_cancelled(now()), refund)
+        received = await client.wait_for(
+            lambda f: f["type"] == "activity" and f["entry"]["type"] == "OrderRefunded", since=mark
+        )
+        assert received.monotonic - published_at < PHASE_CRITERION_SECONDS
+        entry = received.frame["entry"]
+        assert entry == {
+            "id": entry["id"],
+            "eventId": refund.event_id,
+            "type": "OrderRefunded",
+            "at": entry["at"],
+            "orderId": refunded.id,
+            "refundedCents": 13200,
+            "reason": "ORDER_CANCELLED",
+        }
+        metrics = (
+            await client.wait_for(lambda f: f["type"] == "metrics" and f["metrics"]["ordersRefunded"] == 1, since=mark)
+        ).frame["metrics"]
+        assert (metrics["ticketsSold"], metrics["revenueCents"], metrics["ordersConfirmed"]) == (2, 24000, 2)
+        assert (metrics["sectors"][0]["sold"], metrics["sectors"][0]["remaining"]) == (2, 198)
+        assert metrics["checkedIn"] == 1
+
+        # O feed não identifica o comprador nem o ingresso.
+        feed = await cluster.feed(show.id)
+        assert [item["type"] for item in feed][-2:] == ["TicketCheckedIn", "OrderRefunded"]
+        serialized = json.dumps(feed)
+        assert sold.buyer_id not in serialized
+        assert sold.ticket_ids[0] not in serialized
     finally:
         await client.close()
 

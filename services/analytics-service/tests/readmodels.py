@@ -28,4 +28,7 @@ def assert_same(left: Snapshot, right: Snapshot) -> None:
         right_ids = [doc["_id"] for doc in right[base]]
         assert left_ids == right_ids, f"{base}: documentos diferentes"
         for a, b in zip(left[base], right[base], strict=True):
-            assert a == b, f"{base}/{a['_id']} difere"
+            if a != b:
+                fields = sorted({key for key in a.keys() | b.keys() if a.get(key) != b.get(key)})
+                diff = {key: (a.get(key), b.get(key)) for key in fields}
+                raise AssertionError(f"{base}/{a['_id']} difere: {diff}")

@@ -51,6 +51,8 @@ class UnknownQueue(ValueError):
 def _routing_key(queue: str, body: bytes) -> str:
     if queue == topology.RENDER_DLQ:
         return topology.RENDER_KEY
+    if queue == topology.REPORTS_DLQ:
+        return topology.STATEMENT_KEY
     _, task = tasks.decode(body, tasks.SendEmail)
     return tasks.routing_key(task.email)
 
@@ -169,5 +171,6 @@ meter.create_observable_gauge(
     "notifications_dlq_depth",
     callbacks=[_observe],
     unit="{message}",
-    description="Mensagens em cada DLQ (notifications.email.dlq, tickets.render.dlq); acima de zero é alerta",
+    description="Mensagens em cada DLQ (notifications.email.dlq, tickets.render.dlq, reports.generate.dlq); "
+    "acima de zero é alerta",
 )

@@ -2,21 +2,42 @@
 
 Vendas, relatório financeiro, pedidos e o painel ao vivo do produtor. Python 3.13, FastAPI, aiokafka, MongoDB (PyMongo assíncrono) e Redis (`redis-core`).
 
-Consome `shows.catalog`, `order.events` e `inventory.events` e mantém read models no MongoDB (banco `analytics`). Não é dono de dado nenhum: tudo aqui pode ser apagado e reconstruído a partir do Kafka, e o replay faz isso sem tirar o painel do ar ([ADR 30](../../docs/adr/0030-replay-dos-read-models.md)). É também o hub de tempo real do painel: métricas a cada segundo e feed de atividade por WebSocket ([ADR 31](../../docs/adr/0031-hub-de-tempo-real-so-para-o-painel.md)).
+Consome `shows.catalog`, `order.events`, `inventory.events` e `checkin.events` e mantém read models no MongoDB (banco `analytics`). Não é dono de dado nenhum: tudo aqui pode ser apagado e reconstruído a partir do Kafka, e o replay faz isso sem tirar o painel do ar ([ADR 30](../../docs/adr/0030-replay-dos-read-models.md)). É também o hub de tempo real do painel: métricas a cada segundo e feed de atividade por WebSocket ([ADR 31](../../docs/adr/0031-hub-de-tempo-real-so-para-o-painel.md)).
 
 ## Read models
 
 | Coleção | Um documento por | Conteúdo | Vem de |
 | --- | --- | --- | --- |
-| `shows` | show | cópia do catálogo: título, artista, produtor, status, local e fuso, setores com capacidade e lotes. Fica a `version` mais alta | `ShowPublished`, `ShowUpdated` |
-| `sales_by_sector` | show, setor e hora (UTC) | ingressos vendidos, receita em centavos, pedidos e a divisão por lote | `OrderConfirmed` |
-| `producer_statements` | show | vendas brutas, pedidos criados, confirmados e cancelados (por motivo), ingressos vendidos e emitidos, descontos, reembolsos e taxa (0 até a fase 6), valor a receber e se o relatório é parcial | eventos do pedido e o status do show |
-| `order_view` | pedido | estado, itens com setor, lote, cadeira e preço, ingressos emitidos, linha do tempo e o resumo do show (título, data e local) | eventos do pedido e o catálogo |
+| `shows` | show | cópia do catálogo: título, artista, produtor, status, local e fuso, setores com capacidade e lotes, e quem paga a taxa. Fica a `version` mais alta | `ShowPublished`, `ShowUpdated` |
+| `sales_by_sector` | show, setor e hora (UTC) | ingressos vendidos, receita em centavos, pedidos e a divisão por lote, líquidos de reembolso | `OrderConfirmed`, `OrderRefunded` |
+| `producer_statements` | show | relatório financeiro (veja abaixo), pedidos criados, confirmados, cancelados (por motivo) e reembolsados, ingressos vendidos, reembolsados e emitidos, e se o relatório é parcial | eventos do pedido e o status do show |
+| `order_view` | pedido | estado, valores (subtotal, desconto, taxa e quem a paga, cupom), itens com setor, lote, cadeira e preço, ingressos com estado (`VALID`, `USED` com portão e hora, `CANCELLED`), reembolso (valor, motivo, hora, falhas), linha do tempo e o resumo do show (título, data e local) | eventos do pedido, `TicketCheckedIn` e o catálogo |
 | `lot_timeline` | lote | quando abriu (com preço e quantidade) e quando esgotou, em ordem | `LotOpened`, `LotSoldOut` |
+| `checkins_by_gate` | show e portão | entradas na portaria, a primeira e a última | `TicketCheckedIn` |
 
-- **Valor a receber** = vendas brutas − descontos − reembolsos − taxa de serviço absorvida (`docs/projeto.md`, "Financeiro"). O relatório é parcial até o show ficar `FINISHED` no catálogo.
 - **Ocupação** (vendidos / capacidade) é calculada na leitura, com a capacidade do catálogo, por setor e no total.
-- `ReservationConfirmed` e `ReservationReleased` são lidos e ignorados de propósito: o pedido confirmado ou cancelado já traz a mesma informação, com o motivo.
+- **Receita** (`revenueCents` nas vendas, na lista de shows e no painel ao vivo) é sempre o valor líquido dos ingressos: preço da reserva menos o desconto do cupom, sem a taxa de serviço e sem os pedidos reembolsados. O desconto é por pedido e, se um pedido tivesse mais de um lote, seria dividido entre eles na proporção do valor (arredondado para baixo, o centavo que sobra fica com o primeiro). Somada no show inteiro, a receita é bruto − descontos − reembolsos do relatório. Um pedido reembolsado sai das vendas na hora (UTC) em que foi vendido, e os ingressos dele voltam a contar como disponíveis no painel.
+- `ReservationConfirmed`, `ReservationReleased` e `ReservationReturned` são lidos e ignorados de propósito: o pedido confirmado, cancelado ou reembolsado já traz a mesma informação, com o motivo. `CheckinRejected` também: leitura recusada não muda ingresso nenhum.
+
+### Relatório financeiro
+
+Contrato em [`contracts/api-fase-6.md`](../../contracts/api-fase-6.md). Em centavos:
+
+| Campo | O que soma |
+| --- | --- |
+| `grossSalesCents` | subtotal (ingressos ao preço da reserva) de todo pedido que chegou a `CONFIRMED`, reembolsado ou não |
+| `discountsCents` | desconto do cupom desses mesmos pedidos |
+| `refundsCents` | subtotal − desconto dos pedidos reembolsados (estorno concluído, `OrderRefunded`) |
+| `platformFeeCents` | taxa de serviço dos pedidos em que o produtor absorve a taxa (`PRODUCER`), menos a dos reembolsados |
+| `buyerFeesCents` | taxa paga pelos compradores (`BUYER`), menos a dos reembolsados; informativa, não entra no valor a receber |
+| `receivableCents` | bruto − descontos − reembolsos − taxa absorvida (`docs/projeto.md`, "Financeiro") |
+| `refundedOrders`, `ticketsRefunded` | pedidos e ingressos reembolsados |
+
+**Reembolso.** O pedido reembolsado continua nas vendas brutas e no desconto, porque foi vendido; o que o produtor recebeu por ele (subtotal − desconto) vai para os reembolsos. A taxa dele sai da taxa absorvida: o estorno devolve ao comprador tudo o que ele pagou, taxa incluída, e a plataforma não fica com taxa de pedido estornado, então não a cobra do produtor. Assim um pedido reembolsado soma zero no valor a receber, com o show repassando ou absorvendo a taxa. A alternativa, manter a taxa absorvida de um pedido estornado, faria o produtor pagar por uma venda que não aconteceu. Só o estorno concluído conta: um pedido em `REFUNDING` ou `REFUND_FAILED` ainda está com o dinheiro do comprador e continua no valor a receber.
+
+Exemplo (o cenário dos testes, `tests/scenario.py`): no show B, o produtor absorve a taxa; 2 × 90,00 sem cupom, 3 × 90,00 com cupom de 15% e 1 × 90,00 reembolsado. Bruto 540,00; descontos 40,50; reembolsos 90,00; taxa absorvida 18,00 + 27,00 = 45,00 (os 9,00 do reembolsado não entram); a receber 540,00 − 40,50 − 90,00 − 45,00 = 364,50, que é exatamente o que os dois pedidos que ficaram rendem ao produtor (162,00 + 202,50).
+
+O relatório é parcial até o show ficar `FINISHED` no catálogo.
 - Dinheiro em centavos (inteiro de 64 bits no MongoDB); datas em UTC. O `buyerId` fica no `order_view`, mas não sai na API do produtor. CPF e e-mail não existem nos eventos.
 
 Fora das gerações fica `activity_log`: o `eventId` de cada fato que já foi para o feed do painel, para o replay não repeti-lo (veja "Painel ao vivo").
@@ -29,8 +50,9 @@ O Kafka entrega ao menos uma vez, e a ordem só é garantida por chave (pedido n
 
 - **Uma transação por lote de partição.** O efeito de cada mensagem e o `eventId` dela em `processed_events` são gravados juntos; o offset só é confirmado depois. Repetição encontra o `eventId` e não faz nada.
 - **Show:** fica a versão mais alta; uma versão antiga republicada é ignorada.
-- **Pedido:** o estado anda pela tabela de transições (`PENDING` → `CONFIRMED` ou `CANCELLED`). Um fato anterior que chega depois só completa o documento; uma transição fora da tabela é recusada e registrada em log.
-- **Vendas e contadores** só somam quando o pedido entra no estado, então nem um `OrderConfirmed` repetido com outro `eventId` conta duas vezes.
+- **Pedido:** o estado anda pela tabela de transições do documento (`PENDING` → `CONFIRMED` ou `CANCELLED`; `CONFIRMED` → `REFUNDING` → `REFUNDED` ou `REFUND_FAILED`; `REFUND_FAILED` → `REFUNDING`). Cada fato é uma transição dela: `TicketsCancelled` leva de `CONFIRMED` a `REFUNDING`, `OrderRefundFailed` a `REFUND_FAILED` e `OrderRefunded` a `REFUNDED`. Um fato anterior que chega depois (o `OrderConfirmed` depois do `OrderRefunded`) só completa o documento; um fato à frente, cujo passo intermediário ainda não chegou, leva o pedido adiante pelo caminho da tabela. É assim que o reprocessamento manual (`REFUND_FAILED` → `REFUNDING`, sem evento próprio) aparece: o `OrderRefunded` seguinte leva o pedido a `REFUNDED`. Uma transição fora da tabela (estorno de pedido cancelado) é recusada e registrada em log.
+- **Ingresso:** `VALID` → `USED` (`TicketCheckedIn`) ou `CANCELLED` (`TicketsCancelled`). A entrada vem de outro tópico e pode chegar antes do próprio pedido: fica guardada no `order_view`, e o estado de cada ingresso é recalculado com os fatos dele passando pela tabela na ordem da hora de cada um (entrou antes do cancelamento: fica `USED`).
+- **Vendas e contadores** somam uma vez por tipo de fato do pedido (a confirmação, o estorno), quando o fato chega pela primeira vez, na frente ou atrás do estado; nem um `OrderConfirmed` repetido com outro `eventId` conta duas vezes. Tirar das vendas um pedido reembolsado precisa dos itens da confirmação, então quem chega por último faz isso: o estorno depois da confirmação subtrai da hora da venda; a confirmação depois do estorno entra zerada. Cada entrada na portaria conta uma vez por ingresso.
 - **Pedido antes do show:** o `order_view` nasce com `show: null` e é preenchido quando o show chega (e atualizado se o título, a data ou o local mudarem). A transação que cria o `order_view` e a do catálogo gravam o mesmo documento do relatório, então o MongoDB não deixa as duas passarem juntas com uma leitura velha.
 
 O resultado é o mesmo em qualquer ordem de chegada; um teste aplica a mesma noite de vendas embaralhada, com repetições, e compara documento a documento.
@@ -41,7 +63,7 @@ O consumidor usa `isolation_level=read_committed`: o relay do outbox do event-se
 
 ## Replay
 
-Reconstrói todos os read models do começo dos tópicos (`order.events` e `inventory.events` não têm prazo de retenção, e `shows.catalog` é compactado), sem parar a leitura:
+Reconstrói todos os read models do começo dos tópicos (`order.events`, `inventory.events` e `checkin.events` não têm prazo de retenção, e `shows.catalog` é compactado), sem parar a leitura. O replay lê exatamente os tópicos do consumidor ao vivo (`analytics.contracts.TOPICS`). Os pedidos publicados antes da fase 6 não têm subtotal, desconto nem taxa: são lidos como eram cobrados (subtotal = total, sem cupom nem taxa).
 
 1. toma o lock do replay (um por vez) e reserva a geração N+1, com coleções novas e o consumer group `analytics-service.gen-<N+1>`;
 2. guarda o fim de cada partição naquele instante;
@@ -69,7 +91,8 @@ Atrás do gateway, as rotas de `/v1` ganham o prefixo `/api` (`/api/v1/analytics
 | `GET` | `/v1/analytics/shows` | produtor | os shows do produtor do token, do mais novo para o mais antigo, paginados por cursor (`limit` até 100, `cursor`): `showId`, `title`, `artist`, `startsAt`, `timezone`, `venueName`, `city`, `status`, `ticketsSold` e `revenueCents` |
 | `GET` | `/v1/analytics/shows/{showId}/sales` | produtor dono do show | por setor: vendidos, capacidade, ocupação, receita, pedidos, lotes (vendas e linha do tempo) e série por hora (UTC); o mesmo no total |
 | `GET` | `/v1/analytics/shows/{showId}/statement` | produtor dono do show | relatório financeiro do show |
-| `GET` | `/v1/analytics/shows/{showId}/orders` | produtor dono do show | pedidos do show, do mais novo para o mais antigo, paginados por cursor (`limit` até 100, `cursor`, `status`) |
+| `GET` | `/v1/analytics/shows/{showId}/orders` | produtor dono do show | pedidos do show, do mais novo para o mais antigo, paginados por cursor (`limit` até 100, `cursor`, `status`, inclusive `REFUNDING`, `REFUND_FAILED` e `REFUNDED`) |
+| `GET` | `/internal/v1/shows/{showId}/statement` | conta de serviço | o mesmo relatório, com `producerId`, `artist`, `startsAt`, `timezone` e `venueName`, para o PDF do notification-service, que confere se quem pediu é o dono |
 | `POST` | `/internal/v1/replay` | conta de serviço | começa um replay; 202 com `Location` |
 | `GET` | `/internal/v1/replay/{generation}` | conta de serviço | situação do replay |
 | WebSocket | `/v1/analytics/live` | produtor, autenticado na primeira mensagem | painel ao vivo (veja abaixo) |
@@ -92,9 +115,9 @@ Erros em Problem Details (RFC 9457), com `type` em `urn:lotou:problem:<tipo>` e 
 
 O protocolo está em [`contracts/realtime-dashboard.md`](../../contracts/realtime-dashboard.md). Em resumo: o cliente abre o WebSocket, manda `auth` com o token em até 5 s (senão, 4408) e recebe `ready`; cada `subscribe` de um show dele devolve um `snapshot` (métricas de agora e as últimas 50 entradas do feed) e, daí em diante, `metrics` a cada segundo e `activity` a cada fato. O token é validado como na API HTTP; sem o papel `producer` fecha com 4403, e quando ele vence sem um `auth` novo, com 4401. Show de outro produtor recebe `error` `forbidden`. O ping de protocolo a cada 20 s é do uvicorn.
 
-**Feed de atividade.** Quando o consumidor ao vivo aplica pela primeira vez um `OrderConfirmed`, `OrderCancelled` (o pedido entrou no estado agora), `LotOpened` ou `LotSoldOut`, a projeção monta a entrada (sem comprador: nem o `buyerId`) e grava o `eventId` em `activity_log`, na mesma transação do efeito. Depois que a transação confirma, a entrada vai para o stream do show com `XADD MAXLEN ~ 1000` e `IDMP` (o `eventId` como ID da mensagem, para uma nova tentativa não duplicar). Assim o feed recebe cada fato uma vez só: nem uma repetição do Kafka, nem o replay (que não escreve no feed), nem o consumidor da geração nova reaplicando, depois da troca, o que a antiga aplicou durante o replay. Se o processo cair entre a transação e o `XADD`, aquela entrada se perde (o evento já está no `processed_events`): para um feed é aceitável, porque os números do painel vêm dos read models.
+**Feed de atividade.** Quando o consumidor ao vivo aplica pela primeira vez um `OrderConfirmed`, `OrderCancelled`, `OrderRefunded`, `TicketCheckedIn` (a primeira entrada do ingresso), `LotOpened` ou `LotSoldOut`, a projeção monta a entrada (sem comprador: nem o `buyerId`; a entrada na portaria leva só setor e portão) e grava o `eventId` em `activity_log`, na mesma transação do efeito. Depois que a transação confirma, a entrada vai para o stream do show com `XADD MAXLEN ~ 1000` e `IDMP` (o `eventId` como ID da mensagem, para uma nova tentativa não duplicar). Assim o feed recebe cada fato uma vez só: nem uma repetição do Kafka, nem o replay (que não escreve no feed), nem o consumidor da geração nova reaplicando, depois da troca, o que a antiga aplicou durante o replay. Se o processo cair entre a transação e o `XADD`, aquela entrada se perde (o evento já está no `processed_events`): para um feed é aceitável, porque os números do painel vêm dos read models.
 
-**Métricas.** O objeto `metrics` é calculado na geração ativa: `sales_by_sector` somado por setor (vendidos, receita), capacidade e nomes do catálogo (`remaining` = capacidade − vendidos), pedidos confirmados e cancelados do relatório, pedidos confirmados no último minuto (índice em `order_view`) e o lote atual de cada setor pela linha do tempo dos lotes.
+**Métricas.** O objeto `metrics` é calculado na geração ativa: `sales_by_sector` somado por setor (vendidos e receita líquidos), capacidade e nomes do catálogo (`remaining` = capacidade − vendidos), pedidos confirmados, cancelados e reembolsados do relatório, pedidos confirmados no último minuto (índice em `order_view`), entradas na portaria por portão (`checkins_by_gate`) e o lote atual de cada setor pela linha do tempo dos lotes.
 
 **Várias instâncias** ([ADR 32](../../docs/adr/0032-painel-ao-vivo-com-varias-instancias.md)). Cada instância guarda as assinaturas dos seus WebSockets e roda quatro tarefas no Redis:
 

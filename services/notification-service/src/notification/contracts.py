@@ -66,12 +66,26 @@ class OrderCancelled(ContractModel):
     cancelled_at: UtcDatetime
 
 
-Payload = TicketsIssued | OrderCancelled
+class OrderRefunded(ContractModel):
+    """Estorno concluído. Só o que o e-mail usa; o resto do payload é ignorado."""
+
+    order_id: Uuid
+    buyer_id: NonEmpty
+    show_id: Uuid
+    # O que voltou ao comprador: o total pago, taxa incluída.
+    refunded_cents: Cents
+    # ORDER_CANCELLED ou SHOW_CANCELLED. Lido como texto, como no cancelamento.
+    reason: NonEmpty
+    refunded_at: UtcDatetime
+
+
+Payload = TicketsIssued | OrderCancelled | OrderRefunded
 
 # (tipo, versão) -> modelo do payload. Só o que vira notificação está aqui.
 PAYLOADS: dict[tuple[str, int], type[ContractModel]] = {
     ("TicketsIssued", 1): TicketsIssued,
     ("OrderCancelled", 1): OrderCancelled,
+    ("OrderRefunded", 1): OrderRefunded,
 }
 
 

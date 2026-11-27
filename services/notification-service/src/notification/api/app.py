@@ -1,4 +1,4 @@
-"""Aplicação FastAPI: health check, API interna das DLQs e o ciclo de vida dos workers."""
+"""Aplicação FastAPI: pedido do relatório, health check, API interna das DLQs e o ciclo de vida dos workers."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -52,6 +52,7 @@ def create_app(
         lifespan=lifespan,
     )
     problems.install(app)
+    app.include_router(routes.reports)
     app.include_router(routes.internal)
     app.include_router(routes.health)
     if not settings.otel_sdk_disabled:

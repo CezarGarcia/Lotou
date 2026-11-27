@@ -24,13 +24,21 @@ SALES_BY_SECTOR = "sales_by_sector"
 PRODUCER_STATEMENTS = "producer_statements"
 ORDER_VIEW = "order_view"
 LOT_TIMELINE = "lot_timeline"
+CHECKINS_BY_GATE = "checkins_by_gate"
 PROCESSED_EVENTS = "processed_events"
 # Fora das gerações: `eventId` dos fatos que já foram para o feed do painel
 # (`analytics.live.activity`). Vence junto com o `processed_events`.
 ACTIVITY_LOG = "activity_log"
 
 # Os read models propriamente ditos: o que o replay reconstrói e compara.
-READ_MODELS: tuple[str, ...] = (SHOWS, SALES_BY_SECTOR, PRODUCER_STATEMENTS, ORDER_VIEW, LOT_TIMELINE)
+READ_MODELS: tuple[str, ...] = (
+    SHOWS,
+    SALES_BY_SECTOR,
+    PRODUCER_STATEMENTS,
+    ORDER_VIEW,
+    LOT_TIMELINE,
+    CHECKINS_BY_GATE,
+)
 ALL_COLLECTIONS: tuple[str, ...] = (*READ_MODELS, PROCESSED_EVENTS)
 
 
@@ -46,6 +54,7 @@ class ReadModels:
     statements: AsyncCollection[Doc]
     orders: AsyncCollection[Doc]
     lots: AsyncCollection[Doc]
+    checkins: AsyncCollection[Doc]
     processed: AsyncCollection[Doc]
 
     @classmethod
@@ -60,6 +69,7 @@ class ReadModels:
             statements=get(PRODUCER_STATEMENTS),
             orders=get(ORDER_VIEW),
             lots=get(LOT_TIMELINE),
+            checkins=get(CHECKINS_BY_GATE),
             processed=get(PROCESSED_EVENTS),
         )
 
@@ -86,6 +96,7 @@ async def create_indexes(db: AsyncDatabase[Doc], generation: int, *, processed_t
     # Pedidos confirmados no último minuto, a cada segundo, nas métricas do painel.
     await models.orders.create_index([("showId", ASCENDING), ("confirmedAt", ASCENDING)])
     await models.lots.create_index([("showId", ASCENDING)])
+    await models.checkins.create_index([("showId", ASCENDING)])
     await models.statements.create_index([("producerId", ASCENDING)])
     await models.processed.create_index([("processedAt", ASCENDING)], expireAfterSeconds=ttl)
 

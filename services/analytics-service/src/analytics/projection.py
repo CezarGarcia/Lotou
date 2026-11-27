@@ -11,8 +11,11 @@ no inventory). Cada read model é montado para não depender dela:
 
 - `shows` guarda a versão mais alta do show; uma versão menor é ignorada.
 - `order_view` anda pela tabela de transições (`analytics.domain.orders`).
-- `sales_by_sector` e os contadores do relatório só somam, e só quando o pedido
-  entra no estado (um OrderConfirmed com outro `eventId` não soma duas vezes).
+- `sales_by_sector` e os contadores do relatório só somam (o estorno soma
+  negativo), e cada tipo de fato do pedido soma uma vez só (um OrderConfirmed
+  com outro `eventId` não soma duas vezes).
+- `checkins_by_gate` soma uma entrada por ingresso: a entrada fica registrada
+  no `order_view` do pedido, e a repetição não conta.
 - Um pedido pode chegar antes do show (tópicos e partições diferentes): o
   `order_view` nasce com `show: null` e o título é preenchido quando o show
   chega. Para essa cópia nunca ficar velha, a transação que cria um
@@ -42,11 +45,15 @@ from analytics.contracts import (
     OrderCancelled,
     OrderConfirmed,
     OrderCreated,
+    OrderRefunded,
+    OrderRefundFailed,
     ShowSnapshot,
+    TicketCheckedIn,
+    TicketsCancelled,
     TicketsIssued,
 )
 from analytics.domain import hour_bucket, orders, shows, statement
-from analytics.live.activity import ACTIVITY_LOG, ActivityEntry, lot_entry, order_entry
+from analytics.live.activity import ACTIVITY_LOG, ActivityEntry, checkin_entry, lot_entry, order_entry
 from analytics.store.generations import utcnow
 from analytics.store.read_models import ReadModels
 
@@ -96,7 +103,16 @@ class Projector:
         match event.payload:
             case ShowSnapshot() as show:
                 await self._show(show, session)
-            case OrderCreated() | OrderConfirmed() | OrderCancelled() | TicketsIssued() as order:
+            case (
+                OrderCreated()
+                | OrderConfirmed()
+                | OrderCancelled()
+                | TicketsIssued()
+                | TicketsCancelled()
+                | OrderRefunded()
+                | OrderRefundFailed()
+                | TicketCheckedIn()
+            ) as order:
                 entry = await self._order(event, order, session)
             case LotOpened() | LotSoldOut() as lot:
                 entry = await self._lot(event, lot, session, with_names=activity is not None)
@@ -159,10 +175,17 @@ class Projector:
     async def _order(
         self,
         event: Event,
-        order: OrderCreated | OrderConfirmed | OrderCancelled | TicketsIssued,
+        order: OrderCreated
+        | OrderConfirmed
+        | OrderCancelled
+        | TicketsIssued
+        | TicketsCancelled
+        | OrderRefunded
+        | OrderRefundFailed
+        | TicketCheckedIn,
         session: AsyncClientSession,
     ) -> ActivityEntry | None:
-        """Devolve a entrada do feed quando o pedido acabou de ser confirmado ou cancelado."""
+        """Devolve a entrada do feed quando o fato do pedido foi aplicado pela primeira vez."""
         models = self.models
         view = await models.orders.find_one({"_id": order.order_id}, session=session)
         show_doc = None
@@ -193,26 +216,30 @@ class Projector:
             statement.add(current, change.statement, event.envelope.occurred_at)
             await models.statements.replace_one({"_id": order.show_id}, current, upsert=True, session=session)
 
-        if change.sales:
-            assert change.sold_at is not None
-            await self._sales(order.show_id, change.sales, change.sold_at, session)
+        if change.sales is not None:
+            await self._sales(order.show_id, change.sales, session)
+        if change.checkin is not None:
+            await self._checkin(order.show_id, change.checkin, session)
 
-        if change.step is orders.Step.ENTERED and isinstance(order, OrderConfirmed | OrderCancelled):
-            return order_entry(event, order)
+        if not change.first_time:
+            return None
+        match order:
+            case OrderConfirmed() | OrderCancelled() | OrderRefunded():
+                return order_entry(event, order)
+            case TicketCheckedIn():
+                return checkin_entry(event, order)
         return None
 
-    async def _sales(
-        self, show_id: str, lines: list[orders.SaleLine], sold_at: Any, session: AsyncClientSession
-    ) -> None:
-        hour = hour_bucket(sold_at)
+    async def _sales(self, show_id: str, sales: orders.SalesChange, session: AsyncClientSession) -> None:
+        hour = hour_bucket(sales.sold_at)
         by_sector: dict[str, list[orders.SaleLine]] = {}
-        for line in lines:
+        for line in sales.lines:
             by_sector.setdefault(line.sector_id, []).append(line)
         for sector_id, sector_lines in by_sector.items():
             increments: dict[str, Any] = {
                 "ticketsSold": sum(line.tickets for line in sector_lines),
                 "revenueCents": Int64(sum(line.revenue_cents for line in sector_lines)),
-                "orders": 1,
+                "orders": sales.orders,
             }
             for line in sector_lines:
                 increments[f"lots.{line.lot_id}.ticketsSold"] = line.tickets
@@ -226,6 +253,21 @@ class Projector:
                 upsert=True,
                 session=session,
             )
+
+    async def _checkin(self, show_id: str, checkin: orders.Checkin, session: AsyncClientSession) -> None:
+        """Uma entrada a mais no portão. Primeira e última entrada por `$min`/`$max`: não dependem da ordem."""
+        await self.models.checkins.update_one(
+            # `_id` determinístico: o replay monta o mesmo documento.
+            {"_id": f"{show_id}:{checkin.gate}"},
+            {
+                "$setOnInsert": {"showId": show_id, "gate": checkin.gate},
+                "$inc": {"checkedIn": 1},
+                "$min": {"firstAt": checkin.at},
+                "$max": {"lastAt": checkin.at},
+            },
+            upsert=True,
+            session=session,
+        )
 
     # ---------------------------------------------------------- inventory
 

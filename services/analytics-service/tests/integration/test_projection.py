@@ -16,7 +16,7 @@ from analytics.store.read_models import ReadModels, create_indexes
 from tests import events
 from tests.events import Message
 from tests.readmodels import assert_same, snapshot
-from tests.scenario import Scenario, at, build
+from tests.scenario import EXPECTED_STATEMENT_A, EXPECTED_STATEMENT_B, Scenario, at, build
 
 Client = AsyncMongoClient[dict[str, Any]]
 
@@ -64,32 +64,67 @@ async def test_scenario_builds_the_expected_read_models(mongo_client: Client, se
 
     statement = await models.statements.find_one({"_id": a})
     assert statement["producerId"] == scenario.show_a.producer_id
-    assert statement["grossSalesCents"] == 2 * 16000 + 3 * 12000 + 4 * 15000
-    assert statement["receivableCents"] == statement["grossSalesCents"]
-    assert (statement["confirmedOrders"], statement["ticketsSold"], statement["ticketsIssued"]) == (3, 9, 5)
-    assert statement["cancelledOrders"] == 2
-    assert statement["cancelledByReason"] == {"PAYMENT_DECLINED": 1, "RESERVATION_EXPIRED": 1}
-    assert statement["ordersCreated"] == 5
+    assert {field: statement[field] for field in EXPECTED_STATEMENT_A} == EXPECTED_STATEMENT_A
     assert statement["partial"] is True
     assert statement["show"]["title"] == scenario.new_title
+
+    # Show B: o produtor absorve a taxa, e o pedido reembolsado não a cobra dele.
+    statement_b = await models.statements.find_one({"_id": b})
+    assert statement_b["producerId"] == scenario.show_b.producer_id
+    assert {field: statement_b[field] for field in EXPECTED_STATEMENT_B} == EXPECTED_STATEMENT_B
 
     # O pedido do show B chegou antes do show: o título foi preenchido depois.
     o6 = await models.orders.find_one({"_id": scenario.orders["o6"].id})
     assert o6["show"]["title"] == "Samba de Quinta"
-    assert (await models.statements.find_one({"_id": b}))["producerId"] == scenario.show_b.producer_id
+
+    # Reembolso: valores, estado e ingressos cancelados.
+    o7 = await models.orders.find_one({"_id": scenario.orders["o7"].id})
+    assert o7["status"] == "REFUNDED"
+    assert (o7["subtotalCents"], o7["discountCents"], o7["serviceFeeCents"], o7["couponCode"]) == (
+        16000,
+        1600,
+        1600,
+        "LANCAMENTO10",
+    )
+    assert (o7["refundedCents"], o7["refundReason"], o7["refundedAt"]) == (16000, "ORDER_CANCELLED", at(19, 52))
+    assert [ticket["status"] for ticket in o7["tickets"]] == ["CANCELLED"]
+    o9 = await models.orders.find_one({"_id": scenario.orders["o9"].id})
+    assert o9["status"] == "REFUNDED"
+    assert [entry["status"] for entry in o9["timeline"]] == [
+        "CREATED",
+        "CONFIRMED",
+        "TICKETS_ISSUED",
+        "REFUNDING",
+        "REFUND_FAILED",
+        "REFUNDED",
+    ]
 
     # O título mudou na v3: os pedidos já gravados acompanham.
     o1 = await models.orders.find_one({"_id": scenario.orders["o1"].id})
     assert o1["show"]["title"] == scenario.new_title
     assert o1["status"] == "CONFIRMED"
     assert [entry["status"] for entry in o1["timeline"]] == ["CREATED", "CONFIRMED", "TICKETS_ISSUED"]
+    # Os dois ingressos do o1 entraram, cada um num portão.
+    assert [(ticket["status"], ticket["gate"]) for ticket in o1["tickets"]] == [
+        ("USED", "Portão A"),
+        ("USED", "Portão B"),
+    ]
 
+    # Vendas por setor líquidas: o o7 (reembolsado) sai da hora em que foi vendido,
+    # e a receita do o5 já tem o desconto do cupom.
     sales = await models.sales.find({"showId": a}).sort("_id", 1).to_list(None)
     by_key = {(doc["sectorId"], doc["hour"]): doc for doc in sales}
-    assert by_key[(scenario.plateia.id, at(18))]["ticketsSold"] == 2
+    plateia_18 = by_key[(scenario.plateia.id, at(18))]
+    assert (plateia_18["ticketsSold"], plateia_18["revenueCents"], plateia_18["orders"]) == (2, 32000, 1)
     assert by_key[(scenario.pista.id, at(18))]["lots"] == {scenario.lot1.id: {"ticketsSold": 3, "revenueCents": 36000}}
-    assert by_key[(scenario.pista.id, at(19))]["revenueCents"] == 60000
+    assert by_key[(scenario.pista.id, at(19))]["revenueCents"] == 60000 - 5000
     assert len(sales) == 3
+    revenue = sum(doc["revenueCents"] for doc in sales)
+    expected = EXPECTED_STATEMENT_A
+    assert revenue == expected["grossSalesCents"] - expected["discountsCents"] - expected["refundsCents"]
+
+    gates = await models.checkins.find({"showId": a}).sort("_id", 1).to_list(None)
+    assert [(doc["gate"], doc["checkedIn"]) for doc in gates] == [("Portão A", 2), ("Portão B", 1)]
 
     lot1 = await models.lots.find_one({"_id": f"{a}:{scenario.lot1.id}"})
     assert [entry["type"] for entry in lot1["transitions"]] == ["OPENED", "SOLD_OUT"]
@@ -209,7 +244,7 @@ async def test_feed_entries_come_from_facts_applied_for_the_first_time(mongo_cli
         ("OrderCancelled", cancelled.event_id),
     ]
     assert entries[0].fields == {"sectorName": "Pista", "lotName": "1º lote", "priceCents": 12000}
-    assert entries[2].fields == {"orderId": o4.id, "reason": "RESERVATION_EXPIRED", "totalCents": 12000}
+    assert entries[2].fields == {"orderId": o4.id, "reason": "RESERVATION_EXPIRED", "totalCents": 13200}
 
     # Outra geração (um replay, ou o consumidor ao vivo da geração nova) aplicando os
     # mesmos eventos monta os read models, mas não repete o feed.
@@ -229,3 +264,37 @@ async def test_without_the_feed_list_nothing_is_logged(mongo_client: Client, set
     assert await db[ACTIVITY_LOG].find_one({"_id": confirmed.event_id}) is None
     entries = await apply_live(mongo_client, await new_projector(), [confirmed])
     assert [entry.event_id for entry in entries] == [confirmed.event_id]
+
+
+async def test_refund_and_check_in_go_to_the_feed_once(mongo_client: Client, setup: Any) -> None:
+    _, new_projector = setup
+    scenario = build()
+    projector = await new_projector()
+    o1, o7 = scenario.orders["o1"], scenario.orders["o7"]
+    checked_in = o1.checked_in(0, "Portão A", at(22, 1))
+    refunded = o7.refunded(at(19, 52))
+    entries = await apply_live(
+        mongo_client,
+        projector,
+        [
+            o7.confirmed(at(18, 40, 3)),
+            o7.tickets_cancelled(at(19, 50)),  # o cancelamento dos ingressos não vai para o feed
+            refunded,
+            o7.refunded(at(19, 52)),  # o mesmo estorno com outro eventId
+            checked_in,  # antes do pedido: o documento nasce pela entrada
+            o1.checked_in(0, "Portão C", at(22, 9)),  # o mesmo ingresso de novo: não conta
+        ],
+    )
+    assert [(entry.type, entry.event_id) for entry in entries[1:]] == [
+        ("OrderRefunded", refunded.event_id),
+        ("TicketCheckedIn", checked_in.event_id),
+    ]
+    assert entries[1].fields == {"orderId": o7.id, "refundedCents": 16000, "reason": "ORDER_CANCELLED"}
+    assert entries[2].fields == {"sectorName": "Plateia", "gate": "Portão A"}
+
+    models = projector.models
+    gates = await models.checkins.find({"showId": scenario.show_a.id}).to_list(None)
+    assert [(doc["gate"], doc["checkedIn"], doc["firstAt"]) for doc in gates] == [("Portão A", 1, at(22, 1))]
+    # A entrada não conta pedido no relatório: só o fato do order.events conta.
+    statement = await models.statements.find_one({"_id": scenario.show_a.id})
+    assert (statement["ordersCreated"], statement["refundedOrders"], statement["refundsCents"]) == (1, 1, 14400)

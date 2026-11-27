@@ -36,7 +36,7 @@ def lot(sector: str, lot_id: str, *transitions: dict) -> dict:
 def test_metrics_of_a_show_on_sale() -> None:
     metrics = assemble(
         SHOW,
-        {"confirmedOrders": 3, "cancelledOrders": 2},
+        {"confirmedOrders": 3, "cancelledOrders": 2, "refundedOrders": 1},
         [
             {"_id": "pista", "ticketsSold": 7, "revenueCents": 96000},
             {"_id": "plateia", "ticketsSold": 80, "revenueCents": 1_280_000},
@@ -46,6 +46,10 @@ def test_metrics_of_a_show_on_sale() -> None:
         [lot("pista", "l1", opened(H15), sold_out(H19)), lot("pista", "l2", opened(H19, 15000))],
         orders_last_minute=2,
         now=NOW,
+        checkin_docs=[
+            {"gate": "Portão B", "checkedIn": 4},
+            {"gate": "Portão A", "checkedIn": 7},
+        ],
     )
     assert metrics == {
         "at": "2026-11-26T18:00:01Z",
@@ -53,7 +57,11 @@ def test_metrics_of_a_show_on_sale() -> None:
         "revenueCents": 1_381_000,
         "ordersConfirmed": 3,
         "ordersCancelled": 2,
+        "ordersRefunded": 1,
         "ordersLastMinute": 2,
+        "checkedIn": 11,
+        # Em ordem alfabética do portão.
+        "checkinsByGate": [{"gate": "Portão A", "count": 7}, {"gate": "Portão B", "count": 4}],
         "sectors": [
             {
                 "sectorId": "pista",
@@ -78,6 +86,7 @@ def test_metrics_of_a_show_on_sale() -> None:
 def test_before_any_sale_everything_is_zero() -> None:
     metrics = assemble(SHOW, None, [], [], orders_last_minute=0, now=NOW)
     assert (metrics["ticketsSold"], metrics["revenueCents"], metrics["ordersConfirmed"]) == (0, 0, 0)
+    assert (metrics["ordersRefunded"], metrics["checkedIn"], metrics["checkinsByGate"]) == (0, 0, [])
     assert [(s["sold"], s["remaining"], s["currentLot"]) for s in metrics["sectors"]] == [
         (0, 2000, None),
         (0, 80, None),

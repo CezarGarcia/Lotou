@@ -37,7 +37,10 @@ Fechamentos: `4401` (token ausente, inválido ou expirado, ou renovação com o 
   "revenueCents": 18600000,
   "ordersConfirmed": 610,
   "ordersCancelled": 42,
+  "ordersRefunded": 3,
   "ordersLastMinute": 37,
+  "checkedIn": 820,
+  "checkinsByGate": [{ "gate": "Portão A", "count": 512 }, { "gate": "Portão B", "count": 308 }],
   "sectors": [
     {
       "sectorId": "…", "name": "Pista", "capacity": 2000, "sold": 1180, "remaining": 820,
@@ -47,7 +50,7 @@ Fechamentos: `4401` (token ausente, inválido ou expirado, ou renovação com o 
 }
 ```
 
-`remaining` é capacidade menos vendidos (reservas seguradas não contam). `currentLot` vem da linha do tempo dos lotes; `null` antes da abertura.
+`ticketsSold` e `revenueCents` são líquidos: pedido reembolsado sai deles, e a receita é o valor dos ingressos com o desconto do cupom, sem a taxa de serviço. `remaining` é capacidade menos vendidos (reservas seguradas não contam). `currentLot` vem da linha do tempo dos lotes; `null` antes da abertura. `ordersConfirmed` conta todo pedido que chegou a ser confirmado, reembolsado ou não; `ordersRefunded`, os de estorno concluído. `checkedIn` é o total de entradas na portaria e `checkinsByGate` a divisão por portão, em ordem alfabética do portão.
 
 ### `entry` (feed de atividade)
 
@@ -62,8 +65,10 @@ Fechamentos: `4401` (token ausente, inválido ou expirado, ou renovação com o 
 | `OrderCancelled` | `orderId`, `reason`, `totalCents` |
 | `LotOpened` | `sectorName`, `lotName`, `priceCents` |
 | `LotSoldOut` | `sectorName`, `lotName` |
+| `OrderRefunded` | `orderId`, `refundedCents` (o que voltou ao comprador, taxa incluída), `reason` (`ORDER_CANCELLED` ou `SHOW_CANCELLED`) |
+| `TicketCheckedIn` | `sectorName`, `gate` |
 
-`id` é o ID da entrada no Redis Stream `stream:activity:{showId}`; `at` é o `occurredAt` do fato. Nada de comprador, CPF ou e-mail no feed. Em `LotOpened` e `LotSoldOut`, `sectorName` e `lotName` vêm do catálogo e são `null` no caso raro de o lote chegar ao analytics antes do show.
+`id` é o ID da entrada no Redis Stream `stream:activity:{showId}`; `at` é o `occurredAt` do fato. Nada de comprador, CPF ou e-mail no feed, e a entrada na portaria não leva ingresso nem cadeira. Em `LotOpened` e `LotSoldOut`, `sectorName` e `lotName` vêm do catálogo e são `null` no caso raro de o lote chegar ao analytics antes do show.
 
 ## Medida do critério da fase 4
 
