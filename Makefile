@@ -1,12 +1,12 @@
 # Lotou: comandos do monorepo. `make` ou `make help` lista tudo.
 
 COMPOSE ?= docker compose
-INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui keycloak otel-collector lgtm
+INFRA   := postgres mongodb redis-cache redis-core kafka kafka-init kafka-ui rabbitmq mailpit keycloak otel-collector lgtm
 
 .DEFAULT_GOAL := help
 .PHONY: help up infra down clean seed smoke logs ps test load-opening load-contention load-show-page load-check \
 	test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock \
-	test-analytics-service test-web replay-analytics
+	test-analytics-service test-notification-service test-web replay-analytics requeue-notifications
 
 help: ## Lista os comandos
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,6 +18,8 @@ up: ## Sobe o ambiente inteiro e espera ficar saudável
 	@echo "  API ......... http://localhost:8080/api/v1/shows"
 	@echo "  Grafana ..... http://localhost:3000   (traces: Explore > Tempo)"
 	@echo "  Keycloak .... http://localhost:8180   (admin / admin)"
+	@echo "  E-mails ..... http://localhost:8025   (Mailpit)"
+	@echo "  RabbitMQ .... http://localhost:15672  (lotou / lotou)"
 	@echo ""
 	@echo "  Primeira vez? Rode 'make seed' para criar os shows fictícios."
 
@@ -68,7 +70,7 @@ logs: ## Acompanha os logs de todos os serviços
 ps: ## Mostra o estado dos containers
 	$(COMPOSE) ps
 
-test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-analytics-service test-web ## Roda os testes de todos os serviços
+test: test-event-service test-api-gateway test-inventory-service test-order-service test-payment-mock test-analytics-service test-notification-service test-web ## Roda os testes de todos os serviços
 
 test-event-service: ## Testes do event-service (unitários e integração com Testcontainers)
 	cd services/event-service && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test && npm run test:e2e
@@ -90,9 +92,16 @@ test-payment-mock: ## Testes do payment-mock (unitários e integração com Post
 test-analytics-service: ## Testes do analytics-service (lint, tipos, unitários e integração com Kafka e MongoDB reais)
 	cd services/analytics-service && uv sync --locked && uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
 
+test-notification-service: ## Testes do notification-service (lint, tipos, unitários e integração com Kafka, RabbitMQ, Redis e Mailpit reais)
+	cd services/notification-service && uv sync --locked && uv run ruff check && uv run ruff format --check && uv run mypy && uv run pytest
+
 # Reconstrói os read models do analytics a partir do começo dos tópicos, sem parar a leitura.
 replay-analytics: ## Replay dos read models do analytics (roda dentro do container no ar)
 	$(COMPOSE) exec analytics-service python -m analytics.replay
+
+# Devolve as mensagens das DLQs do notification-service para uma nova rodada de tentativas.
+requeue-notifications: ## Devolve as DLQs de e-mail e de PDF para a fila (roda dentro do container no ar)
+	$(COMPOSE) exec notification-service python -m notification.dlq requeue
 
 test-web: ## Testes unitários do Angular
 	cd apps/web && ([ node_modules/.package-lock.json -nt package-lock.json ] || npm ci) && npm test -- --watch=false
