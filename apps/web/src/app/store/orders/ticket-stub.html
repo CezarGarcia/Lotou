@@ -1,0 +1,87 @@
+@let t = ticket();
+@let s = show();
+@if (s) {
+  <app-cartaz size="faixa" [artist]="s.artist">
+    @if (s.venue; as venue) {
+      <span class="venue">{{ venue.name }} · {{ venue.state }}</span>
+    }
+    <span class="tour">{{ s.title }}</span>
+  </app-cartaz>
+} @else {
+  <div class="head-placeholder" aria-hidden="true"></div>
+}
+<div class="perf" aria-hidden="true"></div>
+
+<div class="body">
+  <dl class="facts">
+    @if (s) {
+      <div>
+        <dt>Data</dt>
+        <dd>
+          {{ s.startsAt | showDate: tz() : 'weekday' }}, {{ s.startsAt | showDate: tz() : 'day' }}
+          {{ s.startsAt | showDate: tz() : 'month' }}
+        </dd>
+      </div>
+      @if (s.doorsOpenAt) {
+        <div>
+          <dt>Portões</dt>
+          <dd>{{ s.doorsOpenAt | showDate: tz() : 'time' }}</dd>
+        </div>
+      }
+      <div>
+        <dt>Show</dt>
+        <dd>{{ s.startsAt | showDate: tz() : 'time' }}</dd>
+      </div>
+    }
+    <div>
+      <dt>Setor</dt>
+      <dd>{{ t.sectorName }}</dd>
+    </div>
+    <div class="wide">
+      <dt>Lugar</dt>
+      <dd>{{ place() }}</dd>
+    </div>
+  </dl>
+
+  <div class="entry">
+    @switch (t.status) {
+      @case ('USED') {
+        <div class="stamp used">
+          <ng-icon name="lucideUserCheck" aria-hidden="true" />
+          <strong>Entrada registrada</strong>
+          @if (t.usedAt) {
+            <span
+              >{{ t.usedAt | showDate: tz() : 'date' }} às
+              {{ t.usedAt | showDate: tz() : 'time' }}</span
+            >
+          }
+          @if (t.gate) {
+            <span>{{ t.gate }}</span>
+          }
+        </div>
+      }
+      @case ('CANCELLED') {
+        <div class="stamp">
+          <ng-icon name="lucideBan" aria-hidden="true" />
+          <strong>Ingresso cancelado</strong>
+          <span>Não vale para a entrada</span>
+        </div>
+      }
+      @default {
+        <div class="qr">
+          <app-ticket-qr
+            [code]="t.code"
+            [label]="'QR code do ingresso, ' + t.sectorName + ', ' + place()"
+          />
+        </div>
+      }
+    }
+    <p class="code">
+      <small>Código do ingresso</small>
+      <code>{{ t.id }}</code>
+    </p>
+    @if (t.status !== 'VALID') {
+      <span class="state">{{ statusLabels[t.status] }}</span>
+    }
+  </div>
+</div>

@@ -11,13 +11,15 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { lucideZoomIn, lucideZoomOut } from '@ng-icons/lucide';
 import { Direction, SeatMapState, SeatView } from './seat-map.state';
 
 /** Distância entre centros de cadeiras, em unidades do SVG. */
 const PITCH = 28;
-const RADIUS = 11;
+/** A cadeira ocupa quase toda a célula: o alvo do toque fica do maior tamanho possível. */
+const SEAT_WIDTH = 24;
+const SEAT_HEIGHT = 22;
 /** Espaço para o nome da fileira, dos dois lados. */
 const GUTTER = 28;
 /** Espaço do palco, acima da primeira fileira. */
@@ -27,6 +29,8 @@ const MAX_SEAT_PX = 40;
 /** Tamanho mínimo de uma cadeira, em px: no celular, o mapa rola para o lado em vez de encolher demais. */
 const MIN_SEAT_PX = 16;
 const ZOOM_STEPS = [1, 1.5, 2, 3];
+/** Na tela de toque, o mapa abre um passo mais perto: cadeiras de 24 px em vez de 16. */
+const TOUCH_ZOOM = 1;
 
 const KEYS: Record<string, Direction> = {
   ArrowLeft: 'left',
@@ -49,7 +53,8 @@ const KEYS: Record<string, Direction> = {
 @Component({
   selector: 'app-seat-map',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatIconModule],
+  imports: [NgIcon],
+  viewProviders: [provideIcons({ lucideZoomIn, lucideZoomOut })],
   templateUrl: './seat-map.html',
   styleUrl: './seat-map.scss',
 })
@@ -64,17 +69,26 @@ export class SeatMap {
   readonly toggled = output<string>();
 
   protected readonly pitch = PITCH;
-  protected readonly radius = RADIUS;
+  protected readonly seatWidth = SEAT_WIDTH;
+  protected readonly seatHeight = SEAT_HEIGHT;
   protected readonly gutter = GUTTER;
   protected readonly stage = STAGE;
 
   protected readonly zoom = signal(0);
   protected readonly scale = computed(() => ZOOM_STEPS[this.zoom()]);
+  /** Mapa grande visto de longe: os números das cadeiras ficariam ilegíveis e somem. */
+  protected readonly compact = computed(() => this.zoom() === 0 && this.state().columns > 20);
   protected readonly canZoomIn = computed(() => this.zoom() < ZOOM_STEPS.length - 1);
 
   protected readonly width = computed(() => GUTTER * 2 + this.state().columns * PITCH);
   protected readonly height = computed(() => STAGE + this.state().rows.length * PITCH + 4);
   protected readonly viewBox = computed(() => `0 0 ${this.width()} ${this.height()}`);
+  /** O palco: uma faixa com a frente arredondada, voltada para a plateia. */
+  protected readonly stagePath = computed(() => {
+    const left = GUTTER;
+    const right = this.width() - GUTTER;
+    return `M${left} 6H${right}V26Q${this.width() / 2} 44 ${left} 26Z`;
+  });
   protected readonly maxWidth = computed(() => (this.width() / PITCH) * MAX_SEAT_PX * this.scale());
   protected readonly minWidth = computed(() => (this.width() / PITCH) * MIN_SEAT_PX * this.scale());
 
@@ -99,8 +113,16 @@ export class SeatMap {
   }
 
   constructor() {
-    // Mapa maior que a tela (celular): começa no centro, de frente para o palco.
-    afterNextRender(() => this.keepCenter(0.5, 0));
+    // Mapa maior que a tela (celular): começa no centro, de frente para o palco. Na
+    // tela de toque, um passo mais perto, para o dedo acertar a cadeira.
+    afterNextRender(() => {
+      if (this.state().columns > 12 && globalThis.matchMedia?.('(pointer: coarse)').matches) {
+        this.zoom.set(TOUCH_ZOOM);
+        afterNextRender(() => this.keepCenter(0.5, 0), { injector: this.injector });
+        return;
+      }
+      this.keepCenter(0.5, 0);
+    });
   }
 
   /** Aproxima ou afasta mantendo no centro o ponto que estava no centro. */

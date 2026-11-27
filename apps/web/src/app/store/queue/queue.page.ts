@@ -1,16 +1,36 @@
 import { httpResource } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  linkedSignal,
+} from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideArrowRight,
+  lucideBan,
+  lucideClock,
+  lucideCloudOff,
+  lucideHourglass,
+  lucideLoaderCircle,
+  lucidePartyPopper,
+  lucideTimerOff,
+  lucideTriangleAlert,
+  lucideUsers,
+} from '@ng-icons/lucide';
 import { ShowDatePipe } from '../../core/format/show-date.pipe';
 import { Show } from '../data/show.models';
 import { SHOWS_URL } from '../data/shows.api';
 import { formatWait } from '../shared/countdown';
 import { ShowHeading } from '../shared/show-heading';
 import { SalesCountdown } from '../show/sales-countdown';
+import { QueueRules } from './queue-rules';
 import { QueueStore } from './queue.store';
+import { BackLink } from '../checkout/back-link';
 
 /**
  * Fila virtual de um show de alta demanda. Entra na fila ao abrir, mostra a
@@ -20,16 +40,22 @@ import { QueueStore } from './queue.store';
 @Component({
   selector: 'app-queue-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    MatButtonModule,
-    MatIconModule,
-    MatProgressSpinnerModule,
-    ShowDatePipe,
-    ShowHeading,
-    SalesCountdown,
-  ],
+  imports: [RouterLink, BackLink, NgIcon, ShowDatePipe, ShowHeading, SalesCountdown, QueueRules],
   providers: [QueueStore],
+  viewProviders: [
+    provideIcons({
+      lucideArrowRight,
+      lucideBan,
+      lucideClock,
+      lucideCloudOff,
+      lucideHourglass,
+      lucideLoaderCircle,
+      lucidePartyPopper,
+      lucideTimerOff,
+      lucideTriangleAlert,
+      lucideUsers,
+    }),
+  ],
   templateUrl: './queue.page.html',
   styleUrl: './queue.page.scss',
 })
@@ -68,6 +94,27 @@ export class QueuePage {
   });
 
   protected readonly formatWait = formatWait;
+
+  /** A situação na fila, para o visual do cartão (a admissão chama atenção). */
+  protected readonly state = computed(() =>
+    this.store.error() ? 'ERROR' : (this.store.status()?.status ?? 'LOADING'),
+  );
+
+  /** A maior posição vista nesta tela: é dela que a barra de avanço parte. */
+  private readonly firstPosition = linkedSignal<number | undefined, number>({
+    source: () => this.store.status()?.position,
+    computation: (position, previous) => Math.max(previous?.value ?? 0, position ?? 0),
+  });
+
+  /** Quanto da fila já andou desde que você entrou, de 0 a 100. */
+  protected readonly progress = computed(() => {
+    const position = this.store.status()?.position;
+    const first = this.firstPosition();
+    if (!position || first <= 1) {
+      return position === 1 ? 100 : 0;
+    }
+    return Math.round(((first - position) / (first - 1)) * 100);
+  });
 
   constructor() {
     effect(() => this.store.start(this.id()));

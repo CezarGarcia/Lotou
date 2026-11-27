@@ -1,43 +1,41 @@
 <div class="toolbar">
   <ul class="legend" aria-label="Legenda do mapa">
     <li>
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <circle class="free" cx="10" cy="10" r="8" />
+      <svg viewBox="0 0 24 22" aria-hidden="true">
+        <rect class="free" x="1" y="1" width="22" height="20" rx="5" />
       </svg>
       Livre
     </li>
     <li>
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <circle class="selected" cx="10" cy="10" r="8" />
+      <svg viewBox="0 0 24 22" aria-hidden="true">
+        <rect class="selected" x="1" y="1" width="22" height="20" rx="5" />
       </svg>
       Sua escolha
     </li>
     <li>
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <circle class="taken" cx="10" cy="10" r="8" />
-        <line class="taken" x1="5" y1="15" x2="15" y2="5" />
+      <svg viewBox="0 0 24 22" aria-hidden="true">
+        <rect class="taken" x="1" y="1" width="22" height="20" rx="5" />
+        <line class="taken" x1="7" y1="15" x2="17" y2="7" />
       </svg>
-      Ocupada
+      Ocupada <span class="muted">(reservada ou vendida)</span>
     </li>
   </ul>
   <div class="zoom" role="group" aria-label="Zoom do mapa">
     <button
-      matIconButton
       type="button"
       (click)="zoomBy(-1)"
       [disabled]="zoom() === 0"
       aria-label="Diminuir o mapa"
     >
-      <mat-icon>zoom_out</mat-icon>
+      <ng-icon name="lucideZoomOut" aria-hidden="true" />
     </button>
     <button
-      matIconButton
       type="button"
       (click)="zoomBy(1)"
       [disabled]="!canZoomIn()"
       aria-label="Aumentar o mapa"
     >
-      <mat-icon>zoom_in</mat-icon>
+      <ng-icon name="lucideZoomIn" aria-hidden="true" />
     </button>
   </div>
 </div>
@@ -48,6 +46,7 @@
     [style.width.%]="scale() * 100"
     [style.max-width.px]="maxWidth()"
     [style.min-width.px]="minWidth()"
+    [class.compact]="compact()"
     role="grid"
     aria-multiselectable="true"
     [attr.aria-label]="'Cadeiras do setor ' + sectorName()"
@@ -55,14 +54,7 @@
     (keydown)="onKeydown($event)"
   >
     <g aria-hidden="true">
-      <rect
-        class="stage"
-        [attr.x]="gutter"
-        y="8"
-        [attr.width]="width() - gutter * 2"
-        height="26"
-        rx="13"
-      />
+      <path class="stage" [attr.d]="stagePath()" />
       <text class="stage-label" [attr.x]="width() / 2" y="21">PALCO</text>
     </g>
 
@@ -90,7 +82,13 @@
             (click)="choose(seat.label)"
             (focus)="focused.set(seat.label)"
           >
-            <circle [attr.cx]="cx" [attr.cy]="cy" [attr.r]="radius" />
+            <rect
+              [attr.x]="cx - seatWidth / 2"
+              [attr.y]="cy - seatHeight / 2"
+              [attr.width]="seatWidth"
+              [attr.height]="seatHeight"
+              rx="6"
+            />
             @if (available === false) {
               <line [attr.x1]="cx - 5" [attr.y1]="cy + 5" [attr.x2]="cx + 5" [attr.y2]="cy - 5" />
             } @else {
@@ -113,3 +111,6 @@
     <p class="loading" role="status">Carregando as cadeiras...</p>
   }
 </div>
+<p class="tip muted" aria-hidden="true">
+  Arraste para ver o resto do mapa. Use o zoom para aproximar.
+</p>

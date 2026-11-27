@@ -1,213 +1,201 @@
 .page {
   display: grid;
-  gap: 8px;
-  max-width: 820px;
-  padding-block: 16px 64px;
-}
+  gap: 20px;
+  max-width: 880px;
+  padding-block: 16px 72px;
 
-.back {
-  justify-self: start;
-  margin-bottom: 12px;
-}
-
-.card {
-  display: grid;
-  gap: 16px;
-  padding: 24px;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 20px;
-  background: var(--mat-sys-surface-container-lowest);
-
-  a {
-    justify-self: start;
+  app-show-heading {
+    margin-bottom: 0;
   }
 }
 
+// A situação do pedido, com a cor do estado.
 .status {
+  --tone: var(--lt-info);
+  --tone-soft: var(--lt-info-soft);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
-
-  h2 {
-    margin: 0;
-    font: var(--mat-sys-headline-small);
-    font-weight: 700;
-  }
-
-  p {
-    margin: 4px 0 0;
-    color: var(--mat-sys-on-surface-variant);
-  }
-
-  mat-icon {
-    flex: none;
-    width: 44px;
-    height: 44px;
-    font-size: 44px;
-  }
-
-  &.confirmed mat-icon {
-    color: var(--mat-sys-primary);
-  }
-
-  &.cancelled mat-icon,
-  &.failed mat-icon {
-    color: var(--mat-sys-error);
-  }
-
-  &.refunded mat-icon {
-    color: var(--mat-sys-tertiary);
-  }
-}
-
-.cancellation {
-  gap: 12px;
-
-  h2 {
-    margin: 0;
-    font: var(--mat-sys-title-medium);
-    font-weight: 700;
-  }
-
-  p {
-    margin: 0;
-    color: var(--mat-sys-on-surface-variant);
-  }
-
-  .blocked {
-    display: flex;
-    gap: 8px;
-  }
-
-  .danger {
-    justify-self: start;
-    min-height: 44px;
-    --mat-button-outlined-label-text-color: var(--mat-sys-error);
-  }
-
-  .error {
-    padding: 12px;
-    border-radius: 12px;
-    background: var(--mat-sys-error-container);
-    color: var(--mat-sys-on-error-container);
-
-    p {
-      color: inherit;
-    }
-  }
-}
-
-// No lugar do QR: a entrada registrada ou o cancelamento.
-.stamp {
-  display: grid;
-  flex: none;
-  place-content: center;
-  justify-items: center;
-  gap: 2px;
-  width: 160px;
-  aspect-ratio: 1;
-  border: 2px dashed var(--mat-sys-outline-variant);
-  border-radius: 12px;
-  text-align: center;
-
-  mat-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 36px;
-  }
-
-  &.used mat-icon {
-    color: var(--mat-sys-primary);
-  }
-}
-
-.section-title {
-  margin: 28px 0 12px;
-  font: var(--mat-sys-title-large);
-  font-weight: 700;
-}
-
-.tickets {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ticket {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px 24px;
   padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  border-radius: var(--lt-radius);
+  background: var(--tone-soft);
 
-  app-ticket-qr {
+  &[data-status='PENDING'],
+  &[data-status='REFUND_FAILED'] {
+    --tone: var(--lt-warn);
+    --tone-soft: var(--lt-warn-soft);
+  }
+
+  &[data-status='CONFIRMED'] {
+    --tone: var(--lt-ok);
+    --tone-soft: var(--lt-ok-soft);
+  }
+
+  &[data-status='CANCELLED'] {
+    --tone: var(--lt-danger);
+    --tone-soft: var(--lt-danger-soft);
+  }
+
+  .badge {
+    display: grid;
     flex: none;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--tone);
+    color: var(--lt-bg);
+    font-size: 1.625rem;
   }
 
-  .info {
-    display: flex;
-    flex: 1;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px 24px;
-    min-width: 200px;
+  h2 {
+    margin: 2px 0 4px;
+    font-family: var(--lt-display);
+    font-size: clamp(1.75rem, 5vw, 2.25rem);
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
   }
 
-  // No celular, o QR fica em cima e grande: é ele que a portaria lê.
-  @media (max-width: 520px) {
-    app-ticket-qr {
-      --qr-size: min(240px, 100%);
-      margin-inline: auto;
+  p {
+    margin: 0;
+    color: var(--lt-text-2);
+  }
+
+  .btn {
+    margin-top: 14px;
+  }
+}
+
+.ticket-wait {
+  display: grid;
+  place-items: center;
+  height: 320px;
+  border-radius: var(--lt-radius-lg);
+  color: var(--lt-muted);
+}
+
+@media (max-width: 560px) {
+  .status {
+    gap: 12px;
+    padding: 14px 16px;
+
+    .badge {
+      width: 40px;
+      height: 40px;
+      font-size: 1.375rem;
     }
   }
-  border-radius: 16px;
-  border-left: 6px solid var(--mat-sys-primary);
-  background: var(--mat-sys-surface-container-low);
+}
 
-  &.inactive {
-    border-left-color: var(--mat-sys-outline);
-    opacity: 0.75;
-  }
+.spin {
+  animation: spin 1s linear infinite;
+}
 
-  .where,
-  .code {
-    display: grid;
-    gap: 2px;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
+}
 
-  strong {
-    font: var(--mat-sys-title-medium);
-    font-weight: 700;
-  }
+.tickets-block {
+  display: grid;
+  gap: 14px;
+}
 
-  span,
-  small {
-    color: var(--mat-sys-on-surface-variant);
-  }
-
-  code {
-    font-size: 0.85rem;
-    word-break: break-all;
-  }
-
-  .chip {
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--mat-sys-surface-container-highest);
-    font: var(--mat-sys-label-medium);
-  }
+.block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
 }
 
 .qr-note {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 12px 0 0;
-  font: var(--mat-sys-body-small);
-  color: var(--mat-sys-on-surface-variant);
+  gap: 10px;
+  margin: 0;
+  color: var(--lt-text-3);
+  font-size: 0.9375rem;
+
+  ng-icon {
+    color: var(--lt-cta);
+    font-size: 1.25rem;
+  }
+}
+
+.tickets {
+  display: grid;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lower {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  padding: 22px 24px;
+
+  h2 {
+    margin: 0;
+    font-family: var(--lt-display);
+    font-size: 1.75rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 0;
+    color: var(--lt-text-3);
+  }
+}
+
+.cancellation {
+  .blocked {
+    display: flex;
+    gap: 10px;
+
+    ng-icon {
+      flex: none;
+      margin-top: 4px;
+    }
+  }
+
+  .danger {
+    justify-self: start;
+    border-color: var(--lt-danger);
+    color: var(--lt-danger);
+
+    &:hover:not(:disabled) {
+      background: var(--lt-danger-soft);
+      border-color: var(--lt-danger);
+    }
+  }
+
+  .error {
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--lt-danger-soft);
+
+    p {
+      color: inherit;
+    }
+
+    small {
+      font-family: var(--lt-mono);
+    }
+  }
 }
 
 .items {
@@ -221,55 +209,78 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 0;
-    border-top: 1px solid var(--mat-sys-outline-variant);
+    border-top: 1px dashed var(--lt-line-strong);
   }
 
   span {
     display: grid;
+    color: var(--lt-text-2);
   }
 
   small {
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-muted);
   }
 
   strong {
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .discount strong {
-    color: var(--mat-sys-primary);
+    color: var(--lt-ok);
   }
 
   .total {
-    font: var(--mat-sys-title-medium);
+    border-top-style: solid;
+    font-size: 1.25rem;
     font-weight: 800;
+
+    span {
+      color: var(--lt-text);
+    }
   }
 }
 
 .empty {
+  display: grid;
   justify-items: center;
-  padding-block: 48px;
+  gap: 10px;
+  padding: 56px 16px;
   text-align: center;
 
-  mat-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 48px;
-    color: var(--mat-sys-outline);
+  > ng-icon {
+    font-size: 3rem;
+    color: var(--lt-muted);
   }
 
   h2 {
     margin: 0;
-    font: var(--mat-sys-headline-small);
+    font-family: var(--lt-display);
+    font-size: 2.25rem;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 
   p {
     margin: 0;
-    color: var(--mat-sys-on-surface-variant);
+    color: var(--lt-muted);
   }
 
   .trace {
-    font: var(--mat-sys-body-small);
-    font-family: monospace;
+    font-family: var(--lt-mono);
+    font-size: 0.8125rem;
+  }
+}
+
+.loading {
+  display: grid;
+  gap: 20px;
+
+  .skeleton {
+    height: 88px;
+  }
+
+  .tall {
+    height: 480px;
   }
 }

@@ -1,148 +1,258 @@
 .page {
-  max-width: 820px;
-  padding-block: 24px 64px;
-}
-
-h1 {
-  margin: 0 0 20px;
-  font-size: clamp(1.8rem, 4vw, 2.4rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.list {
   display: grid;
-  gap: 12px;
+  gap: 28px;
+  padding-block: 28px 72px;
+}
+
+.head {
+  .eyebrow {
+    margin: 0 0 8px;
+    color: var(--lt-accent);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--lt-display);
+    font-size: clamp(3rem, 9vw, 5rem);
+    font-weight: 900;
+    line-height: 0.88;
+    text-transform: uppercase;
+  }
+}
+
+.group {
+  display: grid;
+  gap: 16px;
+
+  & + .group {
+    margin-top: 36px;
+  }
+}
+
+ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.order {
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 20px;
+
+  > .skeleton {
+    height: 290px;
+  }
+}
+
+a.card,
+a.row {
+  color: inherit;
+  text-decoration: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--lt-line);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-surface);
+  transition:
+    border-color 0.15s ease,
+    transform 0.2s var(--lt-ease);
+
+  &:hover {
+    border-color: var(--lt-line-strong);
+    transform: translateY(-3px) rotate(-0.4deg);
+  }
+
+  app-cartaz {
+    min-height: 170px;
+    border-radius: 0;
+
+    @media (max-width: 560px) {
+      min-height: 130px;
+    }
+  }
+}
+
+.when {
+  font-family: var(--lt-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cartaz-placeholder {
+  height: 170px;
+  background: var(--lt-raised);
+}
+
+.info {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  strong {
+    font-size: 1.125rem;
+  }
+
+  > span {
+    color: var(--lt-text-3);
+    font-size: 0.9375rem;
+  }
+}
+
+.card .info {
+  padding: 16px 20px 20px;
+
+  // O nome já está no cartaz, em letra grande.
+  strong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+.rows {
+  display: grid;
+  gap: 10px;
+}
+
+.row {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 12px;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-lowest);
-  color: inherit;
-  text-decoration: none;
-  transition: border-color 120ms ease;
+  padding: 10px 16px 10px 10px;
+  border: 1px solid var(--lt-line);
+  border-radius: var(--lt-radius);
+  background: var(--lt-surface);
 
   &:hover {
-    border-color: var(--mat-sys-primary);
+    border-color: var(--lt-line-strong);
   }
 
-  &:focus-visible {
-    outline: 3px solid var(--mat-sys-primary);
-    outline-offset: 2px;
-  }
-}
-
-.cover {
-  flex: none;
-  width: 72px;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border-radius: 12px;
-}
-
-.text {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  gap: 2px;
-
-  strong {
-    font: var(--mat-sys-title-medium);
-    font-weight: 700;
+  app-cartaz {
+    flex: none;
+    width: 56px;
+    height: 70px;
+    border-radius: 6px;
+    filter: grayscale(0.85);
   }
 
-  span {
-    font: var(--mat-sys-body-small);
-    color: var(--mat-sys-on-surface-variant);
+  .info {
+    flex: 1;
+  }
+
+  @media (max-width: 480px) {
+    flex-wrap: wrap;
+
+    .info {
+      flex-basis: calc(100% - 72px);
+    }
+
+    .status {
+      margin-left: 72px;
+    }
   }
 }
 
 .status {
-  flex: none;
-  padding: 4px 10px;
+  --tag: var(--lt-muted);
+  padding: 2px 10px;
+  border: 1px solid var(--tag);
   border-radius: 999px;
-  background: var(--mat-sys-surface-container-highest);
-  font: var(--mat-sys-label-medium);
-  font-weight: 600;
+  color: var(--tag);
+  font-family: var(--lt-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 
   &[data-status='CONFIRMED'] {
-    background: var(--mat-sys-primary-container);
-    color: var(--mat-sys-on-primary-container);
+    --tag: var(--lt-ok);
   }
 
-  &[data-status='CANCELLED'],
+  &[data-status='PENDING'],
   &[data-status='REFUND_FAILED'] {
-    background: var(--mat-sys-error-container);
-    color: var(--mat-sys-on-error-container);
+    --tag: var(--lt-warn);
+  }
+
+  &[data-status='CANCELLED'] {
+    --tag: var(--lt-danger);
   }
 
   &[data-status='REFUNDING'],
   &[data-status='REFUNDED'] {
-    background: var(--mat-sys-tertiary-container);
-    color: var(--mat-sys-on-tertiary-container);
+    --tag: var(--lt-info);
   }
-
-  @media (max-width: 480px) {
-    display: none;
-  }
-}
-
-.skeleton {
-  height: 98px;
-  border-radius: 16px;
-  background: var(--mat-sys-surface-container-high);
 }
 
 .more {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: 8px;
+}
 
-  mat-progress-bar {
-    max-width: 240px;
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
 .inline-error {
-  margin: 16px 0 0;
-  color: var(--mat-sys-error);
+  margin: 0;
+  color: var(--lt-danger);
 }
 
 .state {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding: 56px 16px;
+  gap: 12px;
+  padding: 56px 20px;
+  border: 1px dashed var(--lt-line-strong);
+  border-radius: var(--lt-radius-lg);
   text-align: center;
-  color: var(--mat-sys-on-surface-variant);
 
-  mat-icon {
-    width: 56px;
-    height: 56px;
-    font-size: 56px;
-    color: var(--mat-sys-outline);
+  > ng-icon {
+    font-size: 3rem;
+    color: var(--lt-muted);
   }
 
   h2 {
-    margin: 8px 0 0;
-    font: var(--mat-sys-headline-small);
-    color: var(--mat-sys-on-surface);
+    margin: 0;
+    font-family: var(--lt-display);
+    font-size: clamp(2.25rem, 7vw, 3.25rem);
+    font-weight: 900;
+    line-height: 0.95;
+    text-transform: uppercase;
   }
 
   p {
-    margin: 0;
+    max-width: 44ch;
+    margin: 0 0 8px;
+    color: var(--lt-text-3);
   }
 
-  a,
-  button {
-    margin-top: 12px;
+  &.empty > ng-icon {
+    color: var(--lt-cta);
+    transform: rotate(-8deg);
   }
 }

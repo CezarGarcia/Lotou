@@ -13,18 +13,31 @@ import {
   Injector,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  lucideCircleCheck,
+  lucideCloudOff,
+  lucideCreditCard,
+  lucideLoaderCircle,
+  lucideLock,
+  lucideSearchX,
+  lucideTicketPercent,
+  lucideTimerOff,
+} from '@ng-icons/lucide';
 import { MoneyPipe, formatCents } from '../../core/format/money.pipe';
 import { toApiError } from '../../core/http/problem';
 import { formatClock } from '../shared/countdown';
 import { ShowHeading } from '../shared/show-heading';
+import { PayBar } from '../checkout/pay-bar';
+import { PurchaseSteps } from '../checkout/purchase-steps';
+import { TicketCard } from '../checkout/ticket-card';
 import { ReservationStore } from './reservation.store';
+import { ReservationItems } from './reservation-items';
+import { ReservationTimer } from './reservation-timer';
+import { BackLink } from '../checkout/back-link';
 
 /**
  * A reserva e o pagamento: resumo, cronômetro de 10 minutos, o total com o
@@ -37,16 +50,31 @@ import { ReservationStore } from './reservation.store';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    MatButtonModule,
+    NgIcon,
     MatFormFieldModule,
-    MatIconModule,
     MatInputModule,
-    MatProgressBarModule,
-    MatProgressSpinnerModule,
     MoneyPipe,
     ShowHeading,
+    PurchaseSteps,
+    PayBar,
+    BackLink,
+    TicketCard,
+    ReservationTimer,
+    ReservationItems,
   ],
   providers: [ReservationStore],
+  viewProviders: [
+    provideIcons({
+      lucideCircleCheck,
+      lucideCloudOff,
+      lucideCreditCard,
+      lucideLoaderCircle,
+      lucideLock,
+      lucideSearchX,
+      lucideTicketPercent,
+      lucideTimerOff,
+    }),
+  ],
   templateUrl: './reservation.page.html',
   styleUrl: './reservation.page.scss',
 })
@@ -87,6 +115,20 @@ export class ReservationPage {
       ? 'Falta menos de 1 minuto para a reserva expirar.'
       : `Faltam ${minutes} minutos para a reserva expirar.`;
   });
+
+  /** A reserva ainda espera o pagamento: a barra de pagar aparece no celular. */
+  protected readonly held = computed(
+    () =>
+      this.store.reservation.hasValue() &&
+      this.store.reservation.value().status === 'HELD' &&
+      !this.store.expired(),
+  );
+
+  protected readonly seated = computed(
+    () =>
+      this.store.reservation.hasValue() &&
+      this.store.reservation.value().items.some((item) => item.seat !== null),
+  );
 
   protected readonly notFound = computed(() => {
     const error = this.store.reservation.error();

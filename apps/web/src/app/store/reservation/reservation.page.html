@@ -1,235 +1,230 @@
-<div class="container page">
+<div class="container page" [class.has-bar]="held()">
   @if (store.reservation.hasValue()) {
     @let r = store.reservation.value();
 
-    <a matButton [routerLink]="['/shows', r.showId]" class="back">
-      <mat-icon aria-hidden="true">arrow_back</mat-icon>
-      Voltar ao show
-    </a>
+    <div class="topline">
+      <app-back-link class="back" [link]="['/shows', r.showId]" label="Voltar ao show" />
+      <app-purchase-steps [current]="r.status === 'CONFIRMED' ? 2 : 1" [seated]="seated()" />
+    </div>
 
     @if (store.show.hasValue()) {
       <app-show-heading [show]="store.show.value()" eyebrow="Sua reserva" />
     }
 
     @if (store.expired()) {
-      <section class="card state" role="alert">
-        <mat-icon aria-hidden="true">timer_off</mat-icon>
+      <section class="outcome" data-tone="danger" role="alert">
+        <span class="badge"><ng-icon name="lucideTimerOff" aria-hidden="true" /></span>
         <h2>Sua reserva expirou</h2>
         <p>
           Os 10 minutos para pagar acabaram, e os ingressos voltaram à venda. Se ainda houver
           ingressos, você pode reservar de novo.
         </p>
-        <a matButton="filled" [routerLink]="['/shows', r.showId]">Escolher de novo</a>
+        <a class="btn btn-cta btn-lg" [routerLink]="['/shows', r.showId]">Escolher de novo</a>
       </section>
     } @else if (r.status === 'CONFIRMED') {
-      <section class="card state">
-        <mat-icon aria-hidden="true">task_alt</mat-icon>
+      <section class="outcome" data-tone="ok">
+        <span class="badge"><ng-icon name="lucideCircleCheck" aria-hidden="true" /></span>
         <h2>Esta reserva já foi paga</h2>
         <p>Os ingressos estão em "Meus ingressos".</p>
-        <a matButton="filled" routerLink="/meus-ingressos">Ver meus ingressos</a>
+        <a class="btn btn-cta btn-lg" routerLink="/meus-ingressos">Ver meus ingressos</a>
       </section>
     } @else if (r.status === 'RELEASED') {
-      <section class="card state">
-        <mat-icon aria-hidden="true">credit_card_off</mat-icon>
+      <section class="outcome" data-tone="danger">
+        <span class="badge"><ng-icon name="lucideCreditCard" aria-hidden="true" /></span>
         <h2>O pagamento não foi aprovado</h2>
         <p>Nada foi cobrado, e os ingressos voltaram à venda.</p>
-        <a matButton="filled" [routerLink]="['/shows', r.showId]">Tentar de novo</a>
+        <a class="btn btn-cta btn-lg" [routerLink]="['/shows', r.showId]">Tentar de novo</a>
       </section>
     } @else {
       <div class="layout">
-        <section class="card" aria-labelledby="items-title">
-          <div class="timer" [class.warning]="store.warning()">
-            <div>
-              <span>Sua reserva expira em</span>
-              <strong role="timer" aria-live="off">{{ clock() }}</strong>
-            </div>
-            <mat-icon aria-hidden="true">timer</mat-icon>
-          </div>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="store.percentLeft()"
-            aria-label="Tempo restante da reserva"
+        <section class="hold" aria-labelledby="items-title">
+          <app-reservation-timer
+            [clock]="clock()"
+            [percent]="store.percentLeft()"
+            [warning]="store.warning()"
           />
           <p class="sr-only" aria-live="polite">{{ minutesLeft() }}</p>
 
-          <h2 id="items-title">{{ r.sectorName }}</h2>
-          <ul class="items">
-            @for (item of r.items; track $index) {
-              <li>
-                <span>
-                  {{ item.seat ? 'Cadeira ' + item.seat : 'Ingresso' }}
-                  <small>{{ item.lotName }}</small>
-                </span>
-                <strong>{{ item.unitPriceCents | brl }}</strong>
-              </li>
-            }
-          </ul>
+          <app-reservation-items [sectorName]="r.sectorName" [items]="r.items" />
         </section>
 
-        <aside class="card pay" aria-label="Pagamento">
-          @if (store.quote(); as q) {
-            <dl class="breakdown">
-              <div>
-                <dt>{{ r.quantity === 1 ? '1 ingresso' : r.quantity + ' ingressos' }}</dt>
-                <dd>{{ q.subtotalCents | brl }}</dd>
-              </div>
-              @if (q.coupon; as coupon) {
-                <div class="discount">
-                  <dt>
-                    Desconto <span class="code">{{ coupon.code }}</span>
-                  </dt>
-                  <dd>− {{ q.discountCents | brl }}</dd>
-                </div>
-              }
-              @if (q.serviceFeePaidBy === 'BUYER') {
+        <aside class="pay" aria-label="Pagamento">
+          <app-ticket-card [show]="store.show.value()">
+            <h2 class="eyebrow">Pagamento</h2>
+            @if (store.quote(); as q) {
+              <dl class="breakdown">
                 <div>
-                  <dt>Taxa de serviço <small>10% do valor dos ingressos</small></dt>
-                  <dd>{{ q.serviceFeeCents | brl }}</dd>
+                  <dt>{{ r.quantity === 1 ? '1 ingresso' : r.quantity + ' ingressos' }}</dt>
+                  <dd>{{ q.subtotalCents | brl }}</dd>
                 </div>
+                @if (q.coupon; as coupon) {
+                  <div class="discount">
+                    <dt>
+                      Desconto <span class="code">{{ coupon.code }}</span>
+                    </dt>
+                    <dd>− {{ q.discountCents | brl }}</dd>
+                  </div>
+                }
+                @if (q.serviceFeePaidBy === 'BUYER') {
+                  <div>
+                    <dt>Taxa de serviço <small>10% do valor dos ingressos</small></dt>
+                    <dd>{{ q.serviceFeeCents | brl }}</dd>
+                  </div>
+                }
+                <div class="total">
+                  <dt>Total</dt>
+                  <dd>{{ q.totalCents | brl }}</dd>
+                </div>
+              </dl>
+              @if (q.serviceFeePaidBy === 'PRODUCER') {
+                <p class="fee-note">Sem taxa de serviço: ela fica por conta do produtor.</p>
               }
-              <div class="total">
-                <dt>Total</dt>
-                <dd>{{ q.totalCents | brl }}</dd>
+            } @else if (store.quoteError(); as error) {
+              <div class="error" role="alert">
+                <p>Não foi possível calcular o total. {{ error.message }}</p>
+                @if (error.traceId) {
+                  <small>Código para o suporte: {{ error.traceId }}</small>
+                }
+                <button class="btn btn-outline" type="button" (click)="store.retryQuote()">
+                  Tentar de novo
+                </button>
               </div>
-            </dl>
-            @if (q.serviceFeePaidBy === 'PRODUCER') {
-              <p class="fee-note">Sem taxa de serviço: ela fica por conta do produtor.</p>
+            } @else {
+              <div class="calculating" aria-busy="true">
+                <div class="skeleton"></div>
+                <div class="skeleton"></div>
+                <span class="sr-only">Calculando o total...</span>
+              </div>
             }
-          } @else if (store.quoteError(); as error) {
-            <div class="error" role="alert">
-              <p>Não foi possível calcular o total. {{ error.message }}</p>
-              @if (error.traceId) {
-                <small>Código para o suporte: {{ error.traceId }}</small>
-              }
-              <button matButton type="button" (click)="store.retryQuote()">Tentar de novo</button>
-            </div>
-          } @else {
-            <div class="calculating" aria-busy="true">
-              <mat-spinner diameter="20" aria-hidden="true" />
-              <span>Calculando o total...</span>
-            </div>
-          }
 
-          <div class="coupon">
-            @if (store.coupon(); as coupon) {
-              <div class="applied">
-                <mat-icon aria-hidden="true">sell</mat-icon>
-                <span>
-                  Cupom <strong>{{ coupon.code }}</strong> aplicado
-                </span>
+            <div class="coupon">
+              @if (store.coupon(); as coupon) {
+                <div class="applied">
+                  <ng-icon name="lucideTicketPercent" aria-hidden="true" />
+                  <span>
+                    Cupom <strong>{{ coupon.code }}</strong> aplicado
+                  </span>
+                  <button
+                    class="link"
+                    type="button"
+                    [disabled]="store.paying()"
+                    (click)="store.removeCoupon()"
+                  >
+                    Remover
+                  </button>
+                </div>
+              } @else if (!couponOpen()) {
                 <button
-                  matButton
                   type="button"
-                  [disabled]="store.paying()"
-                  (click)="store.removeCoupon()"
+                  class="toggle"
+                  aria-controls="coupon-form"
+                  [attr.aria-expanded]="false"
+                  [disabled]="!store.quote()"
+                  (click)="openCoupon()"
                 >
-                  Remover
+                  <ng-icon name="lucideTicketPercent" aria-hidden="true" />
+                  Tenho um cupom
                 </button>
-              </div>
-            } @else if (!couponOpen()) {
-              <button
-                matButton
-                type="button"
-                class="toggle"
-                aria-controls="coupon-form"
-                [attr.aria-expanded]="false"
-                [disabled]="!store.quote()"
-                (click)="openCoupon()"
-              >
-                <mat-icon aria-hidden="true">sell</mat-icon>
-                Tenho um cupom
-              </button>
-            } @else {
-              <form
-                id="coupon-form"
-                class="coupon-form"
-                [formGroup]="couponForm"
-                (ngSubmit)="applyCoupon()"
-              >
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Código do cupom</mat-label>
-                  <input
-                    #couponInput
-                    matInput
-                    [formControl]="couponCode"
-                    autocomplete="off"
-                    autocapitalize="characters"
-                    spellcheck="false"
-                    maxlength="40"
-                    [attr.aria-invalid]="!!store.couponError()"
-                  />
-                  @if (store.couponError(); as message) {
-                    <mat-hint id="coupon-error" class="coupon-error" role="alert">
-                      {{ message }}
-                    </mat-hint>
-                  }
-                </mat-form-field>
-                <button
-                  matButton="tonal"
-                  type="submit"
-                  [disabled]="store.checkingCoupon() || store.paying()"
+              } @else {
+                <form
+                  id="coupon-form"
+                  class="coupon-form"
+                  [formGroup]="couponForm"
+                  (ngSubmit)="applyCoupon()"
                 >
-                  @if (store.checkingCoupon()) {
-                    <mat-spinner diameter="18" aria-label="Conferindo o cupom" />
-                  } @else {
-                    Aplicar
-                  }
-                </button>
-              </form>
-            }
-          </div>
-          <p class="sr-only" aria-live="polite">{{ couponAnnouncement() }}</p>
-
-          @if (store.error(); as error) {
-            <div class="error" role="alert">
-              <p>{{ error.message }}</p>
-              @if (error.traceId) {
-                <small>Código para o suporte: {{ error.traceId }}</small>
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Código do cupom</mat-label>
+                    <input
+                      #couponInput
+                      matInput
+                      [formControl]="couponCode"
+                      autocomplete="off"
+                      autocapitalize="characters"
+                      spellcheck="false"
+                      maxlength="40"
+                      [attr.aria-invalid]="!!store.couponError()"
+                    />
+                    @if (store.couponError(); as message) {
+                      <mat-hint id="coupon-error" class="coupon-error" role="alert">
+                        {{ message }}
+                      </mat-hint>
+                    }
+                  </mat-form-field>
+                  <button
+                    class="btn btn-light"
+                    type="submit"
+                    [disabled]="store.checkingCoupon() || store.paying()"
+                  >
+                    @if (store.checkingCoupon()) {
+                      <ng-icon name="lucideLoaderCircle" class="spin" aria-hidden="true" />
+                      <span class="sr-only">Conferindo o cupom</span>
+                    } @else {
+                      Aplicar
+                    }
+                  </button>
+                </form>
               }
             </div>
-          }
+            <p class="sr-only" aria-live="polite">{{ couponAnnouncement() }}</p>
 
-          <button
-            matButton="filled"
-            type="button"
-            class="cta"
-            [disabled]="!store.canPay()"
-            (click)="store.pay()"
-          >
-            @if (store.paying()) {
-              <mat-spinner diameter="20" aria-label="Enviando o pagamento" />
-            } @else if (store.quote(); as q) {
-              Pagar {{ q.totalCents | brl }}
-            } @else {
-              Pagar
+            @if (store.error(); as error) {
+              <div class="error" role="alert">
+                <p>{{ error.message }}</p>
+                @if (error.traceId) {
+                  <small>Código para o suporte: {{ error.traceId }}</small>
+                }
+              </div>
             }
-          </button>
-          <p class="hint">
-            O pagamento é simulado: nenhum dado de cartão é pedido neste projeto, e o preço fica
-            congelado na reserva.
-          </p>
+
+            <app-pay-bar
+              [total]="store.quote() ? (store.quote()!.totalCents | brl) : '–'"
+              [caption]="r.quantity === 1 ? '1 ingresso' : r.quantity + ' ingressos'"
+            >
+              <button
+                type="button"
+                class="btn btn-cta btn-lg cta"
+                [disabled]="!store.canPay()"
+                (click)="store.pay()"
+              >
+                @if (store.paying()) {
+                  <ng-icon name="lucideLoaderCircle" class="spin" aria-hidden="true" />
+                  Processando...
+                } @else if (store.quote(); as q) {
+                  Pagar {{ q.totalCents | brl }}
+                } @else {
+                  Pagar
+                }
+              </button>
+            </app-pay-bar>
+            <p class="hint">
+              <ng-icon name="lucideLock" aria-hidden="true" />
+              O pagamento é simulado: nenhum dado de cartão é pedido neste projeto, e o preço fica
+              congelado na reserva.
+            </p>
+          </app-ticket-card>
         </aside>
       </div>
     }
   } @else if (store.reservation.isLoading()) {
-    <div class="card state" aria-busy="true">
-      <mat-spinner diameter="40" aria-label="Carregando a reserva" />
+    <div class="loading" aria-busy="true" aria-label="Carregando a reserva">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
     </div>
   } @else if (notFound()) {
-    <div class="card state">
-      <mat-icon aria-hidden="true">search_off</mat-icon>
+    <section class="outcome">
+      <span class="badge"><ng-icon name="lucideSearchX" aria-hidden="true" /></span>
       <h2>Reserva não encontrada</h2>
       <p>O link pode estar errado, ou a reserva é de outra conta.</p>
-      <a matButton="tonal" routerLink="/">Ver os shows</a>
-    </div>
+      <a class="btn btn-cta" routerLink="/">Ver os shows</a>
+    </section>
   } @else if (loadError(); as error) {
-    <div class="card state" role="alert">
-      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+    <section class="outcome" role="alert">
+      <span class="badge"><ng-icon name="lucideCloudOff" aria-hidden="true" /></span>
       <h2>Não foi possível carregar a reserva</h2>
       <p>{{ error.message }}</p>
-      <button matButton="tonal" type="button" (click)="store.reservation.reload()">
+      <button class="btn btn-outline" type="button" (click)="store.reservation.reload()">
         Tentar de novo
       </button>
-    </div>
+    </section>
   }
 </div>

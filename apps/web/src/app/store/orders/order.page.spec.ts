@@ -153,6 +153,12 @@ describe('OrderPage', () => {
     expect(text()).toContain('O pagamento foi recusado. Nada foi cobrado');
   });
 
+  it('conta quantos dias faltam para o show na confirmação', async () => {
+    const startsAt = new Date(Date.now() + 20 * 86_400_000).toISOString();
+    const { text } = await render(order({}), { ...SHOW, startsAt });
+    expect(text()).toContain('Faltam 20 dias para o show.');
+  });
+
   it('mostra a espera enquanto o pagamento é processado', async () => {
     const { text } = await render(order({ status: 'PENDING', confirmedAt: null }));
     expect(text()).toContain('Confirmando o pagamento...');
